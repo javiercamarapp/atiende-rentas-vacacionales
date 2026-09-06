@@ -389,14 +389,34 @@ describe("Bloque B — simuladores/flags: NODE_ENV ausente o mal escrito", () =>
     expect(() => assertNoParecerProduccion({})).toThrow(CredencialesSospechosasDeProduccionError);
   });
 
-  it("B3 — CONFIRMADO/CRÍTICO: NODE_ENV='producción' (CON TILDE, el error tipográfico más plausible para un equipo que escribe todo el repo en español) NO bloquea — assertNoParecerProduccion no lanza (fail-open)", () => {
+  it("[CORREGIDO S-04] B3 — NODE_ENV='producción' (CON TILDE, el error tipográfico más plausible para un equipo que escribe todo el repo en español) SÍ bloquea ahora — assertNoParecerProduccion normaliza diacríticos (NFD + strip combining marks) antes de comparar, cerrando el fail-open original", () => {
     process.env.NODE_ENV = "producción";
-    expect(() => assertNoParecerProduccion({})).not.toThrow();
+    expect(() => assertNoParecerProduccion({})).toThrow(CredencialesSospechosasDeProduccionError);
   });
 
-  it("B4 — CONFIRMADO/CRÍTICO: con NODE_ENV='producción', `new SimuladorMensajeria(...)` (el simulador que apps/api/src/routes/mensajeria/borradores.ts instancia en /borradores/:id/aprobar en CADA aprobación real) se construye sin lanzar — el simulador queda operable bajo un entorno que el operador declaró como productivo", () => {
+  it("[CORREGIDO S-04] B4 — con NODE_ENV='producción', `new SimuladorMensajeria(...)` (el simulador que apps/api/src/routes/mensajeria/borradores.ts instancia en /borradores/:id/aprobar en CADA aprobación real) ahora SÍ lanza — el simulador ya no queda operable bajo un entorno que el operador declaró como productivo, con o sin tilde", () => {
     process.env.NODE_ENV = "producción";
-    expect(() => new SimuladorMensajeria("airbnb")).not.toThrow();
+    expect(() => new SimuladorMensajeria("airbnb")).toThrow(CredencialesSospechosasDeProduccionError);
+  });
+
+  it("[NUEVO S-04] B3b — la allow-list explícita ATIENDE_ENTORNO es más estricta que la deny-list heredada de NODE_ENV: con NODE_ENV='production' pero ATIENDE_ENTORNO='desarrollo' explícito, el simulador SÍ arranca (modo recomendado, independiente de NODE_ENV)", () => {
+    process.env.NODE_ENV = "production";
+    process.env.ATIENDE_ENTORNO = "desarrollo";
+    try {
+      expect(() => assertNoParecerProduccion({})).not.toThrow();
+    } finally {
+      delete process.env.ATIENDE_ENTORNO;
+    }
+  });
+
+  it("[NUEVO S-04] B3c — con ATIENDE_ENTORNO declarado a cualquier valor fuera de la allow-list (incluyendo variantes con tilde/mayúsculas de 'producción', o cualquier otra cadena), el simulador NO arranca — fail-closed por allow-list, no por enumerar formas de 'producción'", () => {
+    delete process.env.NODE_ENV;
+    process.env.ATIENDE_ENTORNO = "staging";
+    try {
+      expect(() => assertNoParecerProduccion({})).toThrow(CredencialesSospechosasDeProduccionError);
+    } finally {
+      delete process.env.ATIENDE_ENTORNO;
+    }
   });
 
   it("B5 — variante de mayúsculas: NODE_ENV='PRODUCTION' SÍ es detectado por assertNoParecerProduccion (hace .toLowerCase() antes de comparar) — no hay bug de mayúsculas en esta función", () => {
