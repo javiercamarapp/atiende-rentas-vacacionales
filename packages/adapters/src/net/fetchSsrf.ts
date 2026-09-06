@@ -123,6 +123,34 @@ function realizarPeticionPineada(
   maxBytes: number,
 ): Promise<{ status: number; headers: http.IncomingHttpHeaders; cuerpo: string }> {
   return new Promise((resolve, reject) => {
+    // S-08 (docs/auditoria-2/seguridad.md): antes, exceder `maxBytes`
+    // llamaba `req.destroy(error)` y dependía de que ESO disparara,
+    // async, el `error` que `req.on("error", reject)` rechazaría. Cuando
+    // el cuerpo completo llegaba en una única ráfaga (`data` una sola
+    // vez, típico de un cuerpo pequeño servido con `res.end()` de un
+    // golpe), destruir el socket dentro del propio handler de `data`
+    // podía hacer que `res` emitiera `end` primero (la promesa se
+    // resolvía con `status:200`, límite evadido en silencio) y el
+    // `error` de `req` llegaba después, sin ganar la carrera — y en la
+    // práctica escapaba como `uncaughtException` de proceso en vez de
+    // rechazar la promesa (DoS: una sola petición hostil podía tumbar el
+    // proceso). Ahora la promesa se liquida DIRECTAMENTE (sin depender de
+    // que un evento de error se propague) apenas se detecta el exceso, y
+    // un guard `liquidado` asegura que solo la primera resolución/rechazo
+    // cuenta — cualquier evento posterior (incluida cualquier `error`
+    // tardía del socket ya destruido) se ignora en vez de escapar.
+    let liquidado = false;
+    const resolverUnaVez = (valor: { status: number; headers: http.IncomingHttpHeaders; cuerpo: string }) => {
+      if (liquidado) return;
+      liquidado = true;
+      resolve(valor);
+    };
+    const rechazarUnaVez = (error: Error) => {
+      if (liquidado) return;
+      liquidado = true;
+      reject(error);
+    };
+
     const cliente = u.protocol === "https:" ? https : http;
     const req = cliente.request(
       {
@@ -139,25 +167,34 @@ function realizarPeticionPineada(
         let recibidos = 0;
         const trozos: Buffer[] = [];
         res.on("data", (chunk: Buffer) => {
+          if (liquidado) return; // ya liquidada — ignorar datos tardíos del socket
           recibidos += chunk.length;
           if (recibidos > maxBytes) {
-            req.destroy(new Error(`cuerpo excede el límite de ${maxBytes} bytes`));
+            rechazarUnaVez(new Error(`cuerpo excede el límite de ${maxBytes} bytes`));
+            // Sin argumento de error: cerramos el socket sin emitir un
+            // nuevo evento "error" que ya nadie necesita manejar (la
+            // promesa ya se liquidó arriba, de forma síncrona).
+            req.destroy();
+            res.destroy();
             return;
           }
           trozos.push(chunk);
         });
         res.on("end", () => {
-          resolve({
+          resolverUnaVez({
             status: res.statusCode ?? 0,
             headers: res.headers,
             cuerpo: Buffer.concat(trozos).toString("utf8"),
           });
         });
-        res.on("error", reject);
+        res.on("error", (err) => rechazarUnaVez(err instanceof Error ? err : new Error(String(err))));
       },
     );
-    req.on("timeout", () => req.destroy(new Error("timeout de fetch de feed iCal")));
-    req.on("error", reject);
+    req.on("timeout", () => {
+      rechazarUnaVez(new Error("timeout de fetch de feed iCal"));
+      req.destroy();
+    });
+    req.on("error", (err) => rechazarUnaVez(err instanceof Error ? err : new Error(String(err))));
     req.end();
   });
 }

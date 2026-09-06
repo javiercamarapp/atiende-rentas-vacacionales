@@ -371,7 +371,7 @@ describe("H5 — límites de bytes y timeout durante streaming real", () => {
     expect(String((lanzo as Error).message)).toMatch(/excede el límite/);
   });
 
-  it("HALLAZGO NUEVO (ALTO, encontrado por accidente al escribir el control anterior): cuando el cuerpo que excede maxBytes llega COMPLETO en un solo evento 'data' (ráfaga única, típico de un cuerpo pequeño servido vía res.end() de un solo golpe — muy plausible en la práctica), fetchIcsSeguro NO rechaza la promesa Y ADEMÁS provoca una excepción no controlada (uncaughtException) fuera de la promesa — en un proceso Node real sin handler global de uncaughtException esto tumba el proceso: DoS con una sola petición de un feed hostil", async () => {
+  it("[CORREGIDO S-08] cuando el cuerpo que excede maxBytes llega COMPLETO en un solo evento 'data' (ráfaga única), fetchIcsSeguro ahora SÍ rechaza la promesa directamente, sin ninguna excepción de proceso no controlada", async () => {
     const maxBytes = 100;
     const { puerto } = await levantarServidorHttp((_req, res) => {
       // Todo el cuerpo (1000 bytes, > maxBytes) se entrega en una sola
@@ -406,7 +406,7 @@ describe("H5 — límites de bytes y timeout durante streaming real", () => {
     process.removeListener("uncaughtException", capturador);
 
     console.log(
-      "H5-bypass-rafaga: lanzo=",
+      "[CORREGIDO S-08] H5-bypass-rafaga: lanzo=",
       lanzo instanceof Error ? lanzo.message : lanzo,
       "resultado=",
       JSON.stringify(resultado),
@@ -414,12 +414,15 @@ describe("H5 — límites de bytes y timeout durante streaming real", () => {
       excepcionNoControlada?.message,
     );
 
-    // BUG CONFIRMADO: NINGÚN error llega al llamador (`lanzo` es undefined) y
-    // el límite de bytes se evade silenciosamente por esta vía; en cambio,
-    // el error de "cuerpo excede el límite" escapa como excepción de
-    // proceso no controlada, fuera del try/catch normal del llamador.
-    expect(lanzo).toBeUndefined();
-    expect(excepcionNoControlada?.message).toMatch(/excede el límite de 100 bytes/);
+    // Antes de la corrección: NINGÚN error llegaba al llamador (`lanzo`
+    // era undefined, el límite se evadía en silencio) y el error
+    // escapaba como excepción de proceso no controlada. Ahora
+    // `rechazarUnaVez` liquida la promesa de forma síncrona y directa —
+    // el llamador recibe el error en su propio try/catch, y no hay
+    // ninguna excepción de proceso no controlada.
+    expect(lanzo).toBeInstanceOf(Error);
+    expect((lanzo as Error).message).toMatch(/excede el límite de 100 bytes/);
+    expect(excepcionNoControlada).toBeUndefined();
   });
 
   it("BUG (medio): el 'timeout' configurado es de INACTIVIDAD del socket (se resetea con cada byte), no un límite de duración TOTAL — un servidor que gotea 1 byte periódicamente por debajo del timeout mantiene la conexión viva muy por encima del tiempo configurado", async () => {

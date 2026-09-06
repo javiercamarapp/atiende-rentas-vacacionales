@@ -2,6 +2,7 @@ import {
   calcularHashContenido,
   cancelarOcupacion,
   crearReservaConfirmada,
+  esRangoValido,
   modificarFechasReserva,
   resolverVersion,
   type EjecutorTransaccional,
@@ -50,6 +51,13 @@ export interface ResultadoImportarCiclo {
   revisionesUidReciclado: number;
   conflictosDetectados: number;
   alertaCuarentena: AlertaCuarentena | null;
+  /** D-DSD-06: eventos individuales del feed descartados por ser
+   * semánticamente inválidos (rango invertido/vacío, típicamente una
+   * `DURATION` negativa o cero — RFC 5545 §3.3.6 la acepta
+   * sintácticamente) o por cualquier otro error inesperado al
+   * procesarlos. Nunca abortan el resto del ciclo — los demás eventos
+   * válidos del mismo feed se siguen aplicando con normalidad. */
+  eventosDescartadosPorError: number;
 }
 
 interface FilaFeed {
@@ -293,6 +301,7 @@ export async function ejecutarCicloImport(
     revisionesUidReciclado: 0,
     conflictosDetectados: 0,
     alertaCuarentena: alerta,
+    eventosDescartadosPorError: 0,
   };
 
   if (resultadoCiclo !== "exito_con_eventos") {
@@ -302,104 +311,150 @@ export async function ejecutarCicloImport(
   const hashesRecientes = await hashesExportadosRecientes(ctx);
 
   for (const evento of eventos) {
-    const rango = extraerRango(evento, ctx.zonaHorariaPropiedad);
-    const hash = calcularHashContenido({
-      unidadId: ctx.unidadId,
-      dtstart: rango.inicio,
-      dtend: rango.fin,
-      razon: "RESERVA_CANAL",
-    });
-
-    const canalesExportados = await canalesExportadosDeRango(ctx, rango);
-    const eco = detectarEco({
-      uidEntrante: evento.uid,
-      hashContenidoEntrante: hash,
-      hashesExportadosRecientes: hashesRecientes,
-      canalesExportadosDeRangoCoincidente: canalesExportados,
-    });
-
-    // Hash de VERSIÓN (para `resolverVersion`/idempotencia), distinto del
-    // hash de anti-eco de arriba: un CANCEL sobre el mismo rango de fechas
-    // ya importado es un cambio de contenido real (la reserva deja de
-    // reclamar esas noches) aunque `(unidad, dtstart, dtend)` no cambien —
-    // sin este distintivo, `resolverVersion` lo trataría como "hash
-    // idéntico al almacenado" (sin_cambio) y el CANCEL nunca se aplicaría.
-    // El hash de anti-eco de arriba NO lleva este distintivo a propósito:
-    // lo que nosotros exportamos siempre lleva STATUS:CONFIRMED (ver
-    // `exportador.ts`), así que un eco genuino de nuestro propio export
-    // sigue coincidiendo exactamente.
-    const hashVersion = calcularHashContenido({
-      unidadId: ctx.unidadId,
-      dtstart: rango.inicio,
-      dtend: rango.fin,
-      razon: evento.status === "CANCELLED" ? "RESERVA_CANAL:CANCELLED" : "RESERVA_CANAL",
-    });
-    const entrante: VersionEvento = {
-      uid: evento.uid,
-      sequence: evento.sequence,
-      dtstamp: evento.dtstamp,
-      hash: hashVersion,
-      // D-DSD-03: rango real del evento entrante, para la heurística de
-      // "UID reciclado" sin SEQUENCE comparable (ver obtenerVersionPrevia).
-      rango,
-    };
-
-    if (eco.esEco) {
-      resumen.ecosDescartados++;
-      await upsertEventoImportado(ctx, entrante, null, "eco", true);
-      continue;
-    }
-
-    const previa = await obtenerVersionPrevia(ctx, evento.uid);
-    const resolucion = resolverVersion(previa?.version ?? null, entrante);
-
-    if (resolucion.accion === "sin_cambio" || resolucion.accion === "descartar") {
-      await upsertEventoImportado(ctx, entrante, previa?.ocupacionUnidadId ?? null, resolucion.accion, false);
-      continue;
-    }
-
-    if (resolucion.accion === "revisar_uid_reciclado") {
-      resumen.revisionesUidReciclado++;
+    try {
+      await procesarEventoDelCiclo(ctx, evento, hashesRecientes, resumen);
+    } catch (error) {
+      // D-DSD-06: un evento individual del feed (rango invertido/vacío
+      // por una DURATION negativa/cero, RFC 5545 §3.3.6 lo acepta
+      // sintácticamente, u otro error inesperado al procesarlo) NUNCA
+      // aborta el resto del ciclo — se descarta y se reporta para
+      // revisión humana, análogo a "revisar_uid_reciclado", dejando que
+      // los demás eventos válidos del mismo feed se apliquen con
+      // normalidad.
+      resumen.eventosDescartadosPorError++;
       await ctx.ejecutor.query(
         `INSERT INTO outbox_evento (tipo_evento, payload)
-         VALUES ('revisar_uid_reciclado', $1::jsonb)`,
-        [JSON.stringify({ unidadId: ctx.unidadId, canalId: ctx.canalId, uid: evento.uid, motivo: resolucion.motivo })],
+         VALUES ('revisar_evento_fallido', $1::jsonb)`,
+        [
+          JSON.stringify({
+            unidadId: ctx.unidadId,
+            canalId: ctx.canalId,
+            uid: evento.uid,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        ],
       );
-      await upsertEventoImportado(ctx, entrante, previa?.ocupacionUnidadId ?? null, "revisar_uid_reciclado", false);
-      continue;
     }
-
-    // accion === 'aplicar'
-    if (evento.status === "CANCELLED") {
-      if (previa?.ocupacionUnidadId) {
-        await cancelarOcupacion(ctx.ejecutor, previa.ocupacionUnidadId);
-      }
-      await upsertEventoImportado(ctx, entrante, previa?.ocupacionUnidadId ?? null, "aplicar", true);
-      resumen.eventosAplicados++;
-      continue;
-    }
-
-    if (previa?.ocupacionUnidadId) {
-      const modificado = await modificarFechasReserva(ctx.ejecutor, previa.ocupacionUnidadId, rango);
-      if (modificado.conflicto) resumen.conflictosDetectados++;
-      await upsertEventoImportado(ctx, entrante, previa.ocupacionUnidadId, "aplicar", true);
-    } else {
-      const estadoOcupacion = evento.status === "TENTATIVE" ? "provisional" : "confirmado";
-      const creado = await crearReservaConfirmada(ctx.ejecutor, {
-        unidadId: ctx.unidadId,
-        rango,
-        estado: estadoOcupacion,
-        bloqueante: true,
-        canalOrigenId: ctx.canalId,
-        externalId: evento.uid,
-      });
-      if (creado.conflicto) resumen.conflictosDetectados++;
-      await upsertEventoImportado(ctx, entrante, creado.ocupacionId, "aplicar", true);
-    }
-    resumen.eventosAplicados++;
   }
 
   return resumen;
+}
+
+async function procesarEventoDelCiclo(
+  ctx: ContextoSincronizacion,
+  evento: VEventNormalizado,
+  hashesRecientes: readonly string[],
+  resumen: ResultadoImportarCiclo,
+): Promise<void> {
+  const rango = extraerRango(evento, ctx.zonaHorariaPropiedad);
+
+  // D-DSD-06: validar el rango ANTES de cualquier consulta SQL que lo use
+  // — `canalesExportadosDeRango` (más abajo) arma un `daterange()` crudo
+  // que Postgres rechazaría con `22000` (rango invertido) antes de que el
+  // dominio pueda intervenir. Un evento sintácticamente válido según el
+  // parser (p. ej. `DURATION:-P1D` o `PT0S`, aceptadas por el ABNF de RFC
+  // 5545 §3.3.6 pero semánticamente inválidas) se descarta aquí mismo,
+  // individualmente.
+  if (!esRangoValido(rango)) {
+    throw new Error(
+      `evento con rango inválido (dtstart >= dtend): [${rango.inicio}, ${rango.fin})`,
+    );
+  }
+
+  const hash = calcularHashContenido({
+    unidadId: ctx.unidadId,
+    dtstart: rango.inicio,
+    dtend: rango.fin,
+    razon: "RESERVA_CANAL",
+  });
+
+  const canalesExportados = await canalesExportadosDeRango(ctx, rango);
+  const eco = detectarEco({
+    uidEntrante: evento.uid,
+    hashContenidoEntrante: hash,
+    hashesExportadosRecientes: hashesRecientes,
+    canalesExportadosDeRangoCoincidente: canalesExportados,
+  });
+
+  // Hash de VERSIÓN (para `resolverVersion`/idempotencia), distinto del
+  // hash de anti-eco de arriba: un CANCEL sobre el mismo rango de fechas
+  // ya importado es un cambio de contenido real (la reserva deja de
+  // reclamar esas noches) aunque `(unidad, dtstart, dtend)` no cambien —
+  // sin este distintivo, `resolverVersion` lo trataría como "hash
+  // idéntico al almacenado" (sin_cambio) y el CANCEL nunca se aplicaría.
+  // El hash de anti-eco de arriba NO lleva este distintivo a propósito:
+  // lo que nosotros exportamos siempre lleva STATUS:CONFIRMED (ver
+  // `exportador.ts`), así que un eco genuino de nuestro propio export
+  // sigue coincidiendo exactamente.
+  const hashVersion = calcularHashContenido({
+    unidadId: ctx.unidadId,
+    dtstart: rango.inicio,
+    dtend: rango.fin,
+    razon: evento.status === "CANCELLED" ? "RESERVA_CANAL:CANCELLED" : "RESERVA_CANAL",
+  });
+  const entrante: VersionEvento = {
+    uid: evento.uid,
+    sequence: evento.sequence,
+    dtstamp: evento.dtstamp,
+    hash: hashVersion,
+    // D-DSD-03: rango real del evento entrante, para la heurística de
+    // "UID reciclado" sin SEQUENCE comparable (ver obtenerVersionPrevia).
+    rango,
+  };
+
+  if (eco.esEco) {
+    resumen.ecosDescartados++;
+    await upsertEventoImportado(ctx, entrante, null, "eco", true);
+    return;
+  }
+
+  const previa = await obtenerVersionPrevia(ctx, evento.uid);
+  const resolucion = resolverVersion(previa?.version ?? null, entrante);
+
+  if (resolucion.accion === "sin_cambio" || resolucion.accion === "descartar") {
+    await upsertEventoImportado(ctx, entrante, previa?.ocupacionUnidadId ?? null, resolucion.accion, false);
+    return;
+  }
+
+  if (resolucion.accion === "revisar_uid_reciclado") {
+    resumen.revisionesUidReciclado++;
+    await ctx.ejecutor.query(
+      `INSERT INTO outbox_evento (tipo_evento, payload)
+       VALUES ('revisar_uid_reciclado', $1::jsonb)`,
+      [JSON.stringify({ unidadId: ctx.unidadId, canalId: ctx.canalId, uid: evento.uid, motivo: resolucion.motivo })],
+    );
+    await upsertEventoImportado(ctx, entrante, previa?.ocupacionUnidadId ?? null, "revisar_uid_reciclado", false);
+    return;
+  }
+
+  // accion === 'aplicar'
+  if (evento.status === "CANCELLED") {
+    if (previa?.ocupacionUnidadId) {
+      await cancelarOcupacion(ctx.ejecutor, previa.ocupacionUnidadId);
+    }
+    await upsertEventoImportado(ctx, entrante, previa?.ocupacionUnidadId ?? null, "aplicar", true);
+    resumen.eventosAplicados++;
+    return;
+  }
+
+  if (previa?.ocupacionUnidadId) {
+    const modificado = await modificarFechasReserva(ctx.ejecutor, previa.ocupacionUnidadId, rango);
+    if (modificado.conflicto) resumen.conflictosDetectados++;
+    await upsertEventoImportado(ctx, entrante, previa.ocupacionUnidadId, "aplicar", true);
+  } else {
+    const estadoOcupacion = evento.status === "TENTATIVE" ? "provisional" : "confirmado";
+    const creado = await crearReservaConfirmada(ctx.ejecutor, {
+      unidadId: ctx.unidadId,
+      rango,
+      estado: estadoOcupacion,
+      bloqueante: true,
+      canalOrigenId: ctx.canalId,
+      externalId: evento.uid,
+    });
+    if (creado.conflicto) resumen.conflictosDetectados++;
+    await upsertEventoImportado(ctx, entrante, creado.ocupacionId, "aplicar", true);
+  }
+  resumen.eventosAplicados++;
 }
 
 // ---------------------------------------------------------------------------

@@ -336,6 +336,41 @@ describe("D-DSD-03 (regresión, pipeline real) — UID reciclado SIN SEQUENCE ta
   });
 });
 
+describe("D-DSD-06 (regresión) — un evento con rango inválido (DURATION negativa) no aborta el resto del ciclo", () => {
+  it("los dos eventos válidos del feed se aplican aunque el evento intermedio tenga DURATION negativa (rango invertido)", async () => {
+    const unidadId = await entorno.crearUnidad("d-dsd-06-duracion-invalida");
+
+    // feedIcsDePrueba no soporta DURATION (solo DTEND explícito) — feed
+    // manual, mismo patrón que
+    // tests/auditoria-2/dominio/duracionInvalidaRompeCicloImport.test.ts.
+    const feed =
+      `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//EN\r\n` +
+      `BEGIN:VEVENT\r\nUID:d-dsd-06-bueno-antes@canal.com\r\nDTSTAMP:20270101T000000Z\r\n` +
+      `DTSTART;VALUE=DATE:20270601\r\nDTEND;VALUE=DATE:20270603\r\nEND:VEVENT\r\n` +
+      `BEGIN:VEVENT\r\nUID:d-dsd-06-malformado@canal.com\r\nDTSTAMP:20270101T000000Z\r\n` +
+      `DTSTART;VALUE=DATE:20270610\r\nDURATION:-P1D\r\nEND:VEVENT\r\n` +
+      `BEGIN:VEVENT\r\nUID:d-dsd-06-bueno-despues@canal.com\r\nDTSTAMP:20270101T000000Z\r\n` +
+      `DTSTART;VALUE=DATE:20270620\r\nDTEND;VALUE=DATE:20270622\r\nEND:VEVENT\r\n` +
+      `END:VCALENDAR\r\n`;
+
+    const resultado = await ciclo(unidadId, feed);
+
+    expect(resultado.eventosAplicados).toBe(2);
+    expect(resultado.eventosDescartadosPorError).toBe(1);
+
+    const activas = await entorno.ejecutor().query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM ocupacion_unidad WHERE unidad_id = $1 AND estado <> 'cancelado'`,
+      [unidadId],
+    );
+    expect(Number(activas.rows[0]!.n)).toBe(2);
+
+    const outbox = await entorno.motor.ejecutor.query<{ tipo_evento: string }>(
+      `SELECT tipo_evento FROM outbox_evento WHERE tipo_evento = 'revisar_evento_fallido'`,
+    );
+    expect(outbox.rows.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
 describe("caso 16 — crash/replay a mitad de batch: reprocesar el batch completo equivale a procesarlo una vez", () => {
   it("repetir el mismo ciclo con 2 eventos no duplica ninguno de los dos", async () => {
     const unidadId = await entorno.crearUnidad("caso-16");
