@@ -31,6 +31,10 @@ import { migracion0052OwnerStatement } from "./0052_owner_statement.js";
 import { migracion0053PricingEsquema } from "./0053_pricing_esquema.js";
 import { migracion0054FinanzasPricingRls } from "./0054_finanzas_pricing_rls.js";
 import { migracion0055FinanzasAuditoria } from "./0055_finanzas_auditoria.js";
+import { migracion0060BackofficeColumnas } from "./0060_backoffice_columnas.js";
+import { migracion0061AccesoRomperCristal } from "./0061_acceso_romper_cristal.js";
+import { migracion0062InvitacionUsuario } from "./0062_invitacion_usuario.js";
+import { migracion0063BackofficeMetricasTenant } from "./0063_backoffice_metricas_tenant.js";
 import { migracion0080OutboxConsumidoObservabilidad } from "./0080_outbox_consumido_observabilidad.js";
 import { migracion0081Alerta } from "./0081_alerta.js";
 import { migracion0090CuentaCanalCifrado } from "./0090_cuenta_canal_cifrado.js";
@@ -57,6 +61,8 @@ import { migracion0092RlsTablasCanalLote2 } from "./0092_rls_tablas_canal_lote2.
 // reservado a Lote 10 (observabilidad/recuperación, E15) — ledger propio
 // de idempotencia del worker de outbox y tabla de alertas, mismo patrón de
 // "tabla de seguimiento propia" que ya usa Lote 5 (ver 0035_outbox_consumido_limpieza.ts).
+// Rango 0060-0069 reservado a Lote 8 (back office/superadmin, E13) — ver
+// comentario de cabecera en 0060_backoffice_columnas.ts.
 export const migraciones: Migracion[] = [
   migracion0001Extensiones,
   migracion0002TenantEmpresaOwner,
@@ -90,6 +96,10 @@ export const migraciones: Migracion[] = [
   migracion0053PricingEsquema,
   migracion0054FinanzasPricingRls,
   migracion0055FinanzasAuditoria,
+  migracion0060BackofficeColumnas,
+  migracion0061AccesoRomperCristal,
+  migracion0062InvitacionUsuario,
+  migracion0063BackofficeMetricasTenant,
   migracion0080OutboxConsumidoObservabilidad,
   migracion0081Alerta,
   migracion0090CuentaCanalCifrado,

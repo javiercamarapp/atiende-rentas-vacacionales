@@ -263,12 +263,52 @@ describe("H-042 / caso adversarial 18: aislamiento cross-tenant (SQL directo, ro
     expect(resultado.rowCount).toBe(0);
   });
 
-  it("un superadmin SÍ puede leer datos de cualquier tenant (acceso 'romper cristal' por diseño, D-020)", async () => {
+  // Lote 8 (H-075/H-076, `0061_acceso_romper_cristal.ts`): supersede la
+  // decisión original de esta prueba (D-020, "superadmin es miembro
+  // honorario incondicional") — desde ahora `is_tenant_member` exige una
+  // concesión `acceso_romper_cristal` vigente (motivo + ventana acotada)
+  // para que un superadmin vea datos de NEGOCIO de un tenant. El
+  // directorio de la propia tabla `tenant` (nombre/estado, sin datos de
+  // negocio) sigue siendo visible sin concesión — ver
+  // `tenant_select_superadmin_directorio` en la misma migración.
+  it("sin concesión 'romper cristal' vigente, un superadmin obtiene 0 filas de datos de un tenant (RLS lo impide)", async () => {
     const cliente = await comoUsuario(ids.superadmin, null, "superadmin");
     const propA = await cliente.query("SELECT * FROM propiedad WHERE id = $1", [ids.propiedadA]);
     const propB = await cliente.query("SELECT * FROM propiedad WHERE id = $1", [ids.propiedadB]);
-    expect(propA.rowCount).toBe(1);
-    expect(propB.rowCount).toBe(1);
+    expect(propA.rowCount).toBe(0);
+    expect(propB.rowCount).toBe(0);
+  });
+
+  it("con una concesión 'romper cristal' vigente y con motivo, el superadmin SÍ lee datos de ESE tenant (y solo ese)", async () => {
+    await superusuario.query(
+      `INSERT INTO acceso_romper_cristal (superadmin_id, tenant_id, motivo, expira_en)
+       VALUES ($1, $2, 'Investigación de ticket de soporte #123', now() + interval '15 minutes')`,
+      [ids.superadmin, ids.tenantA],
+    );
+    const cliente = await comoUsuario(ids.superadmin, null, "superadmin");
+    const propA = await cliente.query("SELECT * FROM propiedad WHERE id = $1", [ids.propiedadA]);
+    const propB = await cliente.query("SELECT * FROM propiedad WHERE id = $1", [ids.propiedadB]);
+    expect(propA.rowCount).toBe(1); // tenant A: con concesión vigente.
+    expect(propB.rowCount).toBe(0); // tenant B: sin concesión, sigue en 0.
+  });
+
+  it("una concesión expirada ya no da acceso (ventana temporal acotada)", async () => {
+    await superusuario.query(
+      `INSERT INTO acceso_romper_cristal (superadmin_id, tenant_id, motivo, creado_en, expira_en)
+       VALUES ($1, $2, 'Concesión ya vencida', now() - interval '1 hour', now() - interval '1 minute')`,
+      [ids.superadmin, ids.tenantB],
+    );
+    const cliente = await comoUsuario(ids.superadmin, null, "superadmin");
+    const propB = await cliente.query("SELECT * FROM propiedad WHERE id = $1", [ids.propiedadB]);
+    expect(propB.rowCount).toBe(0);
+  });
+
+  it("el directorio de tenants (tabla tenant) sigue siendo visible para superadmin SIN concesión", async () => {
+    const cliente = await comoUsuario(ids.superadmin, null, "superadmin");
+    const directorio = await cliente.query("SELECT id, nombre, estado FROM tenant ORDER BY nombre");
+    const nombres = directorio.rows.map((r: { nombre: string }) => r.nombre);
+    expect(nombres).toContain("Tenant A");
+    expect(nombres).toContain("Tenant B");
   });
 });
 
