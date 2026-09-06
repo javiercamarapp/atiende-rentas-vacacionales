@@ -53,23 +53,23 @@ externa").
 
 | ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
 |---|---|---|---|---|---|---|
-| H-023 | Parser ICS RFC 5545 (`DTEND`/`DURATION`, `UID`, `SEQUENCE`, `STATUS`) | REQ-027, REQ-028, REQ-029, REQ-179 | §Calendario-2 (casos 3, 4, 9) | MUST | L | por hacer |
-| H-024 | Controles anti-SSRF antes de cualquier `GET` (allowlist esquema, deny-list metadata/rangos privados, sin redirects) | REQ-030 | §RV19/21-2 (caso adversarial 20) | MUST | M | por hacer |
-| H-025 | Límites propios de tamaño/recurrencia/timeout del importador | REQ-031 | §RV19/21-3 | MUST | M | por hacer |
-| H-026 | Export por unidad/canal con `UID` namespaced y `SEQUENCE` incremental | D-004 | §Calendario-4 | MUST | M | por hacer |
-| H-027 | Interpretación de `DATE` sin hora en zona horaria de la propiedad | REQ-032 | §Calendario-2 (caso 14) | MUST | S | por hacer |
-| H-028 | Feed malformado/vacío tratado explícitamente (rechazo registrado, sin estado parcial) | REQ-005, REQ-173 | §Calendario-3 (casos 9, 10) | MUST | M | por hacer |
+| H-023 | Parser ICS RFC 5545 (`DTEND`/`DURATION`, `UID`, `SEQUENCE`, `STATUS`) | REQ-027, REQ-028, REQ-029, REQ-179 | §Calendario-2 (casos 3, 4, 9) | MUST | L | hecho (Lote 2) |
+| H-024 | Controles anti-SSRF antes de cualquier `GET` (allowlist esquema, deny-list metadata/rangos privados, sin redirects) | REQ-030 | §RV19/21-2 (caso adversarial 20) | MUST | M | hecho (Lote 2) |
+| H-025 | Límites propios de tamaño/recurrencia/timeout del importador | REQ-031 | §RV19/21-3 | MUST | M | hecho (Lote 2) |
+| H-026 | Export por unidad/canal con `UID` namespaced y `SEQUENCE` incremental | D-004 | §Calendario-4 | MUST | M | hecho (Lote 2) |
+| H-027 | Interpretación de `DATE` sin hora en zona horaria de la propiedad | REQ-032 | §Calendario-2 (caso 14) | MUST | S | hecho (Lote 2) |
+| H-028 | Feed malformado/vacío tratado explícitamente (rechazo registrado, sin estado parcial) | REQ-005, REQ-173 | §Calendario-3 (casos 9, 10) | MUST | M | hecho (Lote 2) |
 
 ## E05 — Anti-eco, dedupe, cuarentena, reconciliación
 
 | ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
 |---|---|---|---|---|---|---|
-| H-029 | Anti-eco en 3 capas (`UID`/namespace, hash de contenido, metadato `exportado_a`) | REQ-037, REQ-051, REQ-090 | §Calendario-4 | MUST | L | por hacer |
-| H-030 | Idempotencia de import por `(canal, unidad, UID)` con `upsert` | REQ-036 | §Calendario-2 (casos 6, 7, 8, 16) | MUST | M | por hacer |
-| H-031 | Cuarentena de feed inaccesible/malformado (último estado válido congelado) | REQ-005 | §Calendario-3 | MUST | M | por hacer |
-| H-032 | Reconciliación incremental (upsert por ciclo) vs. completa (comparación de UIDs) | REQ-038 | §Operación-2 | MUST | L | por hacer |
-| H-033 | UID reciclado detectado por hash de contenido → revisión humana | REQ-168 | §Calendario-2 (caso 13) | MUST | M | por hacer |
-| H-034 | Backoff ante HTTP 429/rate limit sin bucle agresivo | REQ-172 | §Calendario-2 (caso 17) | MUST | S | por hacer |
+| H-029 | Anti-eco en 3 capas (`UID`/namespace, hash de contenido, metadato `exportado_a`) | REQ-037, REQ-051, REQ-090 | §Calendario-4 | MUST | L | hecho (Lote 2) |
+| H-030 | Idempotencia de import por `(canal, unidad, UID)` con `upsert` | REQ-036 | §Calendario-2 (casos 6, 7, 8, 16) | MUST | M | hecho (Lote 2) |
+| H-031 | Cuarentena de feed inaccesible/malformado (último estado válido congelado) | REQ-005 | §Calendario-3 | MUST | M | hecho (Lote 2) |
+| H-032 | Reconciliación incremental (upsert por ciclo) vs. completa (comparación de UIDs) | REQ-038 | §Operación-2 | MUST | L | hecho (Lote 2) |
+| H-033 | UID reciclado detectado por hash de contenido → revisión humana | REQ-168 | §Calendario-2 (caso 13) | MUST | M | hecho (Lote 2) |
+| H-034 | Backoff ante HTTP 429/rate limit sin bucle agresivo | REQ-172 | §Calendario-2 (caso 17) | MUST | S | hecho (Lote 2) |
 
 ## E06 — Monitor de sync y alertas
 
@@ -226,3 +226,72 @@ H-015/H-016 (UI, Lote 4).
   SQLSTATE indican que la base de datos rechazó el overbooking, pero D-012/
   RV17 §7.4 ya anticipaba este refuerzo explícitamente. Documentado en
   `docs/PROGRESO.md`.
+
+---
+
+## Lote 2 — cerrado (iCal import/export + simuladores + anti-eco/cuarentena/reconciliación)
+
+12/95 historias marcadas `hecho (Lote 2)` arriba: H-023 a H-034 (E04, E05
+completas).
+
+- **Código:** `packages/adapters/` (`ical/parser.ts` — parser ICS RFC
+  5545/5546 propio con unfolding, DATE/DATE-TIME/TZID, DTEND exclusivo o
+  `DURATION`, límites propios de tamaño/nº eventos/longitud de línea,
+  `IcsParseError` tipado; `ical/exportador.ts` — export `.ics` con `UID`
+  namespaced (`atiende-rv-<id>@atiende-rv.internal`) y folding a 75
+  octetos; `net/ssrf.ts`/`net/fetchSsrf.ts` — fetcher SSRF-safe con
+  deny-list IPv4/IPv6 completa, resolución DNS pineada, esquema
+  `https`-only (`http` solo `simulador.local` + flag de dev),
+  redirecciones acotadas revalidadas, ETag/If-Modified-Since; `sync/
+  antiEco.ts`, `sync/cuarentena.ts`, `sync/reconciliacion.ts`, `sync/
+  motor.ts` — motor de sincronización completo; `airbnb/`, `vrbo/`,
+  `booking/adapter.ts` — adaptadores reales con `ChannelAdapter` de Lote 1).
+  `packages/sim/` (`airbnb-ical/`, `vrbo-ical/`, `booking-ical/` —
+  `ServidorIcalSimulado` con escenarios `vacio|malformado|inaccesible|ics`;
+  `booking-api/` — pull con ack y reenvío hasta confirmación, RV04;
+  `comun/etiquetado.ts` — `assertNoParecerProduccion`, D-019).
+  `packages/db/src/migrations/0020_cuenta_canal.ts` (`cuenta_canal`,
+  `unidad_canal_feed`) y `0021_sincronizacion_canal.ts`
+  (`evento_canal_importado`, `bloqueo_exportado`) — rango 0020+ para no
+  colisionar con 0009-0019/0090-0092 de Lote 3, que además construyó RLS y
+  cifrado sobre estas mismas tablas en paralelo. `tests/fixtures/canales/`
+  (feeds `.ics` grabados por canal y por escenario adversarial + payload
+  `booking-api-pull-payload.json`). `tests/adversarial/sync/` (suite nueva,
+  subset del catálogo completo que Lote 11 consolidará) + `scripts/
+  adversarial.mjs` + script raíz `npm run test:adversarial`.
+- **Pruebas:** 63 unitarias en `packages/adapters` + 12 en `packages/sim`
+  (parser, SSRF guard con IPs privadas/metadata reales, anti-eco 3 capas,
+  cuarentena, reconciliación/backoff, exportador, fixtures grabados) —
+  incluidas en el total de `npm run test` (168 pruebas en todo el
+  monorepo). `npm run test:adversarial -- --filter=sync`: 12 pruebas
+  contra `embedded-postgres` real + simuladores etiquetados, cubriendo los
+  casos adversariales 1, 3, 6, 7, 8, 9, 10, 11, 13, 16, 17, 20 de
+  `docs/ACEPTACION.md` §Calendario-2, más el entregable verificable
+  explícito de §Calendario-4 (anti-eco de exportación). Ver
+  `docs/logs/lote2-test.log`, `docs/logs/lote2-adversarial.log`,
+  `docs/logs/lote2-ci.log`.
+- **Entregable verificable (§Calendario-4) confirmado en log:**
+  `[ANTI-ECO] ... bloqueos_activos_antes=0 bloqueos_activos_despues=0
+  ecos_descartados=1 eventos_aplicados=0 capa=UID-namespace(1)` —
+  exportar un bloqueo hacia el simulador y hacer que lo "reexporte" en su
+  siguiente import no crea un segundo bloqueo `RESERVA_CANAL`.
+- **Hallazgo de esta sesión, no previsto en el backlog original:** el hash
+  de anti-eco `(unidad, DTSTART, DTEND, razón)` de `packages/domain`
+  (D-004) no distingue un `CONFIRMED`/`TENTATIVE` de un `CANCELLED` sobre
+  el mismo rango de fechas — un `CANCEL` importado sin cambio de fechas se
+  leería como "hash idéntico" (`sin_cambio`) y nunca se aplicaría. Se
+  corrigió en `packages/adapters/src/sync/motor.ts` calculando un hash de
+  VERSIÓN separado (con distintivo `:CANCELLED` solo para esa comparación,
+  nunca para el hash de anti-eco contra lo exportado, que sigue sin ese
+  distintivo porque nuestro propio export siempre declara
+  `STATUS:CONFIRMED`). Ninguna función de `packages/domain` se modificó.
+- **Colisión de fusión no anticipada por LOTES.md:** `packages/db/src/
+  migrations/index.ts` (registro del catálogo) y `packages/db/test/
+  migraciones.test.ts` son tocados por cualquier lote que añada
+  migraciones nuevas, no solo por rutas de "carpetas exclusivas" — el
+  primer archivo se resolvió por edición aditiva coordinada con Lote 3 (sin
+  pisar sus líneas); el segundo tenía una aserción de Lote 1 que asumía
+  que `auditoria_mutacion` (migración 0008) sería siempre la última del
+  catálogo — se generalizó para que el test siga siendo válido sin
+  importar qué migración de qué lote termine siendo la última.
+- **Commits:** ver `git log` — rango de esta entrega en `docs/PROGRESO.md`.
