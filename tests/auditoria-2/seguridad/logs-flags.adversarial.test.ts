@@ -324,7 +324,7 @@ describe("Bloque A — LOGS/PII sobre flujo real de mensajería (embedded-postgr
     expect(lineaSpanOtel).toContain('"nombre":"HTTP GET [redactado-pii]"');
   });
 
-  it("A3 — CONFIRMADO: un valor z.enum() inválido en un campo de contrato SÍ se ecoa textualmente en la respuesta 422, contradiciendo el comentario de apps/api/src/app.ts ('ZodError... sin ecoar el valor recibido')", async () => {
+  it("[CORREGIDO S-15] A3 — un valor z.enum() inválido en un campo de contrato YA NO se ecoa textualmente en la respuesta 422", async () => {
     // canalCodigo espera un enum de canales; se envía en su lugar un valor
     // que podría ser cualquier dato sensible (aquí, con forma de dirección
     // de correo reconocible) para comprobar si la 422 lo refleja.
@@ -340,11 +340,12 @@ describe("Bloque A — LOGS/PII sobre flujo real de mensajería (embedded-postgr
     // eslint-disable-next-line no-console
     console.info("[A3 evidencia] cuerpo 422 real:", mensajeCompleto);
 
-    // Esta expectativa documenta el hallazgo: HOY el valor SÍ aparece
-    // (zod interpola `received` en el mensaje por defecto de
-    // invalid_enum_value). Si esto cambia a `false`, el hallazgo A3 se
-    // habrá corregido.
-    expect(mensajeCompleto.includes(valorSensible)).toBe(true);
+    // Antes de la corrección: el valor SÍ aparecía (zod interpola
+    // `received` en el mensaje por defecto de invalid_enum_value). Ahora
+    // app.ts (mensajeZodSinEcoar) reconstruye el mensaje de ese código de
+    // issue sin el valor recibido.
+    expect(mensajeCompleto.includes(valorSensible)).toBe(false);
+    expect(mensajeCompleto).toContain("Invalid enum value. Expected one of:");
   });
 
   it("[CORREGIDO S-10] A4 — un error genérico no manejado (500) YA NO deja el email en texto plano en `console.error` (stderr) — app.ts pasa el mensaje por redactarPiiEnTexto antes de loguearlo", async () => {

@@ -9,7 +9,7 @@ import { registrarRutas } from "./routes/index.js";
 import { cabecerasSeguridad } from "./seguridad/cabeceras.js";
 import { KeyringCifradoCanal } from "./seguridad/cifrado.js";
 import { crearRateLimit } from "./seguridad/rateLimit.js";
-import { ZodError } from "zod";
+import { ZodError, type ZodIssue } from "zod";
 import {
   construirExportadoresDesdeEntorno,
   crearMiddlewareObservabilidad,
@@ -24,6 +24,23 @@ export interface OpcionesCrearApp {
   /** Pool de conexión ya construido — inyectable en pruebas para apuntar
    * a `embedded-postgres` con el rol `app_rv` en vez de `DATABASE_URL`. */
   pool?: pg.Pool;
+}
+
+/** S-15 (docs/auditoria-2/seguridad.md): el mensaje por defecto de Zod
+ * para `invalid_enum_value` SÍ incluye el valor recibido tal cual
+ * ("Invalid enum value. Expected 'a' | 'b', received 'xxx'") — contradice
+ * el comentario explícito de este archivo ("ZodError... sin ecoar el
+ * valor recibido"). Cualquier dato sensible enviado en un campo enum
+ * (p. ej. una cadena con forma de credencial que el cliente puso por
+ * error en el campo equivocado) terminaba reflejado en la respuesta 422.
+ * Se reconstruye el mensaje para ese código de issue sin el valor
+ * recibido; el resto de códigos de Zod (`invalid_type`, `too_small`, …)
+ * ya no ecoan el valor en su mensaje por defecto, solo su tipo/forma. */
+function mensajeZodSinEcoar(issue: ZodIssue): string {
+  if (issue.code === "invalid_enum_value") {
+    return `Invalid enum value. Expected one of: ${issue.options.join(", ")}`;
+  }
+  return issue.message;
 }
 
 // Construcción de la app Hono (Lote 0: healthcheck; Lote 3: auth/RLS/
@@ -94,7 +111,7 @@ export function crearApp(opciones: OpcionesCrearApp = {}) {
           error: {
             codigo: "validacion",
             mensaje: "Datos de entrada inválidos",
-            detalles: err.issues.map((i) => ({ path: i.path.join("."), mensaje: i.message })),
+            detalles: err.issues.map((i) => ({ path: i.path.join("."), mensaje: mensajeZodSinEcoar(i) })),
           },
         },
         422,
