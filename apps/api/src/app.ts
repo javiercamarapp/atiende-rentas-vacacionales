@@ -15,6 +15,7 @@ import {
   crearMiddlewareObservabilidad,
   crearTrazador,
   leerConfiguracionOtelEntorno,
+  redactarPiiEnTexto,
   RegistroMetricas,
   rutasObservabilidad,
 } from "./workers/observabilidad/index.js";
@@ -99,7 +100,13 @@ export function crearApp(opciones: OpcionesCrearApp = {}) {
         422,
       );
     }
-    console.error(JSON.stringify({ error: "no_manejado", mensaje: (err as Error).message }));
+    // S-10 (docs/auditoria-2/seguridad.md): errores nativos de Postgres
+    // (p. ej. invalid_text_representation al castear un valor a uuid)
+    // incluyen el valor recibido en su propio mensaje — antes se pasaba
+    // completo a console.error sin sanear, potencial PII en texto plano.
+    console.error(
+      JSON.stringify({ error: "no_manejado", mensaje: redactarPiiEnTexto((err as Error).message) }),
+    );
     return c.json({ error: { codigo: "error_interno", mensaje: "Error interno del servidor" } }, 500);
   });
 

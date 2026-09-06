@@ -347,7 +347,7 @@ describe("Bloque A — LOGS/PII sobre flujo real de mensajería (embedded-postgr
     expect(mensajeCompleto.includes(valorSensible)).toBe(true);
   });
 
-  it("A4 — CONFIRMADO/ALTO: un error genérico no manejado (500) SÍ deja el email del huésped en texto plano en `console.error` (stderr) — el mensaje de error crudo de Postgres para `invalid_text_representation` (cast a uuid fallido) incluye el valor recibido, y `app.ts` lo pasa completo a `console.error` sin sanear", async () => {
+  it("[CORREGIDO S-10] A4 — un error genérico no manejado (500) YA NO deja el email en texto plano en `console.error` (stderr) — app.ts pasa el mensaje por redactarPiiEnTexto antes de loguearlo", async () => {
     // Fuerza un 500 real pasando un id de conversación que rompe el cast a
     // uuid en Postgres (22P02 invalid_text_representation) — no es un
     // ErrorDominio ni un ZodError, cae al manejador genérico de app.ts.
@@ -366,12 +366,14 @@ describe("Bloque A — LOGS/PII sobre flujo real de mensajería (embedded-postgr
     expect(cuerpo.error.mensaje).toBe("Error interno del servidor");
     expect(JSON.stringify(cuerpo)).not.toContain(PII_EMAIL);
 
-    // Pero STDERR (server-side, terminaría en cualquier agregador de logs/
-    // APM que capture stdout/stderr del proceso) SÍ queda con el email en
-    // texto plano — confirmado, no es un falso positivo del test:
+    // Antes de la corrección: STDERR (server-side, terminaría en cualquier
+    // agregador de logs/APM que capture stdout/stderr del proceso) SÍ
+    // quedaba con el email en texto plano. Ahora también pasa por
+    // redactarPiiEnTexto antes de loguearse.
     const lineaError = lineasLog.find((l) => l.includes("no_manejado"));
     expect(lineaError).toBeDefined();
-    expect(lineaError).toContain(PII_EMAIL);
+    expect(lineaError).not.toContain(PII_EMAIL);
+    expect(lineaError).toContain("[redactado-pii]");
   });
 });
 

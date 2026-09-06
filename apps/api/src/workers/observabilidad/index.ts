@@ -1,6 +1,7 @@
 export {
   crearTrazador,
   sanitizarAtributos,
+  redactarPiiEnTexto,
   MARCADOR_ATRIBUTO_REDACTADO,
   type Span,
   type SpanKind,
