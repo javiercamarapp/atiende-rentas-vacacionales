@@ -11,3 +11,5 @@ export { migraciones } from "./migrations/index.js";
 export { crearMotorPglite } from "./runner/motorPglite.js";
 export { crearMotorEmbeddedPostgres } from "./runner/motorEmbeddedPostgres.js";
 export type { MotorEmbeddedPostgres } from "./runner/motorEmbeddedPostgres.js";
+export { EnrutadorLecturaReplica, leerUrlReplicaDesdeEntorno } from "./runner/enrutadorLecturaReplica.js";
+export type { PoolConsultable, OpcionesEnrutadorLecturaReplica } from "./runner/enrutadorLecturaReplica.js";
