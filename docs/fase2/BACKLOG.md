@@ -32,7 +32,7 @@ externa").
 | ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
 |---|---|---|---|---|---|---|
 | H-011 | Modelo `propiedad`/`unidad` con soporte multi-unidad | REQ-071, REQ-136 | §Datos-1 | MUST | M | hecho (Lote 1) |
-| H-012 | `cuenta_canal`/`listing_canal` con unicidad parcial `(unidad_id, cuenta_canal_id) WHERE activo` | RV17 §6.3 | §Conectividad-1 | MUST | S | por hacer |
+| H-012 | `cuenta_canal`/`listing_canal` con unicidad parcial `(unidad_id, cuenta_canal_id) WHERE activo` | RV17 §6.3 | §Conectividad-1 | MUST | S | hecho (Lote 8: alta con tipo de conexión honesto, UI) |
 | H-013 | Interfaz `ChannelAdapter` con `ChannelCapabilities` declaradas honestamente | REQ-086 | §Conectividad-1 | MUST | M | hecho (Lote 1, solo contrato — implementación real es Lote 2) |
 | H-014 | `getConnectionState()` con enum cerrado, nunca `producción` sin evidencia reciente | REQ-008, REQ-017 | §Conectividad-1 | MUST | M | hecho (Lote 1, función pura `evaluarEstadoConexion`) |
 | H-015 | Matriz de conectividad en UI (latencia por canal, estados bloqueados/pausados) | REQ-039, REQ-052, REQ-075, REQ-076, REQ-077, REQ-085 | §Conectividad-2, §Conectividad-4 | MUST | L | hecho (Lote 4) |
@@ -149,9 +149,9 @@ externa").
 
 | ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
 |---|---|---|---|---|---|---|
-| H-074 | Panel multi-tenant: alta/baja de tenants, salud agregada de integraciones por canal | REQ-019, REQ-020 | §Roles-4 | MUST | L | por hacer |
-| H-075 | Acceso "romper cristal" de Superadmin auditado (quién, cuándo, qué, por qué) | REQ-020 | §Auditoría-1 | MUST | M | por hacer |
-| H-076 | Restricción: superadmin nunca lee contenido de conversaciones sin causa auditada | REQ-020 | §Auditoría-1 | MUST | S | por hacer |
+| H-074 | Panel multi-tenant: alta/baja de tenants, salud agregada de integraciones por canal | REQ-019, REQ-020 | §Roles-4 | MUST | L | hecho (Lote 8) |
+| H-075 | Acceso "romper cristal" de Superadmin auditado (quién, cuándo, qué, por qué) | REQ-020 | §Auditoría-1 | MUST | M | hecho (Lote 8) |
+| H-076 | Restricción: superadmin nunca lee contenido de conversaciones sin causa auditada | REQ-020 | §Auditoría-1 | MUST | S | hecho (Lote 8) |
 
 ## E14 — Automatización agéntica
 
@@ -203,8 +203,8 @@ externa").
 
 15/95 historias marcadas `hecho (Lote 1)` arriba: H-001 a H-011, H-013, H-014,
 H-017 a H-022. Fuera de alcance de Lote 1 y dejadas `por hacer`
-deliberadamente: H-012 (`cuenta_canal`, requiere credenciales/UI de Lote 2/3),
-H-015/H-016 (UI, Lote 4).
+deliberadamente: H-012 (`cuenta_canal`, requería credenciales/UI de Lote 2/3
+— completada en Lote 8), H-015/H-016 (UI, Lote 4).
 
 - **Código:** `packages/db/` (esquema SQL versionado en
   `src/migrations/0001..0008`, runner propio `src/runner/migrar.ts`,
