@@ -143,13 +143,33 @@ function realizarPeticionPineada(
     const resolverUnaVez = (valor: { status: number; headers: http.IncomingHttpHeaders; cuerpo: string }) => {
       if (liquidado) return;
       liquidado = true;
+      clearTimeout(temporizadorTotal);
       resolve(valor);
     };
     const rechazarUnaVez = (error: Error) => {
       if (liquidado) return;
       liquidado = true;
+      clearTimeout(temporizadorTotal);
       reject(error);
     };
+
+    // S-12 (docs/auditoria-2/seguridad.md): `http.request({ timeout })`
+    // (más abajo, pasado como opción `timeout: timeoutMs`) es un timeout
+    // de INACTIVIDAD del socket — se resetea con cada byte recibido, no
+    // es un límite de duración TOTAL como documentaba el comentario de
+    // cabecera de este archivo ("Timeout total y límite duro de bytes de
+    // cuerpo"). Un servidor que gotea 1 byte periódicamente por debajo de
+    // `timeoutMs` mantiene la conexión viva indefinidamente. Este
+    // temporizador SÍ es de duración total: dispara a los `timeoutMs`
+    // exactos desde que se emite la petición, sin importar cuánta
+    // actividad haya en el socket. Se conserva además la opción `timeout`
+    // de `http.request` como defensa adicional contra un socket
+    // COMPLETAMENTE inactivo (cero bytes) — cualquiera de los dos que
+    // dispare primero liquida la promesa (guard `liquidado`).
+    const temporizadorTotal = setTimeout(() => {
+      rechazarUnaVez(new Error(`timeout total de ${timeoutMs}ms excedido al obtener el feed iCal`));
+      req.destroy();
+    }, timeoutMs);
 
     const cliente = u.protocol === "https:" ? https : http;
     const req = cliente.request(

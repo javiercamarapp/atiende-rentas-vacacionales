@@ -82,6 +82,35 @@ describe("fetchIcsSeguro — límite de maxBytes (S-08)", () => {
     ).rejects.toThrow(/excede el límite de 100 bytes/);
   });
 
+  it("[S-12] timeoutMs es de duración TOTAL, no de inactividad del socket: un goteo constante por debajo del timeout igual se corta al tiempo configurado", async () => {
+    const timeoutMs = 300;
+    const totalGoteoMs = 1500;
+    const { puerto } = await levantarServidorHttp((_req, res) => {
+      res.writeHead(200, { "Content-Type": "text/calendar" });
+      const inicio = Date.now();
+      const intervalo = setInterval(() => {
+        if (Date.now() - inicio > totalGoteoMs) {
+          clearInterval(intervalo);
+          res.end("FIN");
+          return;
+        }
+        res.write(".");
+      }, 100);
+    });
+
+    const inicio = Date.now();
+    await expect(
+      fetchIcsSeguro({
+        url: `http://simulador.local:${puerto}/x.ics`,
+        permitirHttpSimuladorLocal: true,
+        resolverPersonalizado: () => ["127.0.0.1"],
+        timeoutMs,
+        maxBytes: 10_000,
+      }),
+    ).rejects.toThrow(/timeout total de 300ms excedido/);
+    expect(Date.now() - inicio).toBeLessThan(totalGoteoMs);
+  }, 10_000);
+
   it("un cuerpo dentro del límite se resuelve normalmente", async () => {
     const { puerto } = await levantarServidorHttp((_req, res) => {
       res.writeHead(200, { "Content-Type": "text/calendar" });

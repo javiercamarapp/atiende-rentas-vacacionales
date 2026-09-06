@@ -425,7 +425,7 @@ describe("H5 — límites de bytes y timeout durante streaming real", () => {
     expect(excepcionNoControlada).toBeUndefined();
   });
 
-  it("BUG (medio): el 'timeout' configurado es de INACTIVIDAD del socket (se resetea con cada byte), no un límite de duración TOTAL — un servidor que gotea 1 byte periódicamente por debajo del timeout mantiene la conexión viva muy por encima del tiempo configurado", async () => {
+  it("[CORREGIDO S-12] el 'timeout' configurado AHORA sí es de duración TOTAL — un servidor que gotea 1 byte periódicamente por debajo del timeout ya NO mantiene la conexión viva más allá del tiempo configurado", async () => {
     const timeoutMs = 300;
     const totalGoteoMs = 1500; // 5x el timeoutMs configurado
     const { puerto } = await levantarServidorHttp((_req, res) => {
@@ -442,25 +442,32 @@ describe("H5 — límites de bytes y timeout durante streaming real", () => {
     });
 
     const inicio = Date.now();
-    const resultado = await fetchIcsSeguro({
-      url: `http://simulador.local:${puerto}/x.ics`,
-      permitirHttpSimuladorLocal: true,
-      resolverPersonalizado: () => ["127.0.0.1"],
-      timeoutMs,
-      maxBytes: 10_000,
-    });
+    let lanzo: unknown;
+    try {
+      await fetchIcsSeguro({
+        url: `http://simulador.local:${puerto}/x.ics`,
+        permitirHttpSimuladorLocal: true,
+        resolverPersonalizado: () => ["127.0.0.1"],
+        timeoutMs,
+        maxBytes: 10_000,
+      });
+    } catch (e) {
+      lanzo = e;
+    }
     const duracionMs = Date.now() - inicio;
 
     console.log(
-      `H5-timeout: timeoutMs configurado=${timeoutMs}ms, duración real=${duracionMs}ms (esperado: NO debería exceder ~${timeoutMs}ms bajo la doc "timeout total")`,
+      `[CORREGIDO S-12] H5-timeout: timeoutMs configurado=${timeoutMs}ms, duración real=${duracionMs}ms, lanzo=${lanzo instanceof Error ? lanzo.message : lanzo}`,
     );
-    // BUG CONFIRMADO: la petición NO fue cortada por timeout pese a durar
-    // varias veces más que `timeoutMs`. Esto contradice el comentario de
-    // fetchSsrf.ts línea 25 ("Timeout total y límite duro de bytes de
-    // cuerpo") — lo implementado es `timeout` de socket (inactividad), no
-    // un temporizador de duración total del fetch.
-    expect(duracionMs).toBeGreaterThan(timeoutMs * 3);
-    expect(resultado.cuerpo).toContain("FIN");
+    // Antes de la corrección: la petición NO era cortada por timeout pese
+    // a durar varias veces más que `timeoutMs` (contradiciendo el
+    // comentario de cabecera "Timeout total y límite duro de bytes de
+    // cuerpo" — lo implementado era `timeout` de socket/inactividad).
+    // Ahora un temporizador de duración TOTAL corta la conexión al
+    // tiempo configurado, sin importar cuánta actividad haya en el socket.
+    expect(lanzo).toBeInstanceOf(Error);
+    expect((lanzo as Error).message).toMatch(/timeout total de 300ms excedido/);
+    expect(duracionMs).toBeLessThan(totalGoteoMs);
   }, 10_000);
 });
 
