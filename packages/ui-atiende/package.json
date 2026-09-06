@@ -7,7 +7,8 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./index.css": "./src/index.css"
+    "./index.css": "./src/index.css",
+    "./test-mocks-jsdom": "./src/test/mocksJsdom.ts"
   },
   "scripts": {
     "test": "vitest run",
