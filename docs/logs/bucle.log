@@ -119,3 +119,6 @@
 2026-09-06 16:33:18 | 429 | #46 3.2 también cae con un solo agente; espera hasta el despertar 16:40 sin reintentos
 2026-09-06 16:40:15 | DESPERTAR | reanudando solo #46 3.2
 2026-09-06 16:48:29 | FASE3 | 3.2 completo; reanudando #48 3.3
+2026-09-06 17:06:13 | DESPERTAR | comprobando #48 3.3
+2026-09-06 17:11:07 | LATIDO-CRON 95b67309 | bucle vivo (wakeup 17:32); #48 3.3 activo; sin acción
+2026-09-06 17:34:15 | FASE3 | 3.3 completo; reanudando #45 3.0
