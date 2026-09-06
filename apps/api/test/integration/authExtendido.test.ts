@@ -173,8 +173,12 @@ async function correrFlujoOidcSimulado(opciones: {
     email: opciones.email,
     emailVerificado: opciones.emailVerificado === false ? "false" : "on",
   });
-  const urlConfirmar = new URL(urlAutorizar);
-  const respConfirmar = await fetch(`${urlConfirmar.origin}${urlConfirmar.pathname.replace(/authorize$/, "authorize/confirmar")}`, {
+  // Mismo path que el GET (sin "/confirmar" al final): el formulario real
+  // no lleva `action` explícito, así que el navegador lo somete a la URL
+  // actual del documento — ver comentario en
+  // apps/api/src/seguridad/oidcSimulado.ts sobre por qué un sub-path
+  // habría sido inalcanzable desde un navegador de verdad.
+  const respConfirmar = await fetch(urlAutorizar, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: cuerpoConfirmar.toString(),

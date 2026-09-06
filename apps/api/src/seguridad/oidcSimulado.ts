@@ -82,7 +82,7 @@ function paginaFormularioAutorizacion(query: Record<string, string>): string {
 <body style="font-family: sans-serif; max-width: 420px; margin: 4rem auto;">
   <p style="color:#a33; font-weight:bold;">Proveedor OIDC SIMULADO — solo desarrollo/pruebas, nunca una cuenta real de Google.</p>
   <h1>Elegir identidad de prueba</h1>
-  <form method="post" action="confirmar">
+  <form method="post">
     ${campos}
     <label style="display:block;margin-top:1rem;">Correo
       <input type="email" name="email" value="persona@ejemplo.test" required style="display:block;width:100%;" />
@@ -131,7 +131,18 @@ export function crearOidcSimulado(opciones: OpcionesOidcSimulado): Hono {
     return c.html(paginaFormularioAutorizacion(query));
   });
 
-  app.post("/authorize/confirmar", async (c) => {
+  // Mismo path que el `GET /authorize` de arriba (nunca "/authorize/
+  // confirmar"): el formulario del navegador no lleva `action` explícito
+  // — por spec HTML, eso lo somete a la URL actual del documento — y esa
+  // URL actual es justo `.../authorize` (con querystring). Usar un
+  // sub-path aquí requeriría un `action` explícito, y la resolución de
+  // URLs relativas de un `action` sin "/" inicial es relativa al último
+  // segmento tratado como ARCHIVO (RFC 3986 §5.3) — "confirmar" resolvería
+  // a un hermano de "authorize", no a un hijo, un error real que dejaba
+  // esta ruta inalcanzable desde un navegador de verdad (nunca detectado
+  // por las pruebas de integración, que arman la URL de confirmación a
+  // mano en vez de dejar que el navegador la resuelva).
+  app.post("/authorize", async (c) => {
     const form = await c.req.formData();
     const clientId = String(form.get("client_id") ?? "");
     const redirectUri = String(form.get("redirect_uri") ?? "");

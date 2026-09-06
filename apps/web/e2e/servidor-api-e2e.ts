@@ -21,6 +21,8 @@ import { aplicarMigraciones, migraciones } from "@atiende-rv/db";
 import { crearApp } from "../../api/src/app.js";
 import { hashContrasena } from "../../api/src/seguridad/contrasenas.js";
 import {
+  BASE_URL_API_E2E,
+  BASE_URL_WEB_E2E,
   EMAIL_E2E,
   fechaOffsetIso,
   PASSWORD_E2E,
@@ -37,7 +39,11 @@ const PASSWORD_APP = "app_rv_dev_change_in_prod";
 
 process.env.JWT_SECRET = "e2e-jwt-secret-de-al-menos-32-caracteres-1234567890";
 process.env.CANAL_CIFRADO_CLAVES = "v1:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
-process.env.WEB_ORIGIN = "*";
+process.env.WEB_ORIGIN = BASE_URL_WEB_E2E;
+// Lote 3.2 (H-096+): el proveedor OIDC simulado se auto-referencia con
+// `API_PUBLIC_URL` (issuer/jwks_uri/token_endpoint) — sin esto apuntaría
+// al puerto por defecto (8787), no al puerto real de este servidor E2E.
+process.env.API_PUBLIC_URL = BASE_URL_API_E2E;
 
 async function main() {
   const databaseDir = await mkdtemp(join(tmpdir(), "atiende-rv-e2e-"));
