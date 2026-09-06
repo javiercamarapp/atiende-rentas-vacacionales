@@ -1,10 +1,41 @@
 import { Hono } from "hono";
+import type pg from "pg";
+import type { KeyringCifradoCanal } from "../seguridad/cifrado.js";
+import { crearRutasAuditoria } from "./auditoria.js";
+import { crearRutasAuth } from "./auth.js";
+import { crearRutasBloqueos } from "./bloqueos.js";
+import { crearRutasCanales } from "./canales.js";
+import { crearRutasConflictos } from "./conflictos.js";
+import { crearRutasPropiedades } from "./propiedades.js";
+import { crearRutasReservas } from "./reservas.js";
+import { crearRutasTenants } from "./tenants.js";
+import { crearRutasUnidades } from "./unidades.js";
+import { crearRutasUsuarios } from "./usuarios.js";
 
-// Registro de rutas de apps/api. Punto de fusión compartido documentado en
-// docs/fase2/LOTES.md (cabecera): cada lote posterior añade su propio
-// `app.route(...)` aquí, en un commit pequeño y separado — nunca reescribe
-// este archivo completo. En el Lote 0 no hay rutas de dominio todavía, solo
-// el router vacío que Lote 3 (apps/api/routes/) y siguientes irán llenando.
-export function registrarRutas(app: Hono): Hono {
+export interface DependenciasRutas {
+  pool: pg.Pool;
+  jwtSecret: string;
+  keyring: KeyringCifradoCanal;
+}
+
+// Registro de rutas de apps/api (Lote 3: primera carga real, sobre el
+// router vacío que dejó Lote 0). Punto de fusión compartido documentado en
+// docs/fase2/LOTES.md (cabecera): lotes posteriores (4-10) añaden su
+// propio `app.route(...)` aquí, en un commit pequeño y separado — nunca
+// reescriben este archivo completo.
+export function registrarRutas(app: Hono, deps: DependenciasRutas): Hono {
+  const { pool, jwtSecret, keyring } = deps;
+
+  app.route("/auth", crearRutasAuth(pool, jwtSecret));
+  app.route("/tenants", crearRutasTenants(pool, jwtSecret));
+  app.route("/usuarios", crearRutasUsuarios(pool, jwtSecret));
+  app.route("/propiedades", crearRutasPropiedades(pool, jwtSecret));
+  app.route("/unidades", crearRutasUnidades(pool, jwtSecret));
+  app.route("/reservas", crearRutasReservas(pool, jwtSecret));
+  app.route("/bloqueos", crearRutasBloqueos(pool, jwtSecret));
+  app.route("/conflictos", crearRutasConflictos(pool, jwtSecret));
+  app.route("/canales", crearRutasCanales(pool, jwtSecret, keyring));
+  app.route("/auditoria", crearRutasAuditoria(pool, jwtSecret));
+
   return app;
 }
