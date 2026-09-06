@@ -785,3 +785,86 @@ sin PII).
 - **Commits:** ver `git log --oneline --grep="Lote 3.2"` (migraciones,
   seguridad, API, web, OpenAPI, correcciones cruzadas — un commit por
   bloque según B-007).
+
+## Lote 3.3 — cerrado (producto listo para vender: onboarding self-serve, planes/facturación, sitio público, despliegue)
+
+Historias nuevas H-149–H-155. Migraciones 0121-0126. Trazado a RV16
+(modelo de negocio/costos, precios como borrador comercial explícito) y
+RV19 (privacidad/legal — páginas legales como borrador para revisión).
+
+| ID | Historia | Fuente | Estimación | Estado |
+|---|---|---|---|---|
+| H-149 | Onboarding self-serve: `POST /onboarding/registro` (público) crea tenant+empresa_gestora+admin_gestora+suscripción de prueba en una transacción sin sesión previa (`onboarding_registrar_empresa`/`onboarding_crear_suscripcion_prueba`, SECURITY DEFINER); `GET /onboarding/estado` (checklist en vivo) | encargo del lote | L | hecho |
+| H-150 | Planes/facturación: catálogo editable por Superadmin (`plan_facturacion`, seed borrador comercial RV16), cálculo de suscripción con escalones marginales por volumen en centavos enteros (`calcularDesgloseSuscripcion`), medición de uso (unidades activas/mensajes IA/cuentas de canal, en vivo desde las tablas reales), límites aplicados en SERVIDOR (402 `plan_limite_alcanzado` tipado en `POST /unidades` y `POST /canales/cuentas`) | RV16 | L | hecho |
+| H-151 | `PagosSimulado` (etiquetado, nunca red real) + adaptador Stripe real (REST vía fetch sin el SDK oficial; Checkout, webhook con verificación de firma HMAC + idempotencia, portal de cliente) — Stripe solo se activa con `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET` ambas presentes | RV16 | L | hecho |
+| H-152 | Sitio público: landing (propuesta honesta, sin "tiempo real", estado real iCal/partner-pendiente por canal), precios (100% desde la API, marca de agua borrador comercial), estado del sistema (lee `/health`/`/health/detallado` en vivo) | encargo del lote | M | hecho |
+| H-153 | Páginas legales BORRADOR PARA REVISIÓN LEGAL (aviso de privacidad LFPDPPP con las 6 fracciones del Art. 15, términos, cookies, DPA) con marca de agua y referencia a `docs/BLOQUEOS.md` B-003/B-004/B-005 | RV19 | M | hecho |
+| H-154 | Empaquetado de despliegue: `vercel.json` (web estática + API serverless vía bundle propio con esbuild), `GET /health` honesto sin `DATABASE_URL`, fail-closed en el borde sin secretos, `db:migrar:desplegar` idempotente, alternativa Docker (Dockerfile+compose), `.github/workflows/deploy.yml` condicionado a secretos, `docs/despliegue/README.md` | encargo del lote | L | hecho |
+| H-155 | Asistente guiado post-registro (checklist, reusa pantallas existentes) + página de facturación con MRR estimado (etiquetado, Superadmin) — requirió una función SECURITY DEFINER dedicada porque desde el Lote 8 (H-075/H-076) superadmin ya no es miembro honorario incondicional de `is_tenant_member` | RV16 | M | hecho |
+
+- **Tres bugs reales encontrados y corregidos por pruebas de integración
+  reales** (no visibles solo con revisión de código):
+  (1) el guard `IF rol_actual() <> 'superadmin'` de
+  `facturacion_actualizar_plan` fallaba ABIERTO para cualquier sesión sin
+  identidad resuelta (`NULL <> 'x'` es `NULL`, `IF NULL` es falso en
+  PL/pgSQL) — corregido a `IS DISTINCT FROM`;
+  (2) el trigger de auditoría genérico (`fn_auditoria_directa`, 0013)
+  asume una columna `id`; `suscripcion_tenant` usa `tenant_id` como PK —
+  trigger dedicado nuevo;
+  (3) el webhook de Stripe y el endpoint de MRR usaban un `SELECT`
+  directo sobre `suscripcion_tenant` (RLS FORCEado) sin sesión o con una
+  sesión de superadmin que, desde el Lote 8, ya NO es "miembro honorario"
+  de cualquier tenant sin una concesión "romper cristal" auditada —
+  ambos devolvían 0 filas EN SILENCIO; corregido con dos funciones
+  SECURITY DEFINER dedicadas (`facturacion_tenant_por_cliente_externo`,
+  `facturacion_listar_activas_para_mrr`) que revalidan el rol dentro de
+  sí mismas.
+- **Cuarto defecto cruzado encontrado al generar las capturas E2E**:
+  `PreciosPage`/`FacturacionPage` importaban `decimalDesdeCentavos` desde
+  el BARRIL `@atiende-rv/domain/finanzas` (no el subpath granular
+  `/finanzas/redondeo` que Lote 3.2 ya había establecido para este mismo
+  problema) — como `App.tsx` importa todas las páginas de forma eager,
+  esto revienta la SPA completa en modo dev (`node:crypto` externalizado
+  por Vite). Corregido usando el subpath correcto.
+- **Despliegue verificado en vivo** (sin desplegar a producción, sin
+  sesión de Vercel de este agente): `npx vercel build` + `npx vercel
+  deploy --prebuilt` a Preview reales — sin ningún secreto configurado,
+  `GET /api/health` responde 200 `{"status":"sin_configurar", ...}` (no
+  500); con `JWT_SECRET`/`CANAL_CIFRADO_CLAVES` configurados y sin
+  `DATABASE_URL`, responde 200 `{"status":"ok","baseDeDatos":
+  "sin_configurar"}`. Detalle completo y pasos exactos para el usuario en
+  `docs/despliegue/README.md`.
+- **Pruebas**: unitarias (32, `packages/domain/test/facturacion/` —
+  escalones marginales, límites antes/después de incrementar, firma
+  Stripe válida/inválida/repetida con `fetch` mockeado, `PagosSimulado`);
+  integración DB real (`packages/db/test/integration/
+  facturacionOnboardingRls.test.ts`, 10 — RLS de las 3 tablas nuevas,
+  onboarding sin sesión, idempotencia del webhook, `facturacion_actualizar_
+  plan` solo Superadmin); integración HTTP real (`apps/api/test/
+  integration/onboardingFacturacion.test.ts`, 13 — registro→login→
+  propiedad/unidad→suscripción→402 por plan agotado→webhook firmado→MRR);
+  componentes web (4 archivos, 9 pruebas: registro, precios, facturación,
+  asistente); E2E Playwright (`apps/web/e2e/lote3-3-onboarding.spec.ts`,
+  2 — landing, y onboarding→login→asistente→calendario→facturación de
+  punta a punta), capturas `docs/capturas/lote3-3-{landing,onboarding,
+  facturacion}.png`. `typecheck`/`lint` verdes en los workspaces tocados;
+  suites de observabilidad (`outboxWorker`/`alertas`/PGlite) con fallas
+  intermitentes por agotamiento de memoria compartida del entorno
+  (`shmget: No space left on device`) tras muchas corridas de
+  embedded-postgres en la misma máquina — ajenas a este lote, no
+  relacionadas con el código tocado aquí (verificado re-ejecutando en
+  aislamiento tras liberar procesos huérfanos).
+- **Requiere del usuario** (nunca en este repo): sesión de Vercel
+  (`vercel login`), Postgres gestionado (Neon/Supabase/propio — ver
+  `docs/despliegue/README.md`), y opcionalmente claves de Stripe si se
+  activa el cobro real (`STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET`) —
+  sin ellas, la API usa únicamente `PagosSimulado`.
+- **Nota de concurrencia**: el rango de migraciones 0120-0129 fue
+  asignado a este lote por el encargo, pero un comentario preexistente en
+  `migrations/index.ts` lo reserva a Lote 3.0; 0121-0126 eran los
+  siguientes ids libres al momento de escribir esto — pendiente de
+  reconciliación por el orquestador si Lote 3.0 también necesitó ids en
+  ese rango.
+- **Commits:** ver `git log --oneline --grep="Lote 3.3"` y los commits de
+  `feat(facturacion)`/`feat(onboarding)`/`feat(despliegue)`/`fix(facturacion)`/
+  `fix(web)`/`test(facturacion,onboarding)` del 2026-09-06.
