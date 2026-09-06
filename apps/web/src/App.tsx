@@ -19,7 +19,9 @@ import { AdministracionPage } from "./pages/backoffice/AdministracionPage";
 import { AgentesPage } from "./pages/agentes/AgentesPage";
 import { AdminLayout } from "./components/admin/AdminLayout";
 import { RutaProtegida } from "./components/admin/RutaProtegida";
+import { RutaConRol } from "./components/admin/RutaConRol";
 import { SesionProvider } from "./lib/sesion/SesionProvider";
+import { ROLES_ADMIN } from "./lib/roles";
 
 // Router de apps/web — punto de fusión compartido documentado en
 // docs/fase2/LOTES.md (cabecera): cada lote añade sus propias rutas sin
@@ -55,8 +57,22 @@ export default function App() {
                   <Route path="/monitor-sync" element={<MonitorSyncPage />} />
                   <Route path="/monitor-sync/conflictos" element={<ConflictosPage />} />
                   <Route path="/monitor-sync/alertas" element={<AlertasPage />} />
-                  <Route path="/propiedades" element={<PropiedadesPage />} />
-                  <Route path="/cuentas-canal" element={<CuentasCanalPage />} />
+                  <Route
+                    path="/propiedades"
+                    element={
+                      <RutaConRol roles={ROLES_ADMIN}>
+                        <PropiedadesPage />
+                      </RutaConRol>
+                    }
+                  />
+                  <Route
+                    path="/cuentas-canal"
+                    element={
+                      <RutaConRol roles={ROLES_ADMIN}>
+                        <CuentasCanalPage />
+                      </RutaConRol>
+                    }
+                  />
                   <Route path="/reservas" element={<Navigate to="/calendario" replace />} />
                   <Route path="/operacion" element={<OperacionPage />} />
                   <Route path="/mensajes" element={<BandejaPage />} />
@@ -65,9 +81,30 @@ export default function App() {
                   <Route path="/finanzas" element={<FinanzasPage />} />
                   <Route path="/pricing" element={<PricingPage />} />
                   <Route path="/reportes" element={<ReportesPage />} />
-                  <Route path="/administracion" element={<AdministracionPage />} />
-                  <Route path="/agentes" element={<AgentesPage />} />
-                  <Route path="/backoffice/superadmin" element={<SuperadminPage />} />
+                  <Route
+                    path="/administracion"
+                    element={
+                      <RutaConRol roles={ROLES_ADMIN}>
+                        <AdministracionPage />
+                      </RutaConRol>
+                    }
+                  />
+                  <Route
+                    path="/agentes"
+                    element={
+                      <RutaConRol roles={ROLES_ADMIN}>
+                        <AgentesPage />
+                      </RutaConRol>
+                    }
+                  />
+                  <Route
+                    path="/backoffice/superadmin"
+                    element={
+                      <RutaConRol roles={ROLES_ADMIN}>
+                        <SuperadminPage />
+                      </RutaConRol>
+                    }
+                  />
                   <Route path="*" element={<Navigate to="/calendario" replace />} />
                 </Routes>
               </AdminLayout>
