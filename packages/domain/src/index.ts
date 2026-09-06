@@ -66,3 +66,14 @@ export {
   FLAG_SYNC_CANAL_PAUSADO_POR_ALERTA,
   CATALOGO_FLAGS_POR_DEFECTO,
 } from "./flags/index.js";
+
+// Lote 5 (E08, operación de limpieza/mantenimiento): reexporta el barril de
+// `./limpieza/index.js`, carpeta exclusiva de ese lote — este archivo raíz
+// solo recibe la línea de reexport, nunca el detalle de implementación
+// (mismo patrón aditivo que `packages/db/src/migrations/index.ts`).
+export * from "./limpieza/index.js";
+
+// Lote 6 (E09, mensajería con aprobación humana): reexporta el barril de
+// `./mensajeria/index.js`, carpeta exclusiva de ese lote — mismo patrón
+// aditivo que la línea de Lote 5 de arriba.
+export * from "./mensajeria/index.js";

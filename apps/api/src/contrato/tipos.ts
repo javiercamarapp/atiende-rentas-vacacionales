@@ -361,5 +361,152 @@ export const QueryReportePeriodo = z.object({
 });
 export type QueryReportePeriodo = z.infer<typeof QueryReportePeriodo>;
 
+// ---------------------------------------------------------------------------
+// Operación: limpieza/mantenimiento/inspección (Lote 5, BACKLOG E08,
+// H-049 a H-055). Rutas en apps/api/src/routes/limpieza/.
+// ---------------------------------------------------------------------------
+
+export const TipoTareaOperativaContrato = z.enum(["limpieza", "mantenimiento", "inspeccion"]);
+export const EstadoTareaOperativaContrato = z.enum([
+  "pendiente",
+  "asignada",
+  "en_progreso",
+  "completada",
+  "bloqueada",
+  "cancelada",
+]);
+export const PrioridadTareaOperativaContrato = z.enum(["baja", "media", "alta", "urgente"]);
+export const SeveridadIncidenciaContrato = z.enum(["leve", "moderada", "grave"]);
+export const EstadoIncidenciaContrato = z.enum([
+  "abierta",
+  "en_revision",
+  "bloqueo_propuesto",
+  "bloqueo_confirmado",
+  "resuelta",
+  "descartada",
+]);
+
+export const TareaOperativaContrato = z.object({
+  id: z.string().uuid(),
+  unidadId: z.string().uuid(),
+  /** Nombre de la unidad, resuelto server-side — el rol `limpieza` no tiene
+   * acceso a `GET /unidades` (RLS), así que la UI nunca debe volver a
+   * consultar esa ruta para mostrar el nombre de SU PROPIA tarea. */
+  unidadNombre: z.string().nullable(),
+  ocupacionUnidadId: z.string().uuid().nullable(),
+  bufferOcupacionId: z.string().uuid().nullable(),
+  tipo: TipoTareaOperativaContrato,
+  estado: EstadoTareaOperativaContrato,
+  prioridad: PrioridadTareaOperativaContrato,
+  asignadoA: z.string().uuid().nullable(),
+  esProveedorExterno: z.boolean(),
+  programadaPara: z.string(),
+  slaVenceEn: z.string().nullable(),
+  completadaEn: z.string().nullable(),
+  notas: z.string().nullable(),
+});
+export type TareaOperativaContrato = z.infer<typeof TareaOperativaContrato>;
+
+export const CuerpoCrearTareaOperativa = z.object({
+  unidadId: z.string().uuid(),
+  tipo: z.enum(["mantenimiento", "inspeccion"]), // 'limpieza' solo se crea vía checkout (H-049)
+  prioridad: PrioridadTareaOperativaContrato.optional(),
+  programadaPara: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  notas: z.string().optional(),
+});
+export type CuerpoCrearTareaOperativa = z.infer<typeof CuerpoCrearTareaOperativa>;
+
+export const CuerpoAsignarTarea = z.object({
+  asignadoA: z.string().uuid(),
+  esProveedorExterno: z.boolean().default(false),
+});
+export type CuerpoAsignarTarea = z.infer<typeof CuerpoAsignarTarea>;
+
+export const CuerpoCompletarChecklistItem = z.object({
+  fotos: z
+    .array(z.object({ rutaAlmacenamiento: z.string().min(1) }))
+    .optional(),
+});
+export type CuerpoCompletarChecklistItem = z.infer<typeof CuerpoCompletarChecklistItem>;
+
+export const CuerpoCompletarTarea = z.object({
+  consumos: z
+    .array(z.object({ itemInventarioId: z.string().uuid(), cantidad: z.number().positive() }))
+    .optional(),
+});
+export type CuerpoCompletarTarea = z.infer<typeof CuerpoCompletarTarea>;
+
+export const ChecklistItemContrato = z.object({
+  id: z.string().uuid(),
+  tareaId: z.string().uuid(),
+  descripcion: z.string(),
+  orden: z.number().int(),
+  completado: z.boolean(),
+  completadoEn: z.string().nullable(),
+  completadoPor: z.string().uuid().nullable(),
+});
+export type ChecklistItemContrato = z.infer<typeof ChecklistItemContrato>;
+
+export const CuerpoCrearIncidencia = z.object({
+  unidadId: z.string().uuid(),
+  tareaOrigenId: z.string().uuid().optional(),
+  severidad: SeveridadIncidenciaContrato,
+  titulo: z.string().min(1),
+  descripcion: z.string().optional(),
+  propuestaBloqueoRango: RangoFechasContrato.optional(),
+});
+export type CuerpoCrearIncidencia = z.infer<typeof CuerpoCrearIncidencia>;
+
+export const IncidenciaContrato = z.object({
+  id: z.string().uuid(),
+  unidadId: z.string().uuid(),
+  severidad: SeveridadIncidenciaContrato,
+  titulo: z.string(),
+  descripcion: z.string().nullable(),
+  estado: EstadoIncidenciaContrato,
+  requiereConfirmacionHumana: z.boolean(),
+});
+export type IncidenciaContrato = z.infer<typeof IncidenciaContrato>;
+
+export const CuerpoConfirmarBloqueoMantenimiento = z.object({
+  rango: RangoFechasContrato.optional(),
+});
+export type CuerpoConfirmarBloqueoMantenimiento = z.infer<typeof CuerpoConfirmarBloqueoMantenimiento>;
+
+export const CuerpoCrearItemInventario = z.object({
+  unidadId: z.string().uuid(),
+  nombre: z.string().min(1),
+  categoria: z.enum(["ropa_blanca", "consumible", "otro"]).default("consumible"),
+  cantidadActual: z.number().min(0).default(0),
+  umbralMinimo: z.number().min(0).default(0),
+  unidadMedida: z.string().min(1).default("pza"),
+});
+export type CuerpoCrearItemInventario = z.infer<typeof CuerpoCrearItemInventario>;
+
+export const ItemInventarioContrato = z.object({
+  id: z.string().uuid(),
+  unidadId: z.string().uuid(),
+  nombre: z.string(),
+  categoria: z.enum(["ropa_blanca", "consumible", "otro"]),
+  cantidadActual: z.number(),
+  umbralMinimo: z.number(),
+  unidadMedida: z.string(),
+  stockBajo: z.boolean(),
+});
+export type ItemInventarioContrato = z.infer<typeof ItemInventarioContrato>;
+
+export const TurnoDiaContrato = z.object({
+  fecha: z.string(),
+  tareas: z.array(TareaOperativaContrato),
+});
+export type TurnoDiaContrato = z.infer<typeof TurnoDiaContrato>;
+
+export const QueryCalendarioTareas = z.object({
+  desde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  hasta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  unidadId: z.string().uuid().optional(),
+});
+export type QueryCalendarioTareas = z.infer<typeof QueryCalendarioTareas>;
+
 export { CODIGOS_ERROR, ErrorDominio } from "./errores.js";
 export type { CodigoError, CuerpoErrorHttp } from "./errores.js";

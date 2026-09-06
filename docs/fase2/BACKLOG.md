@@ -99,13 +99,13 @@ externa").
 
 | ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
 |---|---|---|---|---|---|---|
-| H-049 | Tarea de limpieza automática al checkout + reprogramación si cambia la fecha | REQ-111, REQ-098 | §Limpieza-1 | MUST | M | por hacer |
-| H-050 | Buffer configurable checkout↔check-in, bloqueo real de calendario | REQ-054, REQ-112 | §UX-1 | MUST | S | por hacer |
-| H-051 | Checklist con fotos/timestamps por ítem; incompleto puede bloquear reapertura | REQ-113, REQ-114 | §Limpieza-2 | SHOULD | M | por hacer |
-| H-052 | Inventario/ropa blanca con alertas de stock bajo, descuento automático | REQ-115 | §Limpieza-2 | SHOULD | M | por hacer |
-| H-053 | Portal de proveedor externo con acceso acotado a su tarea asignada | REQ-116 | §Limpieza-2 | MUST | M | por hacer |
-| H-054 | Notificación multicanal configurable por evento de tarea | REQ-117 | §Limpieza-2 | SHOULD | S | por hacer |
-| H-055 | Incidencias de mantenimiento documentables sin cierre/cancelación automática | REQ-118, REQ-119 | §RV19/21-6 | MUST | M | por hacer |
+| H-049 | Tarea de limpieza automática al checkout + reprogramación si cambia la fecha | REQ-111, REQ-098 | §Limpieza-1 | MUST | M | hecho (Lote 5) |
+| H-050 | Buffer configurable checkout↔check-in, bloqueo real de calendario | REQ-054, REQ-112 | §UX-1 | MUST | S | hecho (Lote 5) |
+| H-051 | Checklist con fotos/timestamps por ítem; incompleto puede bloquear reapertura | REQ-113, REQ-114 | §Limpieza-2 | SHOULD | M | hecho (Lote 5) |
+| H-052 | Inventario/ropa blanca con alertas de stock bajo, descuento automático | REQ-115 | §Limpieza-2 | SHOULD | M | hecho (Lote 5) |
+| H-053 | Portal de proveedor externo con acceso acotado a su tarea asignada | REQ-116 | §Limpieza-2 | MUST | M | hecho (Lote 5) |
+| H-054 | Notificación multicanal configurable por evento de tarea | REQ-117 | §Limpieza-2 | SHOULD | S | hecho (Lote 5, parcial — registra intención/canal resuelto por evento en `notificacion_tarea`; el adaptador de envío real por canal queda fuera de alcance, nunca simulado como enviado) |
+| H-055 | Incidencias de mantenimiento documentables sin cierre/cancelación automática | REQ-118, REQ-119 | §RV19/21-6 | MUST | M | hecho (Lote 5) |
 
 ## E09 — Mensajes con aprobación humana
 
@@ -469,3 +469,43 @@ por canal, que depende de instrumentación de sync de Lote 2/10) quedan
   5. H-071 y H-073 no se implementaron en este lote.
 - **Commits:** 994805d (dominio), 037b2ce (migraciones 0050-0055),
   d3553a5 (endpoints HTTP), 2020dc3 (páginas web), 8ebd171 (capturas).
+
+## Lote 5 — cerrado (operación: limpieza y mantenimiento)
+
+7/95 historias marcadas `hecho (Lote 5)` arriba: H-049 a H-055 (E08 completa).
+
+- **Código:** `packages/domain/src/limpieza/` (tipos, `calcularRangoBuffer`,
+  `calcularVencimientoSla`/`tareaVencida`, `checklistCompleto`/plantillas,
+  `aplicarConsumo`/`stockBajo`, `requiereConfirmacionHumanaParaBloqueo`, y
+  `aplicacion/tareas.ts` — capa transaccional que consume `outbox_evento`
+  de Lote 1 sin editar ninguno de sus archivos). `packages/db/src/
+  migrations/0030-0039` (tarea_operativa/checklist/incidencia/inventario/
+  configuración operativa/RLS/auditoría/función `unidad_nombre_operacion`
+  SECURITY DEFINER, necesaria porque `limpieza` no tiene acceso a `unidad`
+  ni siquiera vía JOIN — RLS se evalúa por tabla). `apps/api/src/routes/
+  limpieza/` (tareas/incidencias/inventario, permisos propios sin tocar
+  `middleware/roles.ts`) + extensión aditiva de `contrato/tipos.ts`/
+  `openapi.yaml`. `apps/web/src/pages/limpieza/` (tablero de turnos
+  responsive, detalle con checklist/incidencias, portal de proveedor
+  externo H-053), reutilizando cliente HTTP/sesión/hooks de Lote 4.
+- **Pruebas:** 34 unitarias de dominio (incluye el entregable verificable
+  de LOTES.md: confirmar checkout crea la tarea y reprogramarla preserva
+  el responsable), 14 de componentes web (Vitest+Testing Library+axe-core),
+  6 de integración HTTP contra `embedded-postgres` real con rol `app_rv`
+  (RLS de aislamiento de `limpieza`, checklist incompleto→409, incidencia
+  grave→bloqueo con `capa_cruzada` sin cancelar la reserva), 2 E2E con
+  Chrome real y capturas reales (`docs/capturas/lote5-turnos.png`,
+  `lote5-movil-375.png`). Ver `docs/logs/lote5-{test,integration,e2e,ci}.log`.
+- **Brecha documentada (H-054):** la notificación multicanal registra
+  intención (evento+canales) en `notificacion_tarea`; el adaptador de
+  envío real por canal concreto queda fuera de alcance, nunca simulado
+  como "enviado".
+- **Nota de entorno:** esta sesión sufrió commits concurrentes de otros
+  lotes que en más de una ocasión sobrescribieron archivos compartidos
+  (`packages/db/src/migrations/index.ts`, `apps/api/src/contrato/tipos.ts`,
+  `docs/PROGRESO.md`, `docs/fase2/BACKLOG.md`) y un `amend` externo que
+  descartó un commit ya hecho de este lote — el código se recuperó del
+  commit huérfano y se re-commiteó; contenido final correcto, historial
+  de commits no perfectamente lineal.
+- **Commits:** ver `git log` (código bajo mensajes `feat(lote5)`/
+  `docs(lote5)`, con al menos un tramo recuperado tras un `amend` externo).

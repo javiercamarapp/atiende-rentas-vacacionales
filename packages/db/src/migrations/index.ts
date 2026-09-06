@@ -15,6 +15,16 @@ import { migracion0015RlsPoliticas } from "./0015_rls_politicas.js";
 import { migracion0016RlsFuncionesAutenticacion } from "./0016_rls_funciones_autenticacion.js";
 import { migracion0020CuentaCanal } from "./0020_cuenta_canal.js";
 import { migracion0021SincronizacionCanal } from "./0021_sincronizacion_canal.js";
+import { migracion0030TareaOperativa } from "./0030_tarea_operativa.js";
+import { migracion0031ChecklistTarea } from "./0031_checklist_tarea.js";
+import { migracion0032IncidenciaMantenimiento } from "./0032_incidencia_mantenimiento.js";
+import { migracion0033InventarioUnidad } from "./0033_inventario_unidad.js";
+import { migracion0034ConfiguracionOperativa } from "./0034_configuracion_operativa.js";
+import { migracion0035OutboxConsumidoLimpieza } from "./0035_outbox_consumido_limpieza.js";
+import { migracion0036RlsOperacion } from "./0036_rls_operacion.js";
+import { migracion0037AuditoriaTriggersOperacion } from "./0037_auditoria_triggers_operacion.js";
+import { migracion0038RlsOutboxLecturaOperacion } from "./0038_rls_outbox_lectura_operacion.js";
+import { migracion0039HelperUnidadNombreOperacion } from "./0039_helper_unidad_nombre_operacion.js";
 import { migracion0050FinanzasEsquema } from "./0050_finanzas_esquema.js";
 import { migracion0051PayoutConciliacion } from "./0051_payout_conciliacion.js";
 import { migracion0052OwnerStatement } from "./0052_owner_statement.js";
@@ -37,7 +47,11 @@ import { migracion0092RlsTablasCanalLote2 } from "./0092_rls_tablas_canal_lote2.
 // credenciales + RLS de cuenta_canal/unidad_canal_feed/etc.) — numeradas
 // lejos de 0022+ para minimizar colisión de nombre de archivo con
 // migraciones futuras de Lote 2; ver comentario de cabecera en
-// 0090_cuenta_canal_cifrado.ts. Rango 0050-0059 reservado a Lote 7
+// 0090_cuenta_canal_cifrado.ts. Rango 0030-0039 reservado a Lote 5
+// (operación de limpieza/mantenimiento, E08) — ver comentario de cabecera
+// en 0035_outbox_consumido_limpieza.ts sobre por qué no reutiliza la
+// columna `outbox_evento.procesado_en` de Lote 1. Rango 0050-0059
+// reservado a Lote 7
 // (finanzas/owners/statements + pricing + reporting, E10/E11/E12) — ver
 // comentario de cabecera en 0050_finanzas_esquema.ts. Rango 0080-0089
 // reservado a Lote 10 (observabilidad/recuperación, E15) — ledger propio
@@ -60,6 +74,16 @@ export const migraciones: Migracion[] = [
   migracion0016RlsFuncionesAutenticacion,
   migracion0020CuentaCanal,
   migracion0021SincronizacionCanal,
+  migracion0030TareaOperativa,
+  migracion0031ChecklistTarea,
+  migracion0032IncidenciaMantenimiento,
+  migracion0033InventarioUnidad,
+  migracion0034ConfiguracionOperativa,
+  migracion0035OutboxConsumidoLimpieza,
+  migracion0036RlsOperacion,
+  migracion0037AuditoriaTriggersOperacion,
+  migracion0038RlsOutboxLecturaOperacion,
+  migracion0039HelperUnidadNombreOperacion,
   migracion0050FinanzasEsquema,
   migracion0051PayoutConciliacion,
   migracion0052OwnerStatement,
