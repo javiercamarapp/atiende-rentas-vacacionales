@@ -221,24 +221,21 @@ describe("caso 18 — aislamiento multitenant (HTTP, además del SQL directo de 
     expect(filas.rows[0]!.n).toBe("0");
   });
 
-  // DEFECTO REAL DOCUMENTADO (docs/auditoria-2/defectos-adversarial.md):
-  // POST /bloqueos con un unidadId de OTRO tenant es rechazado por RLS a
-  // nivel de base de datos (correcto, cero filas escritas — ver el `it`
-  // anterior), pero `traducirErrorDominio` (apps/api/src/routes/
-  // reservas.ts, reutilizada por bloqueos.ts) no reconoce el mensaje de
-  // violación de RLS de Postgres ("new row violates row-level security
-  // policy") en ninguno de sus 3 patrones (`/no existe/`, `/Rango
-  // inválido.../`, `/no se puede cancelar/`), así que cae al genérico
-  // `error_interno` → HTTP 500, NO a un error de autorización clasificado
-  // (403 `rol_forbidden`/`tenant_forbidden` o 404
-  // `recurso_no_encontrado`, que es lo que sí hace POST /reservas para el
-  // mismo escenario — ver el siguiente `it`). ACEPTACION §Calendario-2
-  // caso 18 exige explícitamente "rechazado con error de autorización":
-  // un 500 genérico no lo es. Este `it` se deja EN ROJO a propósito
-  // (nunca maquillado) hasta que 11B corrija `traducirErrorDominio`/
-  // `crearBloqueo` para distinguir la violación de RLS y mapearla a un
-  // código de error clasificado.
-  it("[DEFECTO] POST /bloqueos cross-tenant debería responder con un error de autorización clasificado (403/404), no 500 genérico", async () => {
+  // D-ADV-01 CERRADO (docs/auditoria-2/defectos-adversarial.md,
+  // commit e976d99): POST /bloqueos con un unidadId de OTRO tenant era
+  // rechazado por RLS a nivel de base de datos (correcto, cero filas
+  // escritas — ver el `it` anterior), pero `traducirErrorDominio`
+  // (apps/api/src/routes/reservas.ts, reutilizada por bloqueos.ts) no
+  // reconocía el mensaje de violación de RLS de Postgres ("new row
+  // violates row-level security policy") ni el código SQLSTATE `42501`
+  // en ninguno de sus patrones previos, así que caía al genérico
+  // `error_interno` → HTTP 500. `traducirErrorDominio` ahora reconoce
+  // `error.code === "42501"` y el texto "row-level security policy" y
+  // los mapea a `recurso_no_encontrado` (404) — mismo criterio que ya
+  // usa `POST /reservas` para el idéntico escenario cross-tenant. Este
+  // `it` estaba EN ROJO a propósito antes de e976d99; ahora está en
+  // VERDE (confirmado con ejecución real: HTTP 404 observado).
+  it("POST /bloqueos cross-tenant responde con un error de autorización clasificado (403/404), no 500 genérico (D-ADV-01, cerrado)", async () => {
     const { accessToken } = await login(fx.emailAdminA, fx.passwordAdminA);
     const res = await app.request(
       "/bloqueos",

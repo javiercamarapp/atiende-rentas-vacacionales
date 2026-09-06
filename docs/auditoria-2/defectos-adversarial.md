@@ -10,6 +10,11 @@ aserción para forzar verde.
 
 ## D-ADV-01 — POST /bloqueos cross-tenant responde 500 genérico en vez de un error de autorización clasificado
 
+**Estado: CERRADO** (commit `e976d99`, "fix(api): D-ADV-01 — POST
+/bloqueos cross-tenant ya no responde 500 genérico"). Verificado con
+ejecución real por el corrector de la ronda final de auditoría-2 — ver
+"Evidencia de cierre" al final de esta sección.
+
 **Severidad:** media (no es una fuga de datos ni un bypass de aislamiento
 — la escritura SIEMPRE es rechazada y 0 filas se crean — pero viola el
 contrato de error de ACEPTACION §Calendario-2 caso 18: "rechazado con
@@ -89,8 +94,31 @@ propio `it`, no una falla del invariante de aislamiento en sí.
 
 ---
 
+**Corrección aplicada (commit `e976d99`):** `traducirErrorDominio`
+(`apps/api/src/routes/reservas.ts:142-149`) ahora reconoce
+`error.code === "42501"` (SQLSTATE insufficient_privilege) y el texto
+"row-level security policy" y los mapea a `recurso_no_encontrado` (404) —
+mismo criterio que ya usa `POST /reservas` para el idéntico escenario
+cross-tenant (404 no confirma ni niega la existencia del recurso al
+tenant ajeno). No se tocó `crearBloqueo` ni el invariante de aislamiento
+de datos en sí, que ya era correcto (0 filas escritas).
+
+**Evidencia de cierre (ejecución real, ronda final de auditoría-2):**
+
+- `npx vitest run tests/adversarial/multitenant/casos.test.ts` →
+  `✓ tests/adversarial/multitenant/casos.test.ts (8 tests)` — **8/8
+  verde**, incluido el caso antes en rojo ("POST /bloqueos cross-tenant
+  responde con un error de autorización clasificado (403/404), no 500
+  genérico (D-ADV-01, cerrado)").
+- `npx vitest run apps/api/test/integration/api.test.ts -t "D-ADV-01"` →
+  **1/1 verde**, log HTTP real observado:
+  `{"metodo":"POST","ruta":"/bloqueos","status":404,...}` (antes:
+  `status":500`).
+- Invariante de aislamiento de datos (cero filas cross-tenant) confirmado
+  sin cambios en `packages/db/test/integration/rls.test.ts`.
+
 ## Resumen
 
 | ID | Severidad | Caso adversarial afectado | Estado |
 |---|---|---|---|
-| D-ADV-01 | media | 18 (aislamiento multitenant, camino de escritura vía POST /bloqueos) | abierto — test en rojo a propósito en `tests/adversarial/multitenant/casos.test.ts` |
+| D-ADV-01 | media | 18 (aislamiento multitenant, camino de escritura vía POST /bloqueos) | **CERRADO** (commit `e976d99`) — verificado en verde en `tests/adversarial/multitenant/casos.test.ts` y `apps/api/test/integration/api.test.ts` |
