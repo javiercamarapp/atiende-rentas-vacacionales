@@ -301,6 +301,32 @@ describe("errores de dominio tipados", () => {
     expect(nocheLibre.ocupacionId).toBeNull();
   });
 
+  it("404 recurso_no_encontrado (D-ADV-01, Lote 11B): POST /bloqueos sobre una unidad del tenant B responde clasificado, nunca 500 genérico", async () => {
+    const { accessToken } = await login(fx.emailAdminA, fx.passwordAdminA);
+    const res = await app.request(
+      "/bloqueos",
+      autenticado(accessToken, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          unidadId: fx.unidadB,
+          rango: { inicio: "2027-06-10", fin: "2027-06-12" },
+          razon: "BLOQUEO_PROPIETARIO",
+        }),
+      }),
+    );
+    // `crearBloqueo` (a diferencia de `crearReservaConfirmada`) no hace un
+    // SELECT previo de la unidad — el único rechazo posible es la política
+    // RLS del propio INSERT (`42501`, insufficient_privilege), que
+    // `traducirErrorDominio` traducía antes a `error_interno` (500). Se
+    // mapea a 404 `recurso_no_encontrado` (mismo criterio que ya usa
+    // `POST /reservas` para el idéntico escenario cross-tenant): nunca
+    // confirma ni niega la existencia del recurso al tenant ajeno.
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { error: { codigo: string } };
+    expect(body.error.codigo).toBe("recurso_no_encontrado");
+  });
+
   it("403 rol_forbidden: GET /auditoria exige admin_gestora/superadmin", async () => {
     const { accessToken } = await login(fx.emailOperadorSolo, fx.passwordOperadorSolo);
     const res = await app.request("/auditoria", autenticado(accessToken));

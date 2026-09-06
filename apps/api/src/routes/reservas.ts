@@ -141,7 +141,27 @@ export function crearRutasReservas(pool: pg.Pool, jwtSecret: string): Hono {
 
 function traducirErrorDominio(error: unknown): ErrorDominio {
   if (error instanceof ErrorDominio) return error;
+  // Lote 11B (D-ADV-01, docs/auditoria-2/defectos-adversarial.md): una
+  // violación de RLS de Postgres en el propio INSERT (p. ej. `crearBloqueo`,
+  // que a diferencia de `crearReservaConfirmada` no hace un SELECT previo
+  // de la unidad) llega aquí como un error crudo de `pg` con
+  // `code === "42501"` (insufficient_privilege) — nunca matcheaba ninguno
+  // de los patrones de mensaje de abajo y caía al catch-all `error_interno`
+  // (500). Se mapea a `recurso_no_encontrado` (404), NO a `tenant_forbidden`
+  // (403) — mismo criterio ya usado por `POST /reservas` (Lote 3) para el
+  // idéntico escenario cross-tenant vía el patrón `/no existe/`: 404 no
+  // confirma ni niega que el recurso exista para el tenant ajeno (evita la
+  // fuga de información de un 403 "existe pero no es tuyo"). El
+  // aislamiento de datos en sí SIEMPRE fue correcto (0 filas escritas);
+  // esto solo corrige la clasificación del error HTTP.
+  const codigoSql = (error as { code?: unknown } | null)?.code;
+  if (codigoSql === "42501") {
+    return new ErrorDominio("recurso_no_encontrado", "Recurso no encontrado");
+  }
   const mensaje = error instanceof Error ? error.message : "Error de dominio";
+  if (/row-level security policy/i.test(mensaje)) {
+    return new ErrorDominio("recurso_no_encontrado", "Recurso no encontrado");
+  }
   if (/no existe/.test(mensaje)) return new ErrorDominio("recurso_no_encontrado", mensaje);
   if (/Rango inválido|inicio < fin|duración mínima/.test(mensaje)) return new ErrorDominio("rango_invalido", mensaje);
   if (/no se puede cancelar/.test(mensaje)) return new ErrorDominio("conflicto_pendiente", mensaje);
