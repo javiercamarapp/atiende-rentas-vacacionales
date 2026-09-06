@@ -56,3 +56,13 @@ export type {
   ResultadoCancelarOcupacion,
   ResultadoModificarFechas,
 } from "./aplicacion/reservas.js";
+
+// Feature flags (Lote 10, H-089): registro tipado, default-off para
+// funcionalidad de dinero/cancelación/contacto, auditoría de cambios.
+export { CategoriaRiesgoFlag, RegistroFlags, FlagRiesgoDefaultActivoError, FlagNoRegistradoError } from "./flags/index.js";
+export type { FlagId, FlagDefinicion, CambioFlagEntrada, AuditoriaFlagEntry } from "./flags/index.js";
+export {
+  FLAG_SYNC_PUSH_AUTOMATICO,
+  FLAG_SYNC_CANAL_PAUSADO_POR_ALERTA,
+  CATALOGO_FLAGS_POR_DEFECTO,
+} from "./flags/index.js";
