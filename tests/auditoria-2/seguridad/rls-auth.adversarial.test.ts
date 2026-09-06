@@ -378,16 +378,26 @@ describe("H-AUD2-02: huesped_minimo no tiene tenant_id ni RLS — POST /mensajer
 // SUITE 3 — JWT_SECRET de desarrollo hardcodeado como fallback fail-open
 // ============================================================================
 describe("H-AUD2-03: JWT_SECRET por defecto ('nunca usar en producción') sin guardarraíl de arranque", () => {
-  it("cargarConfiguracion() sin JWT_SECRET en el entorno usa un secreto hardcodeado conocido públicamente en el código fuente", () => {
+  it("[CORREGIDO S-03] cargarConfiguracion() sin JWT_SECRET en el entorno ya NO usa un secreto hardcodeado conocido — genera una clave efímera en memoria (NODE_ENV vacío se sigue tratando como desarrollo, D-017)", () => {
     const config = cargarConfiguracion({} as NodeJS.ProcessEnv);
-    // apps/api/src/config/env.ts línea 27: valor LITERAL en el código
-    // fuente del repo, visible para cualquiera con acceso al repositorio
-    // (incluyendo este mismo texto de auditoría).
-    expect(config.jwtSecret).toBe("desarrollo-nunca-usar-en-produccion-cambia-este-valor-ya-32b");
-    expect(config.entorno).toBe("development"); // nunca detecta "production" y aborta
+    // Antes: apps/api/src/config/env.ts línea 27 devolvía el literal
+    // "desarrollo-nunca-usar-en-produccion-cambia-este-valor-ya-32b",
+    // visible para cualquiera con acceso al repositorio.
+    expect(config.jwtSecret).not.toBe("desarrollo-nunca-usar-en-produccion-cambia-este-valor-ya-32b");
+    expect(config.jwtSecret.length).toBeGreaterThanOrEqual(32);
+    expect(config.entorno).toBe("development");
   });
 
-  it("REPRODUCCION: un token firmado con el secreto de desarrollo hardcodeado es aceptado por requiereAutenticacion si JWT_SECRET no está seteado", async () => {
+  it("[CORREGIDO S-03] cargarConfiguracion() con NODE_ENV='production' y sin JWT_SECRET ahora ABORTA (fail-closed) en vez de caer a un secreto conocido", () => {
+    expect(() =>
+      cargarConfiguracion({
+        NODE_ENV: "production",
+        CANAL_CIFRADO_CLAVES: "v1:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+      } as NodeJS.ProcessEnv),
+    ).toThrow(/JWT_SECRET es obligatorio/);
+  });
+
+  it("[CORREGIDO S-03] REPRODUCCION: un token firmado con el ANTIGUO secreto de desarrollo hardcodeado ya NO es aceptado por requiereAutenticacion — crearApp() ahora genera una clave efímera distinta cuando JWT_SECRET no está seteado", async () => {
     const original = process.env.JWT_SECRET;
     delete process.env.JWT_SECRET;
     let ctx: Contexto | undefined;
@@ -422,11 +432,12 @@ describe("H-AUD2-03: JWT_SECRET por defecto ('nunca usar en producción') sin gu
       const res = await app.request("/backoffice/tenants", {
         headers: { authorization: `Bearer ${tokenForjado}` },
       });
-      console.log(`[H-AUD2-03] request forjada con secreto default -> status=${res.status}`);
-      // Si esto NO es 401/403 por token inválido, el forjado fue aceptado
-      // (aunque la operación de negocio en sí falle después por falta de
-      // datos, la AUTENTICACIÓN ya fue superada con un secreto público).
-      expect(res.status).not.toBe(401);
+      console.log(`[H-AUD2-03 corregido] request forjada con el ANTIGUO secreto default -> status=${res.status}`);
+      // Antes de la corrección: se esperaba (y se obtenía) un status
+      // distinto de 401 (forjado aceptado, con un secreto público). Ahora
+      // crearApp() genera una clave efímera EN MEMORIA distinta de ese
+      // literal — el token forjado con el viejo secreto ya no verifica.
+      expect(res.status).toBe(401);
 
       await pool.end().catch(() => undefined);
     } finally {

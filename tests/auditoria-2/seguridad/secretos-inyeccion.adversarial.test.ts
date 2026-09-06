@@ -50,40 +50,40 @@ import { ProveedorLLMClaude } from "../../../apps/api/src/agentes/proveedorClaud
 // aislado a `cargarConfiguracion(env)`, que lo acepta como parámetro).
 // ===========================================================================
 describe("SECRETOS S1 — cargarConfiguracion: valores por defecto en NODE_ENV=production", () => {
-  it("CONFIRMADO: no exige CANAL_CIFRADO_CLAVES en producción — cae a un valor por defecto hardcodeado y público", () => {
-    const envProduccionSinSecretos: NodeJS.ProcessEnv = { NODE_ENV: "production" };
-    const config = cargarConfiguracion(envProduccionSinSecretos);
-
-    expect(config.entorno).toBe("production");
-    // apps/api/src/config/env.ts:44-45 — el mismo literal que
-    // tests/adversarial/multitenant/casos.test.ts:28 usa como fixture de
-    // prueba. Si este valor por defecto llega a producción, la clave de
-    // cifrado de credenciales de canal es, en la práctica, PÚBLICA (está
-    // en el código fuente del propio repo, visible a cualquiera con
-    // acceso de lectura).
-    expect(config.cifradoCanalClaves).toBe("v1:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=");
-
-    // Explotación real: con el valor por defecto se puede construir un
-    // keyring funcional e ir y venir con cualquier credencial cifrada con
-    // esa clave — CUALQUIERA con el repo (o simplemente esta cadena)
-    // descifra las credenciales de canal de un despliegue que haya
-    // olvidado configurar la variable de entorno.
-    const keyringAtacante = new KeyringCifradoCanal(config.cifradoCanalClaves);
-    const cifradoVictima = keyringAtacante.cifrar("api-key-real-del-pms-o-airbnb");
-    expect(keyringAtacante.descifrar(cifradoVictima)).toBe("api-key-real-del-pms-o-airbnb");
+  it("[CORREGIDO S-02] SÍ exige CANAL_CIFRADO_CLAVES en producción — cargarConfiguracion aborta en vez de caer a un valor por defecto hardcodeado", () => {
+    const envProduccionSinSecretos: NodeJS.ProcessEnv = {
+      NODE_ENV: "production",
+      JWT_SECRET: "secreto-de-produccion-real-con-al-menos-32-caracteres",
+    };
+    // Antes de la corrección: `cargarConfiguracion` devolvía el literal
+    // "v1:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=" (mismo que usa
+    // tests/adversarial/multitenant/casos.test.ts:28 como fixture) sin
+    // lanzar. Ahora aborta el arranque.
+    expect(() => cargarConfiguracion(envProduccionSinSecretos)).toThrow(/CANAL_CIFRADO_CLAVES es obligatorio/);
   });
 
-  it("CONFIRMADO (mismo patrón, JWT): no exige JWT_SECRET en producción — cae a un secreto hardcodeado conocido", () => {
-    const config = cargarConfiguracion({ NODE_ENV: "production" });
-    expect(config.jwtSecret).toBe("desarrollo-nunca-usar-en-produccion-cambia-este-valor-ya-32b");
+  it("[CORREGIDO S-03] SÍ exige JWT_SECRET en producción — cargarConfiguracion aborta en vez de caer a un secreto hardcodeado conocido", () => {
+    expect(() =>
+      cargarConfiguracion({ NODE_ENV: "production", CANAL_CIFRADO_CLAVES: `v1:${generarClaveCifradoBase64()}` }),
+    ).toThrow(/JWT_SECRET es obligatorio/);
   });
 
-  it("Ningún guardia en cargarConfiguracion/crearApp lanza si NODE_ENV=production y faltan ambos secretos a la vez", () => {
+  it("[CORREGIDO S-02/S-03] cargarConfiguracion SÍ lanza si NODE_ENV=production y faltan ambos secretos a la vez", () => {
     // Reproduce exactamente el escenario de despliegue real: variables de
     // entorno de infraestructura (NODE_ENV) presentes, pero JWT_SECRET/
-    // CANAL_CIFRADO_CLAVES olvidadas. `cargarConfiguracion` no lanza — el
-    // servidor arrancaría igual, silenciosamente inseguro.
-    expect(() => cargarConfiguracion({ NODE_ENV: "production", PORT: "8787" })).not.toThrow();
+    // CANAL_CIFRADO_CLAVES olvidadas. Antes de la corrección no lanzaba
+    // (el servidor arrancaba igual, silenciosamente inseguro); ahora
+    // aborta fail-closed.
+    expect(() => cargarConfiguracion({ NODE_ENV: "production", PORT: "8787" })).toThrow();
+  });
+
+  it("[NUEVO S-02/S-03] en desarrollo/pruebas sin secretos explícitos, cargarConfiguracion genera claves efímeras EN MEMORIA (nunca el literal hardcodeado histórico) y son estables entre llamadas del mismo proceso", () => {
+    const a = cargarConfiguracion({ NODE_ENV: "test" });
+    const b = cargarConfiguracion({ NODE_ENV: "test" });
+    expect(a.jwtSecret).not.toBe("desarrollo-nunca-usar-en-produccion-cambia-este-valor-ya-32b");
+    expect(a.cifradoCanalClaves).not.toBe("v1:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=");
+    expect(a.jwtSecret).toBe(b.jwtSecret); // estable dentro del proceso
+    expect(a.cifradoCanalClaves).toBe(b.cifradoCanalClaves);
   });
 });
 
