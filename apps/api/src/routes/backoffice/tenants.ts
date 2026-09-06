@@ -4,6 +4,7 @@ import { CuerpoCrearTenantBackoffice, CuerpoSuspenderTenant, ErrorDominio } from
 import { conSesion, enTransaccion } from "../../db/contexto.js";
 import { requiereAutenticacion } from "../../middleware/autenticacion.js";
 import { exigirRol } from "../../middleware/roles.js";
+import { ROLES_SUPERADMIN } from "../../rolesComunes.js";
 import { sesionDeAuth } from "../../middleware/tenant.js";
 
 interface FilaMetricas {
@@ -30,7 +31,7 @@ export function crearRutasBackofficeTenants(pool: pg.Pool, jwtSecret: string): H
 
   app.get("/", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin");
+    exigirRol(auth, ...ROLES_SUPERADMIN);
 
     const { tenants, metricas } = await conSesion(pool, sesionDeAuth(auth), async (cliente) => {
       const [t, m] = await Promise.all([
@@ -69,7 +70,7 @@ export function crearRutasBackofficeTenants(pool: pg.Pool, jwtSecret: string): H
 
   app.post("/", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin");
+    exigirRol(auth, ...ROLES_SUPERADMIN);
     const cuerpo = CuerpoCrearTenantBackoffice.parse(await c.req.json());
 
     const fila = await conSesion(pool, sesionDeAuth(auth), async (cliente) =>
@@ -91,7 +92,7 @@ export function crearRutasBackofficeTenants(pool: pg.Pool, jwtSecret: string): H
 
   app.post("/:id/suspender", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin");
+    exigirRol(auth, ...ROLES_SUPERADMIN);
     const tenantId = c.req.param("id");
     const cuerpo = CuerpoSuspenderTenant.parse(await c.req.json());
 
@@ -112,7 +113,7 @@ export function crearRutasBackofficeTenants(pool: pg.Pool, jwtSecret: string): H
 
   app.post("/:id/activar", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin");
+    exigirRol(auth, ...ROLES_SUPERADMIN);
     const tenantId = c.req.param("id");
 
     const actualizado = await conSesion(pool, sesionDeAuth(auth), async (cliente) =>

@@ -5,6 +5,7 @@ import { CuerpoCrearPropiedad, ErrorDominio } from "../contrato/tipos.js";
 import { conSesion, enTransaccion } from "../db/contexto.js";
 import { requiereAutenticacion } from "../middleware/autenticacion.js";
 import { exigirRol } from "../middleware/roles.js";
+import { ROLES_ADMIN } from "../rolesComunes.js";
 import { sesionDeAuth } from "../middleware/tenant.js";
 
 export function crearRutasPropiedades(pool: pg.Pool, jwtSecret: string): Hono {
@@ -45,7 +46,7 @@ export function crearRutasPropiedades(pool: pg.Pool, jwtSecret: string): Hono {
 
   app.post("/", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora");
+    exigirRol(auth, ...ROLES_ADMIN);
     const cuerpo = CuerpoCrearPropiedad.parse(await c.req.json());
     if (!validarZonaHorariaIana(cuerpo.zonaHoraria)) {
       throw new ErrorDominio("validacion", `Zona horaria IANA inválida: "${cuerpo.zonaHoraria}"`);

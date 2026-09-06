@@ -9,6 +9,7 @@ import {
 import { conSesion, enTransaccion } from "../../db/contexto.js";
 import { requiereAutenticacion } from "../../middleware/autenticacion.js";
 import { exigirRol } from "../../middleware/roles.js";
+import { ROLES_ADMIN } from "../../rolesComunes.js";
 import { sesionDeAuth } from "../../middleware/tenant.js";
 import { relanzarSiRlsRechazo, resolverTenantId } from "./comun.js";
 
@@ -56,7 +57,7 @@ export function crearRutasBackofficePropiedades(pool: pg.Pool, jwtSecret: string
 
   app.get("/", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora");
+    exigirRol(auth, ...ROLES_ADMIN);
     const tenantId = resolverTenantId(auth, c.req.query("tenantId"));
 
     const filas = await relanzarSiRlsRechazo(() =>
@@ -74,7 +75,7 @@ export function crearRutasBackofficePropiedades(pool: pg.Pool, jwtSecret: string
 
   app.post("/", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora");
+    exigirRol(auth, ...ROLES_ADMIN);
     const cuerpo = CuerpoCrearPropiedadBackoffice.parse(await c.req.json());
     const tenantId = resolverTenantId(auth, cuerpo.tenantId);
 
@@ -109,7 +110,7 @@ export function crearRutasBackofficePropiedades(pool: pg.Pool, jwtSecret: string
 
   app.patch("/:id", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora");
+    exigirRol(auth, ...ROLES_ADMIN);
     const id = c.req.param("id");
     const cuerpo = CuerpoActualizarPropiedadBackoffice.parse(await c.req.json());
 

@@ -5,6 +5,7 @@ import { ErrorDominio } from "../contrato/errores.js";
 import { conSesion, enTransaccion } from "../db/contexto.js";
 import { requiereAutenticacion } from "../middleware/autenticacion.js";
 import { exigirRol } from "../middleware/roles.js";
+import { ROLES_SUPERADMIN } from "../rolesComunes.js";
 import { sesionDeAuth } from "../middleware/tenant.js";
 
 const CuerpoCrearTenant = z.object({
@@ -21,7 +22,7 @@ export function crearRutasTenants(pool: pg.Pool, jwtSecret: string): Hono {
   // mínimo para poder bootstrapear un tenant de prueba/piloto).
   app.post("/", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin");
+    exigirRol(auth, ...ROLES_SUPERADMIN);
     const cuerpo = CuerpoCrearTenant.parse(await c.req.json());
 
     const fila = await conSesion(pool, sesionDeAuth(auth), async (cliente) =>

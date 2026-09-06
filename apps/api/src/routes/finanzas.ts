@@ -20,6 +20,7 @@ import {
 import { conSesion, enTransaccion } from "../db/contexto.js";
 import { requiereAutenticacion } from "../middleware/autenticacion.js";
 import { exigirRol } from "../middleware/roles.js";
+import { ROLES_ADMIN_CONTADOR_PROPIETARIO, ROLES_ADMIN_CONTADOR, ROLES_ADMIN } from "../rolesComunes.js";
 import { sesionDeAuth } from "../middleware/tenant.js";
 
 /**
@@ -44,7 +45,7 @@ export function crearRutasFinanzas(pool: pg.Pool, jwtSecret: string): Hono {
   // ---------------------------------------------------------------------
   app.get("/reglas-comision", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora", "contador");
+    exigirRol(auth, ...ROLES_ADMIN_CONTADOR);
     const filas = await conSesion(pool, sesionDeAuth(auth), async (cliente) => {
       const { rows } = await cliente.query(
         `SELECT rcc.id, ca.codigo AS canal_codigo, rcc.propiedad_id, rcc.ya_neto_de_comision,
@@ -70,7 +71,7 @@ export function crearRutasFinanzas(pool: pg.Pool, jwtSecret: string): Hono {
 
   app.post("/reglas-comision", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora");
+    exigirRol(auth, ...ROLES_ADMIN);
     const cuerpo = CuerpoReglaComisionCanal.parse(await c.req.json());
     if (!auth.tenantId) throw new ErrorDominio("tenant_forbidden", "Se requiere un tenant explícito");
 
@@ -105,7 +106,7 @@ export function crearRutasFinanzas(pool: pg.Pool, jwtSecret: string): Hono {
   // ---------------------------------------------------------------------
   app.post("/reservas/:ocupacionId/movimiento", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora");
+    exigirRol(auth, ...ROLES_ADMIN);
     const ocupacionId = c.req.param("ocupacionId");
     const cuerpo = CuerpoMovimientoReserva.parse(await c.req.json());
 
@@ -283,7 +284,7 @@ export function crearRutasFinanzas(pool: pg.Pool, jwtSecret: string): Hono {
   // ---------------------------------------------------------------------
   app.post("/statements/generar", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora");
+    exigirRol(auth, ...ROLES_ADMIN);
     const cuerpo = CuerpoGenerarStatement.parse(await c.req.json());
     if (cuerpo.periodoInicio >= cuerpo.periodoFin) {
       throw new ErrorDominio("rango_invalido", "periodoInicio debe ser anterior a periodoFin");
@@ -442,7 +443,7 @@ export function crearRutasFinanzas(pool: pg.Pool, jwtSecret: string): Hono {
     // todo el tenant; propietario solo lo suyo, filtrado por RLS con
     // `owner_actual()`) — `operador`/`limpieza` quedan bloqueados en esta
     // capa, antes de tocar la base de datos.
-    exigirRol(auth, "superadmin", "admin_gestora", "contador", "propietario");
+    exigirRol(auth, ...ROLES_ADMIN_CONTADOR_PROPIETARIO);
     const ownerId = c.req.query("ownerId");
     const filas = await conSesion(pool, sesionDeAuth(auth), async (cliente) => {
       const { rows } = await cliente.query(
@@ -515,7 +516,7 @@ export function crearRutasFinanzas(pool: pg.Pool, jwtSecret: string): Hono {
   // ---------------------------------------------------------------------
   app.post("/payouts", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora");
+    exigirRol(auth, ...ROLES_ADMIN);
     const cuerpo = CuerpoImportarPayout.parse(await c.req.json());
     if (!auth.tenantId) throw new ErrorDominio("tenant_forbidden", "Se requiere un tenant explícito");
 
@@ -592,7 +593,7 @@ export function crearRutasFinanzas(pool: pg.Pool, jwtSecret: string): Hono {
 
   app.get("/payouts/:id", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora", "contador");
+    exigirRol(auth, ...ROLES_ADMIN_CONTADOR);
     const id = c.req.param("id");
     const resultado = await conSesion(pool, sesionDeAuth(auth), async (cliente) => {
       const { rows } = await cliente.query("SELECT * FROM payout_canal WHERE id = $1", [id]);

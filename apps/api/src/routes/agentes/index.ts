@@ -7,6 +7,7 @@ import { CuerpoInvocarAgente, ErrorDominio, QueryTrazasAgente } from "../../cont
 import { conSesion } from "../../db/contexto.js";
 import { requiereAutenticacion } from "../../middleware/autenticacion.js";
 import { exigirRol } from "../../middleware/roles.js";
+import { ROLES_ADMIN_OPERADOR } from "../../rolesComunes.js";
 import { sesionDeAuth } from "../../middleware/tenant.js";
 import { crearRutasAgentesFlags } from "./flags.js";
 
@@ -55,7 +56,7 @@ export function crearRutasAgentes(pool: pg.Pool, jwtSecret: string): Hono {
 
   app.get("/cuota", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora", "operador");
+    exigirRol(auth, ...ROLES_ADMIN_OPERADOR);
     if (!auth.tenantId) throw new ErrorDominio("recurso_no_encontrado", "Sesión sin tenant asociado");
     const fila = await conSesion(pool, sesionDeAuth(auth), (cliente) => obtenerCuotaTenant(cliente, auth.tenantId!));
     if (!fila) throw new ErrorDominio("recurso_no_encontrado", "Este tenant no tiene un presupuesto de IA configurado");
@@ -71,7 +72,7 @@ export function crearRutasAgentes(pool: pg.Pool, jwtSecret: string): Hono {
 
   app.get("/trazas", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora", "operador");
+    exigirRol(auth, ...ROLES_ADMIN_OPERADOR);
     if (!auth.tenantId) throw new ErrorDominio("recurso_no_encontrado", "Sesión sin tenant asociado");
     const query = QueryTrazasAgente.parse({ pagina: c.req.query("pagina"), tamano: c.req.query("tamano") });
     const trazas = await conSesion(pool, sesionDeAuth(auth), (cliente) =>

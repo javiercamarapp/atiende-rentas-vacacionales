@@ -4,6 +4,7 @@ import { CuerpoCrearAccesoRomperCristal, ErrorDominio } from "../../contrato/tip
 import { conSesion, enTransaccion } from "../../db/contexto.js";
 import { requiereAutenticacion } from "../../middleware/autenticacion.js";
 import { exigirRol } from "../../middleware/roles.js";
+import { ROLES_SUPERADMIN } from "../../rolesComunes.js";
 import { registrarAccesoRomperCristal, sesionDeAuth } from "../../middleware/tenant.js";
 
 /**
@@ -30,7 +31,7 @@ export function crearRutasBackofficeRomperCristal(pool: pg.Pool, jwtSecret: stri
   // GET / — concesiones propias vigentes (para el banner persistente).
   app.get("/", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin");
+    exigirRol(auth, ...ROLES_SUPERADMIN);
 
     const filas = await conSesion(pool, sesionDeAuth(auth), async (cliente) => {
       const { rows } = await cliente.query(
@@ -58,7 +59,7 @@ export function crearRutasBackofficeRomperCristal(pool: pg.Pool, jwtSecret: stri
 
   app.post("/", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin");
+    exigirRol(auth, ...ROLES_SUPERADMIN);
     const cuerpo = CuerpoCrearAccesoRomperCristal.parse(await c.req.json());
 
     const fila = await conSesion(pool, sesionDeAuth(auth), async (cliente) =>
@@ -89,7 +90,7 @@ export function crearRutasBackofficeRomperCristal(pool: pg.Pool, jwtSecret: stri
 
   app.post("/:id/revocar", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin");
+    exigirRol(auth, ...ROLES_SUPERADMIN);
     const id = c.req.param("id");
 
     const filas = await conSesion(pool, sesionDeAuth(auth), async (cliente) =>

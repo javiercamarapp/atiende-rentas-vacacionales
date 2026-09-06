@@ -7,6 +7,7 @@ import { conSesion, enTransaccion } from "../db/contexto.js";
 import type { ContextoAuth } from "../middleware/autenticacion.js";
 import { requiereAutenticacion } from "../middleware/autenticacion.js";
 import { exigirRol } from "../middleware/roles.js";
+import { ROLES_ADMIN } from "../rolesComunes.js";
 import { sesionDeAuth } from "../middleware/tenant.js";
 
 interface FilaToken {
@@ -92,7 +93,7 @@ export function crearRutasExportIcal(pool: pg.Pool, jwtSecret: string, urlPublic
 
   app.get("/:unidadId/:canalCodigo", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora");
+    exigirRol(auth, ...ROLES_ADMIN);
     const unidadId = c.req.param("unidadId");
     const canalCodigo = c.req.param("canalCodigo");
 
@@ -113,7 +114,7 @@ export function crearRutasExportIcal(pool: pg.Pool, jwtSecret: string, urlPublic
   // feed público, nunca sigue funcionando "hasta que expire".
   app.post("/:unidadId/:canalCodigo/rotar", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora");
+    exigirRol(auth, ...ROLES_ADMIN);
     const unidadId = c.req.param("unidadId");
     const canalCodigo = c.req.param("canalCodigo");
 

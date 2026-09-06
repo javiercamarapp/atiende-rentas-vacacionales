@@ -4,6 +4,7 @@ import { QueryAuditoriaBackoffice } from "../../contrato/tipos.js";
 import { conSesion } from "../../db/contexto.js";
 import { requiereAutenticacion } from "../../middleware/autenticacion.js";
 import { exigirRol } from "../../middleware/roles.js";
+import { ROLES_ADMIN } from "../../rolesComunes.js";
 import { sesionDeAuth } from "../../middleware/tenant.js";
 
 /**
@@ -22,7 +23,7 @@ export function crearRutasBackofficeAuditoria(pool: pg.Pool, jwtSecret: string):
 
   app.get("/", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora");
+    exigirRol(auth, ...ROLES_ADMIN);
     const query = QueryAuditoriaBackoffice.parse({
       pagina: c.req.query("pagina"),
       tamano: c.req.query("tamano"),

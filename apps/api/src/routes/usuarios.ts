@@ -5,6 +5,7 @@ import { ColaboradorNivel, ErrorDominio, RolUsuario } from "../contrato/tipos.js
 import { conSesion, enTransaccion } from "../db/contexto.js";
 import { requiereAutenticacion } from "../middleware/autenticacion.js";
 import { exigirRol } from "../middleware/roles.js";
+import { ROLES_ADMIN } from "../rolesComunes.js";
 import { sesionDeAuth } from "../middleware/tenant.js";
 import { hashContrasena } from "../seguridad/contrasenas.js";
 
@@ -33,7 +34,7 @@ export function crearRutasUsuarios(pool: pg.Pool, jwtSecret: string): Hono {
 
   app.post("/", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora");
+    exigirRol(auth, ...ROLES_ADMIN);
     if (!auth.tenantId) {
       throw new ErrorDominio("validacion", "Superadmin debe operar con un tenant explícito (fuera de alcance de este lote)");
     }
@@ -57,7 +58,7 @@ export function crearRutasUsuarios(pool: pg.Pool, jwtSecret: string): Hono {
 
   app.get("/", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora");
+    exigirRol(auth, ...ROLES_ADMIN);
     const filas = await conSesion(pool, sesionDeAuth(auth), async (cliente) => {
       const { rows } = await cliente.query(
         "SELECT id, email, rol, colaborador_nivel, activo FROM usuario ORDER BY creado_en DESC",

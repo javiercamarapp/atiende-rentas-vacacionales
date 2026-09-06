@@ -5,6 +5,7 @@ import { ErrorDominio, QueryReportePeriodo } from "../contrato/tipos.js";
 import { conSesion } from "../db/contexto.js";
 import { requiereAutenticacion } from "../middleware/autenticacion.js";
 import { exigirRol } from "../middleware/roles.js";
+import { ROLES_ADMIN_CONTADOR_OPERADOR, ROLES_ADMIN_CONTADOR } from "../rolesComunes.js";
 import { sesionDeAuth } from "../middleware/tenant.js";
 
 /**
@@ -23,7 +24,7 @@ export function crearRutasReportes(pool: pg.Pool, jwtSecret: string): Hono {
   // GET /reportes/ocupacion — ocupación/ADR/RevPAR por unidad en el rango.
   app.get("/ocupacion", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora", "contador", "operador");
+    exigirRol(auth, ...ROLES_ADMIN_CONTADOR_OPERADOR);
     const query = QueryReportePeriodo.parse({
       desde: c.req.query("desde"),
       hasta: c.req.query("hasta"),
@@ -91,7 +92,7 @@ export function crearRutasReportes(pool: pg.Pool, jwtSecret: string): Hono {
   // GET /reportes/ingresos — ingresos agrupados por canal, propiedad y mes.
   app.get("/ingresos", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora", "contador");
+    exigirRol(auth, ...ROLES_ADMIN_CONTADOR);
     const query = QueryReportePeriodo.parse({
       desde: c.req.query("desde"),
       hasta: c.req.query("hasta"),

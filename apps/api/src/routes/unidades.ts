@@ -6,6 +6,7 @@ import { CuerpoCrearUnidad, ErrorDominio, QueryRangoCalendario } from "../contra
 import { conSesion, enTransaccion } from "../db/contexto.js";
 import { requiereAutenticacion } from "../middleware/autenticacion.js";
 import { exigirRol } from "../middleware/roles.js";
+import { ROLES_ADMIN } from "../rolesComunes.js";
 import { sesionDeAuth } from "../middleware/tenant.js";
 
 interface FilaOcupacion {
@@ -46,7 +47,7 @@ export function crearRutasUnidades(pool: pg.Pool, jwtSecret: string): Hono {
 
   app.post("/", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora");
+    exigirRol(auth, ...ROLES_ADMIN);
     const cuerpo = CuerpoCrearUnidad.parse(await c.req.json());
 
     const fila = await conSesion(pool, sesionDeAuth(auth), async (cliente) =>

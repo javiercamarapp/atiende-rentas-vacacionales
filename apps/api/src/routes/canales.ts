@@ -5,6 +5,7 @@ import { CuerpoCrearCuentaCanal, ErrorDominio } from "../contrato/tipos.js";
 import { conSesion, enTransaccion } from "../db/contexto.js";
 import { requiereAutenticacion } from "../middleware/autenticacion.js";
 import { exigirRol } from "../middleware/roles.js";
+import { ROLES_ADMIN_OPERADOR, ROLES_ADMIN } from "../rolesComunes.js";
 import { sesionDeAuth } from "../middleware/tenant.js";
 import type { KeyringCifradoCanal } from "../seguridad/cifrado.js";
 
@@ -81,7 +82,7 @@ export function crearRutasCanales(pool: pg.Pool, jwtSecret: string, keyring: Key
   // credenciales con AES-256-GCM antes de escribirlas (H-046).
   app.post("/cuentas", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora");
+    exigirRol(auth, ...ROLES_ADMIN);
     const cuerpo = CuerpoCrearCuentaCanal.parse(await c.req.json());
     const tenantId = cuerpo.tenantId ?? auth.tenantId;
     if (!tenantId) {
@@ -130,7 +131,7 @@ export function crearRutasCanales(pool: pg.Pool, jwtSecret: string, keyring: Key
   // hace el worker de Lote 2 consumiendo esa cola, nunca esta API.
   app.post("/:id/sync", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora", "operador");
+    exigirRol(auth, ...ROLES_ADMIN_OPERADOR);
     const cuentaCanalId = c.req.param("id");
 
     await conSesion(pool, sesionDeAuth(auth), async (cliente) =>

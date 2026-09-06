@@ -3,6 +3,7 @@ import { CATALOGO_FLAGS_POR_DEFECTO, RegistroFlags } from "@atiende-rv/domain";
 import { CuerpoEstablecerFlag, ErrorDominio } from "../../contrato/tipos.js";
 import { requiereAutenticacion } from "../../middleware/autenticacion.js";
 import { exigirRol } from "../../middleware/roles.js";
+import { ROLES_SUPERADMIN } from "../../rolesComunes.js";
 
 /**
  * Gestión de feature flags por tenant (H-089 reutilizado desde el back
@@ -27,7 +28,7 @@ export function crearRutasBackofficeFlags(jwtSecret: string, registro: RegistroF
 
   app.get("/", (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin");
+    exigirRol(auth, ...ROLES_SUPERADMIN);
     const tenantId = c.req.query("tenantId");
 
     return c.json({
@@ -44,7 +45,7 @@ export function crearRutasBackofficeFlags(jwtSecret: string, registro: RegistroF
 
   app.patch("/:id", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin");
+    exigirRol(auth, ...ROLES_SUPERADMIN);
     const flagId = c.req.param("id");
     const cuerpo = CuerpoEstablecerFlag.parse(await c.req.json());
 
@@ -64,7 +65,7 @@ export function crearRutasBackofficeFlags(jwtSecret: string, registro: RegistroF
 
   app.get("/:id/auditoria", (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin");
+    exigirRol(auth, ...ROLES_SUPERADMIN);
     const flagId = c.req.param("id");
     try {
       return c.json({ entradas: registro.auditoria(flagId) });

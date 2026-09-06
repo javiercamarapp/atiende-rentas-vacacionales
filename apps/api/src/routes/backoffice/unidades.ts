@@ -8,6 +8,7 @@ import {
 import { conSesion, enTransaccion } from "../../db/contexto.js";
 import { requiereAutenticacion } from "../../middleware/autenticacion.js";
 import { exigirRol } from "../../middleware/roles.js";
+import { ROLES_ADMIN } from "../../rolesComunes.js";
 import { sesionDeAuth } from "../../middleware/tenant.js";
 import { relanzarSiRlsRechazo } from "./comun.js";
 
@@ -43,7 +44,7 @@ export function crearRutasBackofficeUnidades(pool: pg.Pool, jwtSecret: string): 
 
   app.get("/", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora");
+    exigirRol(auth, ...ROLES_ADMIN);
     const propiedadId = c.req.query("propiedadId");
     if (!propiedadId) throw new ErrorDominio("validacion", "propiedadId es requerido");
 
@@ -63,7 +64,7 @@ export function crearRutasBackofficeUnidades(pool: pg.Pool, jwtSecret: string): 
 
   app.post("/", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora");
+    exigirRol(auth, ...ROLES_ADMIN);
     const cuerpo = CuerpoCrearUnidadBackoffice.parse(await c.req.json());
 
     const filas = await relanzarSiRlsRechazo(() =>
@@ -93,7 +94,7 @@ export function crearRutasBackofficeUnidades(pool: pg.Pool, jwtSecret: string): 
 
   app.patch("/:id", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora");
+    exigirRol(auth, ...ROLES_ADMIN);
     const id = c.req.param("id");
     const cuerpo = CuerpoActualizarUnidadBackoffice.parse(await c.req.json());
 
@@ -126,7 +127,7 @@ export function crearRutasBackofficeUnidades(pool: pg.Pool, jwtSecret: string): 
 
   app.delete("/:id", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora");
+    exigirRol(auth, ...ROLES_ADMIN);
     const id = c.req.param("id");
 
     const eliminadas = await relanzarSiRlsRechazo(() =>

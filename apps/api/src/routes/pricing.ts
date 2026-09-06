@@ -15,6 +15,7 @@ import {
 import { conSesion, enTransaccion } from "../db/contexto.js";
 import { requiereAutenticacion } from "../middleware/autenticacion.js";
 import { exigirRol } from "../middleware/roles.js";
+import { ROLES_ADMIN } from "../rolesComunes.js";
 import { sesionDeAuth } from "../middleware/tenant.js";
 
 /**
@@ -50,7 +51,7 @@ export function crearRutasPricing(pool: pg.Pool, jwtSecret: string): Hono {
 
   app.post("/unidades/:unidadId/base", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora");
+    exigirRol(auth, ...ROLES_ADMIN);
     const unidadId = c.req.param("unidadId");
     const cuerpo = CuerpoTarifaBase.parse(await c.req.json());
     await conSesion(pool, sesionDeAuth(auth), (cliente) =>
@@ -68,7 +69,7 @@ export function crearRutasPricing(pool: pg.Pool, jwtSecret: string): Hono {
 
   app.post("/unidades/:unidadId/temporadas", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora");
+    exigirRol(auth, ...ROLES_ADMIN);
     const unidadId = c.req.param("unidadId");
     const cuerpo = CuerpoTarifaTemporada.parse(await c.req.json());
     if (!esRangoValido(cuerpo.rango)) throw new ErrorDominio("rango_invalido", "El rango de la temporada debe cumplir inicio < fin");
@@ -87,7 +88,7 @@ export function crearRutasPricing(pool: pg.Pool, jwtSecret: string): Hono {
 
   app.post("/unidades/:unidadId/descuentos-duracion", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora");
+    exigirRol(auth, ...ROLES_ADMIN);
     const unidadId = c.req.param("unidadId");
     const cuerpo = CuerpoDescuentoDuracion.parse(await c.req.json());
     const fila = await conSesion(pool, sesionDeAuth(auth), (cliente) =>
@@ -107,7 +108,7 @@ export function crearRutasPricing(pool: pg.Pool, jwtSecret: string): Hono {
 
   app.post("/unidades/:unidadId/min-stay", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora");
+    exigirRol(auth, ...ROLES_ADMIN);
     const unidadId = c.req.param("unidadId");
     const cuerpo = CuerpoMinStay.parse(await c.req.json());
     if (!esRangoValido(cuerpo.rango)) throw new ErrorDominio("rango_invalido", "El rango de min-stay debe cumplir inicio < fin");
@@ -126,7 +127,7 @@ export function crearRutasPricing(pool: pg.Pool, jwtSecret: string): Hono {
 
   app.post("/unidades/:unidadId/reglas-canal", async (c) => {
     const auth = c.get("auth");
-    exigirRol(auth, "superadmin", "admin_gestora");
+    exigirRol(auth, ...ROLES_ADMIN);
     const unidadId = c.req.param("unidadId");
     const cuerpo = CuerpoReglaCanalPricing.parse(await c.req.json());
     const fila = await conSesion(pool, sesionDeAuth(auth), (cliente) =>
