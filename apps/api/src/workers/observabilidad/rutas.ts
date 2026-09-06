@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type pg from "pg";
 import type { EjecutorSql, FilaSql } from "@atiende-rv/db";
+import { requiereAutenticacion } from "../../middleware/autenticacion.js";
 import { exponerFormatoPrometheus, RegistroMetricas } from "./metricas.js";
 import { contarPendientesOutbox, edadPendienteMasViejoMs } from "./outboxWorker.js";
 import { reconocerAlerta, resolverAlerta } from "./alertas.js";
@@ -10,10 +11,20 @@ import { reconocerAlerta, resolverAlerta } from "./alertas.js";
  * más un CRUD mínimo de alertas con ack (H-037). Sub-router independiente
  * — `app.ts` (Lote 3) lo monta con UNA línea (`app.route("/", rutasObservabilidad(...))`),
  * el mismo patrón de fusión que `registrarRutas` usa para cada dominio.
+ *
+ * Corrección Auditoría 2 (P-02/producto-ux-operacion.md): `/alertas*`
+ * exige sesión igual que el resto de la API (`requiereAutenticacion`) —
+ * antes de esta corrección estas 3 rutas se montaban ANTES de
+ * `registrarRutas` sin ningún middleware de auth, así que `GET /alertas`
+ * era de lectura pública sin token y `POST /alertas/:id/ack` siempre
+ * devolvía 401 (dependía de `c.get("auth")`, nunca poblado). `/metrics` y
+ * `/health/detallado` se dejan exactamente como estaban — son sondas de
+ * infraestructura sin sesión de usuario, mismo comportamiento previo.
  */
 export interface DependenciasRutasObservabilidad {
   metricas: RegistroMetricas;
   pool: pg.Pool;
+  jwtSecret: string;
 }
 
 interface FilaAlerta extends FilaSql {
@@ -69,7 +80,10 @@ export function rutasObservabilidad(deps: DependenciasRutasObservabilidad): Hono
     });
   });
 
-  app.get("/alertas", async (c) => {
+  const rutasAlertas = new Hono();
+  rutasAlertas.use("*", requiereAutenticacion(deps.jwtSecret));
+
+  rutasAlertas.get("/", async (c) => {
     const estado = c.req.query("estado");
     const resultado = await ejecutor.query<FilaAlerta>(
       estado
@@ -80,20 +94,18 @@ export function rutasObservabilidad(deps: DependenciasRutasObservabilidad): Hono
     return c.json({ alertas: resultado.rows });
   });
 
-  app.post("/alertas/:id/ack", async (c) => {
-    const auth = c.get("auth" as never) as { usuarioId?: string } | undefined;
-    const usuarioId = auth?.usuarioId;
-    if (!usuarioId) {
-      return c.json({ error: { codigo: "no_autenticado", mensaje: "Se requiere sesión para reconocer una alerta" } }, 401);
-    }
-    await reconocerAlerta(ejecutor, c.req.param("id"), usuarioId);
+  rutasAlertas.post("/:id/ack", async (c) => {
+    const auth = c.get("auth");
+    await reconocerAlerta(ejecutor, c.req.param("id"), auth.usuarioId);
     return c.json({ ok: true });
   });
 
-  app.post("/alertas/:id/resolver", async (c) => {
+  rutasAlertas.post("/:id/resolver", async (c) => {
     await resolverAlerta(ejecutor, c.req.param("id"));
     return c.json({ ok: true });
   });
+
+  app.route("/alertas", rutasAlertas);
 
   return app;
 }

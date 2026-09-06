@@ -36,7 +36,9 @@ import {
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { AtiendeMark, AtiendeWordmark, ThemeSelector, cn } from "@atiende-rv/ui-atiende";
+import { useQueryLigero } from "../../lib/api/queryLigero";
 import { useSesion } from "../../lib/sesion/SesionProvider";
+import { listarAlertas } from "../../pages/monitor-sync/api";
 
 interface ItemMenu {
   id: string;
@@ -62,6 +64,7 @@ export const MENU_SECTIONS: GrupoMenu[] = [
     siempreAbierto: true,
     items: [
       { id: "monitor-sync", etiqueta: "Monitor de sincronización", icono: Activity, ruta: "/monitor-sync" },
+      { id: "alertas", etiqueta: "Alertas", icono: AlertTriangle, ruta: "/monitor-sync/alertas" },
     ],
   },
   {
@@ -117,6 +120,13 @@ export function AdminSidebar({
 }) {
   const { usuario, logout } = useSesion();
   const [collapsed, setCollapsed] = useState(false);
+  // Badge de alertas abiertas (Auditoría 2, P-02): visible sin entrar a la
+  // página de Alertas, igual que el patrón de "N conflicto(s) pendiente(s)"
+  // ya usado en MonitorSyncPage. Se ignora el error silenciosamente aquí —
+  // el sidebar no es lugar para mostrar una caja de error de red; la propia
+  // página de Alertas sí la muestra si la recarga falla.
+  const alertasActivas = useQueryLigero(() => listarAlertas("activa"), []);
+  const totalAlertasActivas = alertasActivas.datos?.alertas.length ?? 0;
   const [grupoAbierto, setGrupoAbierto] = useState<string | null>(() => {
     try {
       return localStorage.getItem(CLAVE_GRUPO_ABIERTO) || "CALENDARIO";
@@ -229,7 +239,19 @@ export function AdminSidebar({
                           }
                         >
                           <item.icono className="w-4 h-4 shrink-0" strokeWidth={1.75} />
-                          {!collapsed && <span className="truncate">{item.etiqueta}</span>}
+                          {!collapsed && (
+                            <span className="flex-1 flex items-center justify-between min-w-0 gap-2">
+                              <span className="truncate">{item.etiqueta}</span>
+                              {item.id === "alertas" && totalAlertasActivas > 0 && (
+                                <span
+                                  aria-label={`${totalAlertasActivas} alerta(s) abierta(s)`}
+                                  className="shrink-0 rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-semibold leading-none text-destructive-foreground"
+                                >
+                                  {totalAlertasActivas}
+                                </span>
+                              )}
+                            </span>
+                          )}
                         </NavLink>
                       ) : (
                         <div

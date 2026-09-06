@@ -341,6 +341,33 @@ describe("errores de dominio tipados", () => {
   });
 });
 
+describe("Auditoría 2, corrección P-02: GET /alertas y ack/resolver exigen sesión", () => {
+  // Antes de esta corrección `apps/api/src/workers/observabilidad/rutas.ts`
+  // montaba `/alertas*` ANTES de `registrarRutas` sin ningún middleware de
+  // auth: `GET /alertas` respondía sin token a cualquiera, y
+  // `POST /alertas/:id/ack` siempre devolvía 401 porque dependía de
+  // `c.get("auth")`, nunca poblado en ese router. Esta prueba fija el
+  // comportamiento correcto: mismo contrato de auth que el resto de la API.
+  it("401 token_invalido sin encabezado Authorization en las 3 rutas", async () => {
+    const sinToken = await app.request("/alertas");
+    expect(sinToken.status).toBe(401);
+
+    const ack = await app.request("/alertas/00000000-0000-0000-0000-000000000000/ack", { method: "POST" });
+    expect(ack.status).toBe(401);
+
+    const resolver = await app.request("/alertas/00000000-0000-0000-0000-000000000000/resolver", { method: "POST" });
+    expect(resolver.status).toBe(401);
+  });
+
+  it("con sesión válida, GET /alertas responde 200 con un arreglo (vacío o no)", async () => {
+    const { accessToken } = await login(fx.emailAdminA, fx.passwordAdminA);
+    const res = await app.request("/alertas", autenticado(accessToken));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { alertas: unknown[] };
+    expect(Array.isArray(body.alertas)).toBe(true);
+  });
+});
+
 describe("H-047 / §RV19/21-7: logs sin PII en un flujo completo", () => {
   it("un flujo de login + crear reserva con datos de huésped no filtra email/teléfono en los logs", async () => {
     lineasLog.length = 0;

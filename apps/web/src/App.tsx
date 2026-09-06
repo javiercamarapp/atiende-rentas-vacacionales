@@ -5,6 +5,7 @@ import { CalendarioMaestroPage } from "./pages/calendario/CalendarioMaestroPage"
 import { MatrizConectividadPage } from "./pages/conectividad/MatrizConectividadPage";
 import { MonitorSyncPage } from "./pages/monitor-sync/MonitorSyncPage";
 import { ConflictosPage } from "./pages/monitor-sync/ConflictosPage";
+import { AlertasPage } from "./pages/monitor-sync/AlertasPage";
 import { OperacionPage } from "./pages/limpieza/OperacionPage";
 import { BandejaPage } from "./pages/mensajeria/BandejaPage";
 import { HiloPage } from "./pages/mensajeria/HiloPage";
@@ -44,6 +45,7 @@ export default function App() {
                   <Route path="/conectividad" element={<MatrizConectividadPage />} />
                   <Route path="/monitor-sync" element={<MonitorSyncPage />} />
                   <Route path="/monitor-sync/conflictos" element={<ConflictosPage />} />
+                  <Route path="/monitor-sync/alertas" element={<AlertasPage />} />
                   <Route path="/propiedades" element={<PropiedadesPage />} />
                   <Route path="/cuentas-canal" element={<CuentasCanalPage />} />
                   <Route

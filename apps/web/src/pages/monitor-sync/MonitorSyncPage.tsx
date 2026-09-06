@@ -1,17 +1,19 @@
 import { Link } from "react-router-dom";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, BellRing } from "lucide-react";
 import { Card, CardContent } from "@atiende-rv/ui-atiende";
 import { useQueryLigero } from "../../lib/api/queryLigero";
-import { listarConflictos, listarCuentasCanal } from "./api";
+import { listarAlertas, listarConflictos, listarCuentasCanal } from "./api";
 import { ErrorApiAlerta } from "../calendario/components/ErrorApiAlerta";
 import { CuentaSyncCard } from "./CuentaSyncCard";
 
 export function MonitorSyncPage() {
   const cuentasQuery = useQueryLigero(() => listarCuentasCanal(), []);
   const conflictosQuery = useQueryLigero(() => listarConflictos(false), []);
+  const alertasQuery = useQueryLigero(() => listarAlertas("activa"), []);
 
   const cuentas = cuentasQuery.datos?.cuentas ?? [];
   const conflictosPendientes = conflictosQuery.datos?.conflictos ?? [];
+  const alertasActivas = alertasQuery.datos?.alertas ?? [];
 
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -32,6 +34,19 @@ export function MonitorSyncPage() {
           {conflictosPendientes.length} conflicto(s) pendiente(s) de resolución.{" "}
           <Link to="/monitor-sync/conflictos" className="underline font-medium">
             Ver conflictos
+          </Link>
+        </div>
+      )}
+
+      {alertasActivas.length > 0 && (
+        <div
+          role="alert"
+          className="flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-400"
+        >
+          <BellRing className="w-4 h-4 shrink-0" />
+          {alertasActivas.length} alerta(s) abierta(s) del motor de observabilidad.{" "}
+          <Link to="/monitor-sync/alertas" className="underline font-medium">
+            Ver alertas
           </Link>
         </div>
       )}

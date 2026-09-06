@@ -49,7 +49,7 @@ export function crearApp(opciones: OpcionesCrearApp = {}) {
   const metricas = new RegistroMetricas();
   const trazador = crearTrazador("atiende-rv-api", construirExportadoresDesdeEntorno(leerConfiguracionOtelEntorno()));
   app.use("*", crearMiddlewareObservabilidad(trazador, metricas));
-  app.route("/", rutasObservabilidad({ metricas, pool }));
+  app.route("/", rutasObservabilidad({ metricas, pool, jwtSecret: config.jwtSecret }));
 
   app.get("/health", (c) =>
     c.json({
@@ -68,7 +68,13 @@ export function crearApp(opciones: OpcionesCrearApp = {}) {
   // externo suscribiendo esta URL no tiene sesión de usuario).
   app.route("/feed/ical", crearRutasFeedIcal(pool));
 
-  registrarRutas(app, { pool, jwtSecret: config.jwtSecret, keyring, urlPublicaApi: config.urlPublicaApi });
+  registrarRutas(app, {
+    pool,
+    jwtSecret: config.jwtSecret,
+    keyring,
+    urlPublicaApi: config.urlPublicaApi,
+    rateLimitLoginPorEmail: config.rateLimitLoginPorEmail,
+  });
 
   // Manejador central de errores: todo `ErrorDominio` mapea a su
   // `httpStatus`/`codigo` fijo (nunca 500 genérico para un error de
