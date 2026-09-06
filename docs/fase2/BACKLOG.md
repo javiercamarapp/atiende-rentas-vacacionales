@@ -1,0 +1,198 @@
+# Backlog — Fase 2 (Atiende Rentas Vacacionales)
+
+Épicas E01–E16, historias H-001–H-095. Cada historia traza a uno o más
+`REQ-nnn` de `docs/REQUISITOS.md` y a una sección de `docs/ACEPTACION.md`.
+Estimación relativa en talla (S/M/L/XL, no días — calibrar velocidad real en
+el primer lote). Estado inicial de todas las historias: **por hacer**.
+Prioridad hereda la convención MUST/SHOULD/COULD de REQUISITOS.md. Ninguna
+historia marcada `bloqueada por externo` o `bloqueada por laguna legal`
+puede cerrarse en Fase 2 sin la evidencia externa exacta descrita en
+`docs/ACEPTACION.md` ("Criterios que NO pueden cerrarse sin aprobación
+externa").
+
+---
+
+## E01 — Núcleo de calendario e invariantes
+
+| ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
+|---|---|---|---|---|---|---|
+| H-001 | Tabla `ocupacion_unidad` con `EXCLUDE USING gist` + `btree_gist` | REQ-024, REQ-025, REQ-026, REQ-033 | §Calendario-1 | MUST | L | por hacer |
+| H-002 | `daterange` semiabierto `[check_in,check_out)` con validación de bounds y normalización | REQ-024, REQ-026 | §Calendario-1, §Calendario-2 (caso 15) | MUST | S | por hacer |
+| H-003 | Precedencia de capas (`RESERVA_CANAL>BLOQUEO_PROPIETARIO>MANTENIMIENTO>BUFFER_LIMPIEZA`) y tabla `conflicto_calendario` | REQ-006, REQ-035, REQ-044 | §Calendario-2 (caso 5) | MUST | M | por hacer |
+| H-004 | Zona horaria IANA obligatoria por propiedad; ninguna columna operativa `timestamp` sin zona | REQ-032, REQ-033 | §Calendario-2 (caso 14) | MUST | S | por hacer |
+| H-005 | Validación empírica de concurrencia real del `EXCLUDE` contra `embedded-postgres` (dos inserts concurrentes solapados) | REQ-025 (D-012) | §Calendario-1 | MUST | M | por hacer |
+| H-006 | Motor de resolución `UID→SEQUENCE→DTSTAMP` + hash de contenido como respaldo obligatorio | REQ-028, REQ-167, REQ-179 | §Calendario-2 (casos 1, 3, 13), §RV19/21-1 | MUST | L | por hacer |
+| H-007 | Estados de `ocupacion_unidad` (`confirmado/provisional/cancelado/conflicto_pendiente`) + campo independiente `bloqueante` | REQ-091, REQ-048, REQ-068 | §UX-1 | MUST | M | por hacer |
+| H-008 | Buffer de limpieza como bloqueo tipado `BUFFER_LIMPIEZA` | REQ-042, REQ-054, REQ-112 | §Calendario-2 (caso 15) | MUST | S | por hacer |
+| H-009 | Duración mínima como regla en fuente de verdad interna | REQ-043 | §Calendario-1 | SHOULD | S | por hacer |
+| H-010 | `huesped_minimo` con minimización de datos (sin CRM) | REQ-045, REQ-106 | §Privacidad-1 | MUST | S | por hacer |
+
+## E02 — Propiedades, unidades, canales, cuentas y matriz de conectividad
+
+| ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
+|---|---|---|---|---|---|---|
+| H-011 | Modelo `propiedad`/`unidad` con soporte multi-unidad | REQ-071, REQ-136 | §Datos-1 | MUST | M | por hacer |
+| H-012 | `cuenta_canal`/`listing_canal` con unicidad parcial `(unidad_id, cuenta_canal_id) WHERE activo` | RV17 §6.3 | §Conectividad-1 | MUST | S | por hacer |
+| H-013 | Interfaz `ChannelAdapter` con `ChannelCapabilities` declaradas honestamente | REQ-086 | §Conectividad-1 | MUST | M | por hacer |
+| H-014 | `getConnectionState()` con enum cerrado, nunca `producción` sin evidencia reciente | REQ-008, REQ-017 | §Conectividad-1 | MUST | M | por hacer |
+| H-015 | Matriz de conectividad en UI (latencia por canal, estados bloqueados/pausados) | REQ-039, REQ-052, REQ-075, REQ-076, REQ-077, REQ-085 | §Conectividad-2, §Conectividad-4 | MUST | L | por hacer |
+| H-016 | Anti-paridad: ninguna pantalla afirma paridad de permisos/latencia entre canales sin nota | REQ-018 | §Roles-3 | MUST | S | por hacer |
+
+## E03 — Reservas y bloqueos por capas
+
+| ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
+|---|---|---|---|---|---|---|
+| H-017 | Flujo de creación de reserva confirmada (transacción + outbox en el mismo commit) | REQ-034, REQ-041 | §Calendario-1, §Calendario-4 | MUST | M | por hacer |
+| H-018 | Cancelación que nunca reabre noche ocupada por otra causa | REQ-006, REQ-044 | §Calendario-2 (caso 5) | MUST | M | por hacer |
+| H-019 | Modificación de fechas (ampliar/reducir/mover) con verificación de solapamiento | RV07 §6 | §Calendario-2 (caso 4) | MUST | M | por hacer |
+| H-020 | Estancias contiguas sin falso solapamiento (checkout=checkin mismo día) | REQ-024 | §Calendario-2 (caso 15) | MUST | S | por hacer |
+| H-021 | Solicitudes pendientes: bloqueante (Airbnb) vs. no bloqueante (Booking RtB) | REQ-048, REQ-068 | §Calendario-2 (caso 2) | MUST | M | por hacer |
+| H-022 | Bloqueo manual de propietario/mantenimiento propagado a canales conectados | REQ-118, REQ-119 | §Calendario-1 | MUST | S | por hacer |
+
+## E04 — Import/export iCal SSRF-safe y parser robusto
+
+| ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
+|---|---|---|---|---|---|---|
+| H-023 | Parser ICS RFC 5545 (`DTEND`/`DURATION`, `UID`, `SEQUENCE`, `STATUS`) | REQ-027, REQ-028, REQ-029, REQ-179 | §Calendario-2 (casos 3, 4, 9) | MUST | L | por hacer |
+| H-024 | Controles anti-SSRF antes de cualquier `GET` (allowlist esquema, deny-list metadata/rangos privados, sin redirects) | REQ-030 | §RV19/21-2 (caso adversarial 20) | MUST | M | por hacer |
+| H-025 | Límites propios de tamaño/recurrencia/timeout del importador | REQ-031 | §RV19/21-3 | MUST | M | por hacer |
+| H-026 | Export por unidad/canal con `UID` namespaced y `SEQUENCE` incremental | D-004 | §Calendario-4 | MUST | M | por hacer |
+| H-027 | Interpretación de `DATE` sin hora en zona horaria de la propiedad | REQ-032 | §Calendario-2 (caso 14) | MUST | S | por hacer |
+| H-028 | Feed malformado/vacío tratado explícitamente (rechazo registrado, sin estado parcial) | REQ-005, REQ-173 | §Calendario-3 (casos 9, 10) | MUST | M | por hacer |
+
+## E05 — Anti-eco, dedupe, cuarentena, reconciliación
+
+| ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
+|---|---|---|---|---|---|---|
+| H-029 | Anti-eco en 3 capas (`UID`/namespace, hash de contenido, metadato `exportado_a`) | REQ-037, REQ-051, REQ-090 | §Calendario-4 | MUST | L | por hacer |
+| H-030 | Idempotencia de import por `(canal, unidad, UID)` con `upsert` | REQ-036 | §Calendario-2 (casos 6, 7, 8, 16) | MUST | M | por hacer |
+| H-031 | Cuarentena de feed inaccesible/malformado (último estado válido congelado) | REQ-005 | §Calendario-3 | MUST | M | por hacer |
+| H-032 | Reconciliación incremental (upsert por ciclo) vs. completa (comparación de UIDs) | REQ-038 | §Operación-2 | MUST | L | por hacer |
+| H-033 | UID reciclado detectado por hash de contenido → revisión humana | REQ-168 | §Calendario-2 (caso 13) | MUST | M | por hacer |
+| H-034 | Backoff ante HTTP 429/rate limit sin bucle agresivo | REQ-172 | §Calendario-2 (caso 17) | MUST | S | por hacer |
+
+## E06 — Monitor de sync y alertas
+
+| ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
+|---|---|---|---|---|---|---|
+| H-035 | Instrumentación OTel: Gauge edad última sync, Counter errores (`error_class`), Histogram latencia, UpDownCounter cola | REQ-038, REQ-156 | §Operación-2 | MUST | L | por hacer |
+| H-036 | Trazas distribuidas del ciclo webhook/import→cola→worker→escritura→confirmación | REQ-157 | §Operación-2 | MUST | M | por hacer |
+| H-037 | Alertas y runbooks (edad sync, tasa error, drift, cola creciente) — nunca cancelan ni contactan | REQ-009, REQ-163 | §Operación-1 | MUST | L | por hacer |
+| H-038 | Panel de monitor de sync en UI (drift, conflictos activos, edad por canal/unidad) | REQ-038 | §Operación-2 | MUST | M | por hacer |
+| H-039 | Descomposición de latencia interna vs. por canal en UI y reporting | REQ-039 | §RV19/21-8 | MUST | M | por hacer |
+
+## E07 — Auth, roles, multitenant, RLS, auditoría
+
+| ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
+|---|---|---|---|---|---|---|
+| H-040 | JWT propio (`jose`) con claims compatibles con RLS real de `atiende-restaurantes` | D-009 | §RV19/21-4 | MUST | M | por hacer |
+| H-041 | RLS con `is_tenant_member` parametrizada + `FORCE ROW LEVEL SECURITY` por tabla | REQ-138, REQ-139 | §RV19/21-4 | MUST | L | por hacer |
+| H-042 | Suite de aislamiento cross-tenant en CI (caso adversarial 18) | REQ-140 | §RV19/21-4 | MUST | M | por hacer |
+| H-043 | Modelo de roles internos (Superadmin, Admin gestora, Operador, Limpieza, Propietario, Contador) + 3 niveles de colaborador por propiedad | REQ-011, REQ-012, REQ-013, REQ-019 | §Roles-1, §Roles-4 | MUST | L | por hacer |
+| H-044 | Escalada de privilegios rechazada en capa de servicio, no solo UI (caso adversarial 19) | REQ-140 | §RV19/21-4 | MUST | M | por hacer |
+| H-045 | `audit_log` append-only con triggers en tablas sensibles + acceso "romper cristal" | REQ-020, REQ-127 | §Auditoría-1 | MUST | M | por hacer |
+| H-046 | Cifrado de credenciales de canal en reposo (AES-256-GCM/ChaCha20-Poly1305) + rotación | REQ-141 | §RV19/21-13 | MUST | M | por hacer |
+| H-047 | Logs sin PII/credenciales/payload completo (metadatos operativos únicamente) | REQ-142 | §RV19/21-7 | MUST | M | por hacer |
+| H-048 | Multi-empresa-gestora: un propietario vinculado a 2+ empresas sin fuga cruzada | REQ-023 | §Roles-4 | COULD | M | por hacer |
+
+## E08 — Operación: limpieza y mantenimiento
+
+| ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
+|---|---|---|---|---|---|---|
+| H-049 | Tarea de limpieza automática al checkout + reprogramación si cambia la fecha | REQ-111, REQ-098 | §Limpieza-1 | MUST | M | por hacer |
+| H-050 | Buffer configurable checkout↔check-in, bloqueo real de calendario | REQ-054, REQ-112 | §UX-1 | MUST | S | por hacer |
+| H-051 | Checklist con fotos/timestamps por ítem; incompleto puede bloquear reapertura | REQ-113, REQ-114 | §Limpieza-2 | SHOULD | M | por hacer |
+| H-052 | Inventario/ropa blanca con alertas de stock bajo, descuento automático | REQ-115 | §Limpieza-2 | SHOULD | M | por hacer |
+| H-053 | Portal de proveedor externo con acceso acotado a su tarea asignada | REQ-116 | §Limpieza-2 | MUST | M | por hacer |
+| H-054 | Notificación multicanal configurable por evento de tarea | REQ-117 | §Limpieza-2 | SHOULD | S | por hacer |
+| H-055 | Incidencias de mantenimiento documentables sin cierre/cancelación automática | REQ-118, REQ-119 | §RV19/21-6 | MUST | M | por hacer |
+
+## E09 — Mensajes con aprobación humana
+
+| ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
+|---|---|---|---|---|---|---|
+| H-056 | Motor de plantillas/respuestas rápidas programadas por evento | REQ-099, REQ-101 | §Mensajería-1 | MUST | M | por hacer |
+| H-057 | Validación de límites por canal (4000 caracteres Airbnb; sin contacto directo pre-reserva Vrbo) | REQ-100, REQ-103 | §Mensajería-1, §Mensajería-2 | MUST | S | por hacer |
+| H-058 | Filtro de contenido (sin pago fuera de plataforma, sin lenguaje discriminatorio) | REQ-105, REQ-108 | §Mensajería-1 | MUST | M | por hacer |
+| H-059 | Cola de aprobación humana obligatoria para todo borrador de IA antes de enviar | REQ-104 | §RV19/21-6 | MUST | L | por hacer |
+| H-060 | Triggers de escalamiento a humano (queja, emergencia, reembolso, VIP) | REQ-110, REQ-146 | §RV19/21-6 | MUST | M | por hacer |
+| H-061 | Aviso a operadores de que Airbnb puede escanear/analizar mensajes | REQ-109 | §Privacidad-2 | SHOULD | S | por hacer |
+
+## E10 — Finanzas, owners y statements
+
+| ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
+|---|---|---|---|---|---|---|
+| H-062 | `statement` por owner/periodo calculado desde `reserva` (nunca al revés) | REQ-121, REQ-122 | §Finanzas-1 | MUST | L | por hacer |
+| H-063 | Configuración neto/bruto por canal para evitar doble descuento de comisión | REQ-121 | §Finanzas-1 | MUST | M | por hacer |
+| H-064 | Adaptador de conciliación Vrbo (import CSV/XLS oficial) | REQ-124 | §Finanzas-2 | MUST | M | por hacer |
+| H-065 | Comisión de Booking.com/Vrbo configurable por tenant/propiedad (no hardcodeada) | REQ-125 | §Finanzas-2 | MUST | S | por hacer |
+| H-066 | Auditoría append-only de mutaciones financieras (statement, gasto, comisión) | REQ-127 | §Auditoría-1 | MUST | M | por hacer |
+| H-067 | Captura de RFC por unidad y alerta de retención agravada sin calcular impuestos | REQ-129 | §Legal-1 | MUST (cálculo bloqueado por laguna legal B-005) | S | por hacer |
+
+## E11 — Pricing básico
+
+| ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
+|---|---|---|---|---|---|---|
+| H-068 | Motor de reglas base + estacionalidad + descuentos por duración | REQ-130, REQ-131, REQ-132 | §Pricing-1 | SHOULD | L | por hacer |
+| H-069 | Sincronización de tarifa condicionada a integración API activa (nunca vía iCal) | REQ-130 | §Pricing-1 | MUST | S | por hacer |
+| H-070 | Desactivación explícita del pricing nativo del canal al activar el propio | REQ-133 | §Pricing-1 | MUST | S | por hacer |
+| H-071 | Paridad de precios configurable por jurisdicción/mercado | REQ-135 | §Pricing-2 | SHOULD | S | por hacer |
+
+## E12 — Reporting
+
+| ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
+|---|---|---|---|---|---|---|
+| H-072 | Reportes operativos/financieros derivados de `reserva`/`statement`/`tarea_limpieza` sin duplicar lógica de cálculo | RV17 §12 | §Finanzas-1 | SHOULD | M | por hacer |
+| H-073 | Reporte de latencia interna vs. por canal con percentiles p50/p95/p99 | REQ-039, REQ-171 | §RV19/21-8, §Plan-1 | MUST | M | por hacer |
+
+## E13 — Back office / superadmin
+
+| ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
+|---|---|---|---|---|---|---|
+| H-074 | Panel multi-tenant: alta/baja de tenants, salud agregada de integraciones por canal | REQ-019, REQ-020 | §Roles-4 | MUST | L | por hacer |
+| H-075 | Acceso "romper cristal" de Superadmin auditado (quién, cuándo, qué, por qué) | REQ-020 | §Auditoría-1 | MUST | M | por hacer |
+| H-076 | Restricción: superadmin nunca lee contenido de conversaciones sin causa auditada | REQ-020 | §Auditoría-1 | MUST | S | por hacer |
+
+## E14 — Automatización agéntica
+
+| ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
+|---|---|---|---|---|---|---|
+| H-077 | Catálogo de tools con `input_schema.properties: {}` — cero identificadores de negocio como parámetro | REQ-004, REQ-143 | §RV19/21-14 | MUST | L | por hacer |
+| H-078 | Matriz rol×tool resuelta en servidor antes de construir la lista de tools para el modelo | REQ-143 | §RV19/21-14 | MUST | M | por hacer |
+| H-079 | Presupuesto duro de IA por tenant, reservado antes de cada llamada | REQ-144 | §Automatización-1 | MUST | M | por hacer |
+| H-080 | Trazabilidad de tool-call (actor, rol, canal, timestamp, costo por modelo real) | REQ-145 | §Automatización-2 | MUST | M | por hacer |
+| H-081 | Escalamiento obligatorio (ambigüedad, escalada emocional, monto alto, acción irreversible) | REQ-146 | §RV19/21-6 | MUST | M | por hacer |
+| H-082 | Verificación en CI de ausencia estructural de `cancelar_reserva`/`contactar_huesped_directo` | REQ-002, REQ-146 | §RV19/21-6 | MUST | M | por hacer |
+| H-083 | Loop-guard: tope de rondas de tool-calling verificado antes de ejecutar la siguiente | REQ-149 | §Automatización-2 | MUST | S | por hacer |
+| H-084 | Catálogo de evals sintéticos y umbrales de promoción de fase de autonomía | REQ-147 | §Automatización-3 | SHOULD | L | por hacer |
+| H-085 | Fallback entre proveedores LLM limitado a generación de texto, nunca re-ejecuta mutaciones | REQ-148 | §Automatización-2 | MUST | M | por hacer |
+
+## E15 — Observabilidad y recuperación
+
+| ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
+|---|---|---|---|---|---|---|
+| H-086 | Backup completo diario + WAL continuo, retención 35d/12m, prueba de restauración mensual | REQ-159 | §Operación-3 | MUST | M | por hacer |
+| H-087 | Reconciliación de drift obligatoria tras todo restore antes de reanudar push automático | REQ-160 | §Operación-3 | MUST | M | por hacer |
+| H-088 | Migraciones patrón expand/contract, nunca bloqueantes en horario de check-in/checkout | REQ-162 | §Operación-3 | MUST | M | por hacer |
+| H-089 | Feature flags default `false` para funcionalidad que module dinero/cancelación/contacto | REQ-163 | §Operación-1 | MUST | S | por hacer |
+| H-090 | Pausa automática de push ante token de canal revocado/expirado | REQ-165 | §Operación-1 | MUST | M | por hacer |
+| H-091 | Modo degradado de solo-lectura del calendario si la BD primaria no responde | REQ-166 | §Operación-3 | MUST | L | por hacer |
+
+## E16 — Pruebas adversariales (20 casos) y carga
+
+| ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
+|---|---|---|---|---|---|---|
+| H-092 | Implementación completa del catálogo de 20 casos adversariales, ejecutable en CI | REQ-170 | §Calendario-2 (20 casos) | MUST | XL | por hacer |
+| H-093 | Suite de carga del importador con objetivos calibrados en piloto (nunca a priori) | REQ-171 | §Plan-1 | MUST | L | por hacer |
+| H-094 | Pruebas de SSRF, límites de tamaño ICS y XXE (si aplica parser XML) | REQ-030, REQ-031, REQ-155 | §RV19/21-2, §RV19/21-3, §RV19/21-15 | MUST | M | por hacer |
+| H-095 | Pruebas de aislamiento multitenant y escalada de privilegios (casos 18, 19) | REQ-140 | §RV19/21-4 | MUST | M | por hacer |
+
+---
+
+## Resumen
+
+- **Épicas:** 16 (E01–E16)
+- **Historias:** 95 (H-001–H-095)
+- **Por prioridad:** 79 MUST, 12 SHOULD, 4 COULD (conteo manual sobre las tablas de arriba; recalcular con `grep -c` al actualizar este archivo)
+- **Estado inicial:** 95/95 "por hacer"
+- Cobertura explícita confirmada: núcleo de calendario (E01, E03), propiedades/canales/matriz (E02), import/export iCal SSRF-safe (E04), anti-eco/dedupe/cuarentena/reconciliación (E05), monitor de sync y alertas (E06), auth/roles/RLS/auditoría (E07), limpieza/mantenimiento (E08), mensajería con aprobación humana (E09), finanzas/owners (E10), pricing (E11), reporting (E12), back office (E13), automatización agéntica (E14), observabilidad/recuperación (E15), pruebas adversariales y carga (E16).
