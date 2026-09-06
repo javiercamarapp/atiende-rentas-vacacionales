@@ -26,6 +26,28 @@ describe("validarIpPermitida — RV19-R-01/02, caso adversarial 20", () => {
     expect(validarIpPermitida("93.184.216.34").permitida).toBe(true);
   });
 
+  // Regresión permanente S-01 (auditoría-2, docs/auditoria-2/seguridad.md):
+  // toda IPv6 que codifica una IPv4 (mapeada, NAT64, compatible-deprecada,
+  // en cualquier representación textual) debe revalidarse contra el
+  // deny-list IPv4 completo, no solo contra los patrones IPv6 puros.
+  const ipv4MapeadasQueDebenBloquearse = [
+    ["::ffff:127.0.0.1", "loopback vía mapeo dotted-quad"],
+    ["::ffff:169.254.169.254", "metadata cloud vía mapeo dotted-quad"],
+    ["::ffff:10.0.0.1", "RFC1918 vía mapeo dotted-quad"],
+    ["0:0:0:0:0:ffff:7f00:1", "loopback vía mapeo hexadecimal completo (127.0.0.1)"],
+    ["::FFFF:127.0.0.1", "loopback vía mapeo con mayúsculas"],
+    ["64:ff9b::7f00:1", "loopback vía NAT64 Well-Known Prefix (127.0.0.1)"],
+    ["::127.0.0.1", "loopback vía IPv4-compatible deprecada"],
+  ] as const;
+
+  it.each(ipv4MapeadasQueDebenBloquearse)("rechaza %s (%s) — S-01", (ip) => {
+    expect(validarIpPermitida(ip).permitida).toBe(false);
+  });
+
+  it("permite una IPv4-mapeada que resuelve a una IP pública normal (no bloquea de más)", () => {
+    expect(validarIpPermitida("::ffff:93.184.216.34").permitida).toBe(true);
+  });
+
   it("validarTodasLasIps es fail-closed: una sola IP peligrosa rechaza todo el conjunto", () => {
     const resultado = validarTodasLasIps(["93.184.216.34", "169.254.169.254"]);
     expect(resultado.permitida).toBe(false);

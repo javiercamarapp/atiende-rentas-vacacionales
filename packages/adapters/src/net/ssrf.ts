@@ -56,17 +56,93 @@ const RANGOS_BLOQUEADOS_IPV4: Array<{ base: string; bits: number; motivo: string
   { base: "100.64.0.0", bits: 10, motivo: "CGNAT compartido (RFC 6598)" },
 ];
 
-function normalizarIpv6(ip: string): string {
-  return ip.toLowerCase().replace(/^::ffff:/, "");
+/** Parsea una dirección IPv6 textual (cualquier forma válida: comprimida
+ * con `::`, expandida, con dotted-quad IPv4 embebido en el último grupo)
+ * a sus 16 bytes. Devuelve `null` si la cadena no es una IPv6 válida.
+ * Necesario para detectar de forma robusta (no solo por prefijo literal
+ * `"::ffff:"`) CUALQUIER representación de una IPv4 mapeada/embebida en
+ * IPv6 (S-01): dotted-quad (`::ffff:127.0.0.1`), hexadecimal completa
+ * (`0:0:0:0:0:ffff:7f00:1`), con mayúsculas, con relleno de ceros, etc. */
+function parsearIpv6ABytes(ipOriginal: string): number[] | null {
+  let ip = ipOriginal.trim().toLowerCase();
+  if (ip.startsWith("[") && ip.endsWith("]")) ip = ip.slice(1, -1);
+  const idxZona = ip.indexOf("%");
+  if (idxZona !== -1) ip = ip.slice(0, idxZona);
+  if (ip === "") return null;
+
+  const mitades = ip.split("::");
+  if (mitades.length > 2) return null; // "::" no puede aparecer más de una vez
+
+  const partir = (grupo: string): string[] => (grupo === "" ? [] : grupo.split(":"));
+
+  const expandirIpv4Embebida = (grupos: string[]): string[] | null => {
+    if (grupos.length === 0) return grupos;
+    const ultimo = grupos[grupos.length - 1]!;
+    if (!ultimo.includes(".")) return grupos;
+    if (!/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ultimo)) return null;
+    const octetos = ultimo.split(".").map(Number);
+    if (octetos.some((o) => !Number.isInteger(o) || o < 0 || o > 255)) return null;
+    const hexAlto = (((octetos[0]! << 8) | octetos[1]!) >>> 0).toString(16);
+    const hexBajo = (((octetos[2]! << 8) | octetos[3]!) >>> 0).toString(16);
+    return [...grupos.slice(0, -1), hexAlto, hexBajo];
+  };
+
+  let izquierda = expandirIpv4Embebida(partir(mitades[0]!));
+  let derecha = mitades.length === 2 ? expandirIpv4Embebida(partir(mitades[1]!)) : [];
+  if (izquierda === null || derecha === null) return null;
+
+  const totalGrupos = izquierda.length + derecha.length;
+  if (mitades.length === 1) {
+    if (totalGrupos !== 8) return null;
+  } else {
+    if (totalGrupos > 7) return null; // "::" debe representar >=1 grupo de ceros
+  }
+  const relleno = mitades.length === 2 ? new Array(8 - totalGrupos).fill("0") : [];
+  const grupos = [...izquierda, ...relleno, ...derecha];
+  if (grupos.length !== 8) return null;
+
+  const bytes: number[] = [];
+  for (const g of grupos) {
+    if (!/^[0-9a-f]{1,4}$/.test(g)) return null;
+    const n = parseInt(g, 16);
+    bytes.push((n >> 8) & 0xff, n & 0xff);
+  }
+  return bytes;
 }
 
-function ipv6EsLoopbackOULinkLocalOULocalUnica(ip: string): { bloqueada: boolean; motivo?: string } {
-  const norm = normalizarIpv6(ip);
-  if (norm === "::1") return { bloqueada: true, motivo: "loopback IPv6" };
-  if (norm === "::") return { bloqueada: true, motivo: "IPv6 no especificada" };
-  if (/^fe[89ab][0-9a-f]:/i.test(norm)) return { bloqueada: true, motivo: "link-local IPv6 (fe80::/10)" };
-  if (/^f[cd][0-9a-f]{2}:/i.test(norm)) return { bloqueada: true, motivo: "unique-local IPv6 (fc00::/7)" };
-  if (/^ff/i.test(norm)) return { bloqueada: true, motivo: "multicast IPv6 (ff00::/8)" };
+/** Si los bytes de una IPv6 codifican una IPv4 (mapeada `::ffff:0:0/96`,
+ * compatible-deprecada `::/96`, o NAT64 well-known `64:ff9b::/96`),
+ * devuelve esa IPv4 en notación decimal con puntos. */
+function ipv4EmbebidaEnBytes(bytes: number[]): string | null {
+  const esCero = (desde: number, hasta: number): boolean => bytes.slice(desde, hasta).every((b) => b === 0);
+  const ultimosCuatro = (): string => bytes.slice(12, 16).join(".");
+
+  // ::ffff:a.b.c.d — IPv4-mapeada (RFC 4291 §2.5.5.2), el vector S-01.
+  if (esCero(0, 10) && bytes[10] === 0xff && bytes[11] === 0xff) return ultimosCuatro();
+  // 64:ff9b::a.b.c.d — NAT64 Well-Known Prefix (RFC 6052), mismo vector.
+  if (
+    bytes[0] === 0x00 &&
+    bytes[1] === 0x64 &&
+    bytes[2] === 0xff &&
+    bytes[3] === 0x9b &&
+    esCero(4, 12)
+  ) {
+    return ultimosCuatro();
+  }
+  // ::a.b.c.d — IPv4-compatible, deprecada (RFC 4291), excluyendo ::/128 y ::1/128.
+  if (esCero(0, 12) && !esCero(12, 16) && !(esCero(12, 15) && bytes[15] === 1)) return ultimosCuatro();
+  return null;
+}
+
+function ipv6EsLoopbackOULinkLocalOULocalUnica(bytes: number[]): { bloqueada: boolean; motivo?: string } {
+  const esCero = (desde: number, hasta: number): boolean => bytes.slice(desde, hasta).every((b) => b === 0);
+  if (esCero(0, 16)) return { bloqueada: true, motivo: "IPv6 no especificada" };
+  if (esCero(0, 15) && bytes[15] === 1) return { bloqueada: true, motivo: "loopback IPv6" };
+  if ((bytes[0]! & 0xff) === 0xfe && (bytes[1]! & 0xc0) === 0x80) {
+    return { bloqueada: true, motivo: "link-local IPv6 (fe80::/10)" };
+  }
+  if ((bytes[0]! & 0xfe) === 0xfc) return { bloqueada: true, motivo: "unique-local IPv6 (fc00::/7)" };
+  if (bytes[0] === 0xff) return { bloqueada: true, motivo: "multicast IPv6 (ff00::/8)" };
   return { bloqueada: false };
 }
 
@@ -77,10 +153,15 @@ export interface ResultadoValidacionIp {
 
 /** Valida una única IP (v4 o v6) ya resuelta contra la deny-list completa
  * de RV19-R-01/02: metadata cloud, loopback, link-local, RFC1918,
- * multicast, unique-local IPv6. */
+ * multicast, unique-local IPv6. (S-01) Toda IPv6 que codifique una IPv4
+ * (mapeada `::ffff:a.b.c.d`, en cualquier representación textual —
+ * dotted-quad o hexadecimal completa —, NAT64 `64:ff9b::/96`, o
+ * compatible-deprecada `::a.b.c.d`) se normaliza a esa IPv4 y se
+ * revalida por completo contra `RANGOS_BLOQUEADOS_IPV4`, en vez de
+ * compararse solo contra los patrones IPv6. */
 export function validarIpPermitida(ip: string): ResultadoValidacionIp {
-  const esIpv4 = ip.includes(".") && !ip.includes(":");
-  if (esIpv4) {
+  const esIpv4Literal = ip.includes(".") && !ip.includes(":");
+  if (esIpv4Literal) {
     for (const rango of RANGOS_BLOQUEADOS_IPV4) {
       if (enRangoIpv4(ip, rango.base, rango.bits)) {
         return { permitida: false, motivo: rango.motivo };
@@ -88,7 +169,14 @@ export function validarIpPermitida(ip: string): ResultadoValidacionIp {
     }
     return { permitida: true };
   }
-  const resultado = ipv6EsLoopbackOULinkLocalOULocalUnica(ip);
+
+  const bytes = parsearIpv6ABytes(ip);
+  if (bytes === null) return { permitida: false, motivo: "dirección IP no reconocida" };
+
+  const ipv4Embebida = ipv4EmbebidaEnBytes(bytes);
+  if (ipv4Embebida !== null) return validarIpPermitida(ipv4Embebida);
+
+  const resultado = ipv6EsLoopbackOULinkLocalOULocalUnica(bytes);
   if (resultado.bloqueada) return { permitida: false, motivo: resultado.motivo };
   return { permitida: true };
 }

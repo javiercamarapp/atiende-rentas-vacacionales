@@ -90,34 +90,33 @@ async function levantarServidorHttpsAutofirmado(
 // antes de comparar contra el deny-list IPv4 en ssrf.ts.
 // ---------------------------------------------------------------------------
 describe("H1 CRÍTICO — bypass SSRF vía direcciones IPv6-mapeadas-a-IPv4 (ssrf.ts normalizarIpv6)", () => {
-  it("validarIpPermitida NO bloquea ::ffff:127.0.0.1 (loopback) — código: normalizarIpv6 solo pela el prefijo pero compara contra patrones IPv6, nunca vuelve a pasar por RANGOS_BLOQUEADOS_IPV4", () => {
+  it("[CORREGIDO S-01] validarIpPermitida SÍ bloquea ::ffff:127.0.0.1 (loopback) — antes de la corrección, `normalizarIpv6` solo pelaba el prefijo literal y comparaba contra patrones IPv6, nunca contra RANGOS_BLOQUEADOS_IPV4 (evidencia original: `validarIpPermitida(\"::ffff:127.0.0.1\")` -> `{\"permitida\":true}`). Ahora `parsearIpv6ABytes`+`ipv4EmbebidaEnBytes` normalizan cualquier IPv4-mapeada a su IPv4 y la revalidan por completo.", () => {
     const resultado = validarIpPermitida("::ffff:127.0.0.1");
     // eslint-disable-next-line no-console
     console.log("::ffff:127.0.0.1 ->", JSON.stringify(resultado));
-    // BUG CONFIRMADO: esto debería ser `permitida: false`. El código actual
-    // lo permite porque `esIpv4` es false (la cadena contiene ':') y
-    // `ipv6EsLoopbackOULinkLocalOULocalUnica` normaliza a "127.0.0.1" pero
-    // solo la compara contra los patrones ::1 / fe80 / fc00 / ff, no contra
-    // RANGOS_BLOQUEADOS_IPV4.
-    expect(resultado.permitida).toBe(true);
+    expect(resultado.permitida).toBe(false);
+    expect(resultado.motivo).toBe("loopback");
   });
 
-  it("validarIpPermitida NO bloquea ::ffff:169.254.169.254 (metadata cloud)", () => {
+  it("[CORREGIDO S-01] validarIpPermitida SÍ bloquea ::ffff:169.254.169.254 (metadata cloud)", () => {
     const resultado = validarIpPermitida("::ffff:169.254.169.254");
     console.log("::ffff:169.254.169.254 ->", JSON.stringify(resultado));
-    expect(resultado.permitida).toBe(true); // BUG: debería bloquearse (metadata)
+    expect(resultado.permitida).toBe(false);
+    expect(resultado.motivo).toMatch(/metadata/);
   });
 
-  it("validarIpPermitida NO bloquea ::ffff:10.0.0.1 (RFC1918)", () => {
+  it("[CORREGIDO S-01] validarIpPermitida SÍ bloquea ::ffff:10.0.0.1 (RFC1918)", () => {
     const resultado = validarIpPermitida("::ffff:10.0.0.1");
     console.log("::ffff:10.0.0.1 ->", JSON.stringify(resultado));
-    expect(resultado.permitida).toBe(true); // BUG: debería bloquearse (privado)
+    expect(resultado.permitida).toBe(false);
+    expect(resultado.motivo).toMatch(/privado/);
   });
 
-  it("validarIpPermitida NO bloquea la forma hexadecimal completa 0:0:0:0:0:ffff:7f00:1 (127.0.0.1) — normalizarIpv6 solo reconoce el prefijo literal '::ffff:'", () => {
+  it("[CORREGIDO S-01] validarIpPermitida SÍ bloquea la forma hexadecimal completa 0:0:0:0:0:ffff:7f00:1 (127.0.0.1) — antes, `normalizarIpv6` solo reconocía el prefijo literal '::ffff:', no la forma hex equivalente", () => {
     const resultado = validarIpPermitida("0:0:0:0:0:ffff:7f00:1");
     console.log("0:0:0:0:0:ffff:7f00:1 ->", JSON.stringify(resultado));
-    expect(resultado.permitida).toBe(true); // BUG
+    expect(resultado.permitida).toBe(false);
+    expect(resultado.motivo).toBe("loopback");
   });
 
   it("Node considera estas direcciones IP literales válidas (net.isIP), por lo que fetchIcsSeguro las pineará y conectará DIRECTAMENTE sin nueva resolución DNS", () => {
@@ -125,7 +124,7 @@ describe("H1 CRÍTICO — bypass SSRF vía direcciones IPv6-mapeadas-a-IPv4 (ssr
     expect(net.isIP("::ffff:127.0.0.1")).toBe(6);
   });
 
-  it("EXPLOTACIÓN END-TO-END real (HTTPS, hostname público arbitrario, SIN flag de simulador): fetchIcsSeguro con resolverPersonalizado devolviendo '::ffff:127.0.0.1' conecta de verdad al servidor loopback y devuelve su contenido, saltándose por completo el guard SSRF", async () => {
+  it("[CORREGIDO S-01] EXPLOTACIÓN END-TO-END real (HTTPS, hostname público arbitrario, SIN flag de simulador): fetchIcsSeguro con resolverPersonalizado devolviendo '::ffff:127.0.0.1' ahora es RECHAZADA con SsrfError('ip_bloqueada') antes de abrir el socket — antes de la corrección, esto conectaba de verdad al servidor loopback y devolvía su contenido, saltándose por completo el guard SSRF", async () => {
     const secreto = "CONTENIDO-INTERNO-SECRETO-" + Math.random().toString(36).slice(2);
     const { puerto, cerrar } = await levantarServidorHttpsAutofirmado((_req, res) => {
       res.writeHead(200, { "Content-Type": "text/calendar" });
@@ -144,23 +143,28 @@ describe("H1 CRÍTICO — bypass SSRF vía direcciones IPv6-mapeadas-a-IPv4 (ssr
       // el código bajo prueba (fetchSsrf.ts) no relaja nada por su cuenta.
       const previo = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
       process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-      let resultado;
+      let lanzo: unknown;
       try {
-        resultado = await fetchIcsSeguro({
+        await fetchIcsSeguro({
           url: `https://feed-supuestamente-publico.example:${puerto}/x.ics`,
           resolverPersonalizado: () => ["::ffff:127.0.0.1"],
         });
+      } catch (e) {
+        lanzo = e;
       } finally {
         if (previo === undefined) delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
         else process.env.NODE_TLS_REJECT_UNAUTHORIZED = previo;
       }
 
-      console.log("EXPLOTACIÓN SSRF confirmada vía ::ffff: — respuesta real del servidor loopback:", JSON.stringify(resultado));
-      // BUG CONFIRMADO: se esperaría SsrfError("ip_bloqueada"). En cambio,
-      // la petición HTTPS real se completa contra 127.0.0.1 y devuelve el
-      // contenido "interno".
-      expect(resultado.status).toBe(200);
-      expect(resultado.cuerpo).toBe(secreto);
+      console.log(
+        "S-01 corregido — la explotación ya no es posible:",
+        lanzo instanceof Error ? lanzo.message : lanzo,
+      );
+      // Antes de la corrección: se esperaría (y se obtenía) status=200 con
+      // el contenido "interno" del servidor loopback. Ahora la petición se
+      // rechaza ANTES de abrir el socket.
+      expect(lanzo).toBeInstanceOf(SsrfError);
+      expect((lanzo as SsrfError).motivo).toBe("ip_bloqueada");
     } finally {
       await cerrar();
     }
