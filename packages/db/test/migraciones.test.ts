@@ -62,6 +62,86 @@ describe("runner de migraciones (up/down + tabla de versiones)", () => {
     await expect(aplicarMigraciones(motor.ejecutor, catalogoRoto)).rejects.toThrow(/9999_rota/);
     expect(await migracionesAplicadas(motor.ejecutor)).toEqual(migraciones.map((m) => m.id));
   });
+
+  describe("D-DSD-14 (regresión): drift de contenido bajo un id ya aplicado", () => {
+    it("un id reutilizado con un `up` distinto en una corrida posterior FALLA explícitamente, nunca se aplica en silencio", async () => {
+      const versionOriginal = {
+        id: "9500_demo_drift",
+        descripcion: "versión original desplegada",
+        up: "CREATE TABLE demo_drift_v1 (id integer PRIMARY KEY);",
+        down: "DROP TABLE IF EXISTS demo_drift_v1;",
+      };
+      const aplicadas1 = await aplicarMigraciones(motor.ejecutor, [versionOriginal]);
+      expect(aplicadas1).toEqual(["9500_demo_drift"]);
+
+      // Alguien reescribe el ARCHIVO de la migración 9500 (mismo id) para
+      // que ahora cree una tabla distinta — rebase que "corrige" una
+      // migración ya mergeada en vez de numerar una nueva.
+      const versionReescrita = {
+        id: "9500_demo_drift",
+        descripcion: "versión reescrita tras rebase — CONTENIDO DISTINTO, mismo id",
+        up: "CREATE TABLE demo_drift_v2 (id integer PRIMARY KEY, campo_nuevo text);",
+        down: "DROP TABLE IF EXISTS demo_drift_v2;",
+      };
+
+      // Comportamiento CORRECTO (D-DSD-14): falla fuerte, con el id en el
+      // mensaje — nunca aplica v2 en silencio ni reporta éxito sin avisar.
+      await expect(aplicarMigraciones(motor.ejecutor, [versionReescrita])).rejects.toThrow(
+        /9500_demo_drift.*contenido DISTINTO/s,
+      );
+
+      const v1Existe = await motor.ejecutor.query<{ to_regclass: string | null }>(
+        "SELECT to_regclass('demo_drift_v1')::text AS to_regclass",
+      );
+      const v2Existe = await motor.ejecutor.query<{ to_regclass: string | null }>(
+        "SELECT to_regclass('demo_drift_v2')::text AS to_regclass",
+      );
+      // v1 sigue existiendo intacta; v2 JAMÁS se crea — el drift se
+      // rechaza, no se resuelve aplicando el contenido nuevo por debajo.
+      expect(v1Existe.rows[0]!.to_regclass).toBe("demo_drift_v1");
+      expect(v2Existe.rows[0]!.to_regclass).toBeNull();
+    });
+
+    it("un id ya aplicado SIN hash persistido (ambiente que adopta esta protección después) NO falla: adopta el hash actual como línea base", async () => {
+      // Simula un ambiente migrado con una versión anterior del runner,
+      // antes de que existiera la columna hash_up: se aplica manualmente
+      // sin pasar por aplicarMigraciones (que ya siempre persiste el hash).
+      await motor.ejecutor.exec(
+        `CREATE TABLE IF NOT EXISTS schema_migrations (
+           id text PRIMARY KEY, descripcion text NOT NULL DEFAULT '', hash_up text,
+           aplicada_en timestamptz NOT NULL DEFAULT now()
+         )`,
+      );
+      await motor.ejecutor.exec("CREATE TABLE demo_preexistente (id integer PRIMARY KEY);");
+      await motor.ejecutor.query(
+        `INSERT INTO schema_migrations (id, descripcion) VALUES ($1, $2)`,
+        ["9600_demo_preexistente", "aplicada antes de rastrear hashes"],
+      );
+
+      const catalogo = [
+        {
+          id: "9600_demo_preexistente",
+          descripcion: "aplicada antes de rastrear hashes",
+          up: "CREATE TABLE demo_preexistente (id integer PRIMARY KEY);",
+          down: "DROP TABLE IF EXISTS demo_preexistente;",
+        },
+      ];
+
+      // No debe fallar ni reintentar el `up` (la tabla ya existe; si se
+      // reintentara, el CREATE TABLE fallaría).
+      await expect(aplicarMigraciones(motor.ejecutor, catalogo)).resolves.toEqual([]);
+
+      const fila = await motor.ejecutor.query<{ hash_up: string | null }>(
+        `SELECT hash_up FROM schema_migrations WHERE id = $1`,
+        ["9600_demo_preexistente"],
+      );
+      expect(fila.rows[0]!.hash_up).not.toBeNull();
+
+      // Corriendo de nuevo con el MISMO contenido, ya con el hash
+      // adoptado, sigue sin fallar (no hay drift).
+      await expect(aplicarMigraciones(motor.ejecutor, catalogo)).resolves.toEqual([]);
+    });
+  });
 });
 
 describe("btree_gist y EXCLUDE (H-001, D-012) — validación contra PGlite (lógica, no concurrencia real)", () => {

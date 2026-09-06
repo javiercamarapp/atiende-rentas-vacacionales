@@ -18,6 +18,7 @@
     "lint": "eslint .",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "verificar:lotes": "node scripts/verificar-lotes.mjs",
+    "db:verificar-migraciones": "tsx scripts/verificar-migraciones.ts",
     "evals:agentes": "npm run evals:agentes --workspace=@atiende-rv/domain",
     "ci": "npm run lint && npm run typecheck && npm run test && npm run test:integration && npm run test:adversarial && npm run build"
   },

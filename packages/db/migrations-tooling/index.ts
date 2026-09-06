@@ -15,3 +15,10 @@ export type { RangoLote, AnalisisNumeroMigracion, ReporteOrdenColisiones } from 
 
 export { ejecutarDryRun } from "./dryRun.js";
 export type { ReporteDryRun } from "./dryRun.js";
+
+export { calcularHashMigracion, verificarHashesMigraciones } from "./verificacionHash.js";
+export type {
+  FilaMigracionAplicada,
+  DriftHashMigracion,
+  ReporteVerificacionHash,
+} from "./verificacionHash.js";
