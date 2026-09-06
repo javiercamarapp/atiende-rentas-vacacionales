@@ -1,0 +1,7 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Canal de prueba//Feed malformado//EN
+BEGIN:VEVENT
+UID:malformado-sin-cierre@canal.com
+DTSTAMP:20270101T000000Z
+DTSTART;VALUE=DATE:20270101

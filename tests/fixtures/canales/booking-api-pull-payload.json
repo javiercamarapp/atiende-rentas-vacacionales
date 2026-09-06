@@ -1,0 +1,11 @@
+{
+  "reservas": [
+    {
+      "id": "booking-fixture-0001",
+      "unidadExternaId": "unidad-externa-booking-1",
+      "checkIn": "2027-09-01",
+      "checkOut": "2027-09-03",
+      "estado": "CONFIRMADA"
+    }
+  ]
+}

@@ -12,6 +12,7 @@
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "test:integration": "npm run test:integration --workspaces --if-present",
+    "test:adversarial": "node scripts/adversarial.mjs",
     "test:e2e": "node scripts/stub-test.mjs test:e2e",
     "lint": "eslint .",
     "typecheck": "npm run typecheck --workspaces --if-present",
