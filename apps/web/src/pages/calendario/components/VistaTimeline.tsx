@@ -78,8 +78,15 @@ export function VistaTimeline({
 
         {filas.map((fila) => (
           <div key={fila.unidadId} className="flex border-b border-border/60" role="row">
-            <div className="w-36 shrink-0 px-2 py-2 text-xs font-medium text-foreground border-r border-border truncate" role="rowheader">
-              {fila.unidadNombre}
+            <div className="w-36 shrink-0 px-2 py-2 text-xs font-medium text-foreground border-r border-border" role="rowheader">
+              <span className="block truncate">{fila.unidadNombre}</span>
+              {/* Auditoría 2, corrección P-05 (producto-ux-operacion.md):
+                  antes la zona horaria solo aparecía tras seleccionar una
+                  noche/rango en PanelSeleccion.tsx — no visible "a simple
+                  vista" en la vista por defecto. */}
+              <span className="block truncate font-mono text-[10px] font-normal text-muted-foreground" title="Zona horaria de la propiedad">
+                {fila.zonaHoraria}
+              </span>
             </div>
             {noches.map((fecha) => {
               const noche = fila.calendario?.noches.find((n) => n.fecha === fecha);
