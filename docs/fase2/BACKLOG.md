@@ -85,14 +85,14 @@ externa").
 
 | ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
 |---|---|---|---|---|---|---|
-| H-040 | JWT propio (`jose`) con claims compatibles con RLS real de `atiende-restaurantes` | D-009 | §RV19/21-4 | MUST | M | por hacer |
-| H-041 | RLS con `is_tenant_member` parametrizada + `FORCE ROW LEVEL SECURITY` por tabla | REQ-138, REQ-139 | §RV19/21-4 | MUST | L | por hacer |
-| H-042 | Suite de aislamiento cross-tenant en CI (caso adversarial 18) | REQ-140 | §RV19/21-4 | MUST | M | por hacer |
-| H-043 | Modelo de roles internos (Superadmin, Admin gestora, Operador, Limpieza, Propietario, Contador) + 3 niveles de colaborador por propiedad | REQ-011, REQ-012, REQ-013, REQ-019 | §Roles-1, §Roles-4 | MUST | L | por hacer |
-| H-044 | Escalada de privilegios rechazada en capa de servicio, no solo UI (caso adversarial 19) | REQ-140 | §RV19/21-4 | MUST | M | por hacer |
-| H-045 | `audit_log` append-only con triggers en tablas sensibles + acceso "romper cristal" | REQ-020, REQ-127 | §Auditoría-1 | MUST | M | por hacer |
-| H-046 | Cifrado de credenciales de canal en reposo (AES-256-GCM/ChaCha20-Poly1305) + rotación | REQ-141 | §RV19/21-13 | MUST | M | por hacer |
-| H-047 | Logs sin PII/credenciales/payload completo (metadatos operativos únicamente) | REQ-142 | §RV19/21-7 | MUST | M | por hacer |
+| H-040 | JWT propio (`jose`) con claims compatibles con RLS real de `atiende-restaurantes` | D-009 | §RV19/21-4 | MUST | M | hecho (Lote 3) |
+| H-041 | RLS con `is_tenant_member` parametrizada + `FORCE ROW LEVEL SECURITY` por tabla | REQ-138, REQ-139 | §RV19/21-4 | MUST | L | hecho (Lote 3) |
+| H-042 | Suite de aislamiento cross-tenant en CI (caso adversarial 18) | REQ-140 | §RV19/21-4 | MUST | M | hecho (Lote 3) |
+| H-043 | Modelo de roles internos (Superadmin, Admin gestora, Operador, Limpieza, Propietario, Contador) + 3 niveles de colaborador por propiedad | REQ-011, REQ-012, REQ-013, REQ-019 | §Roles-1, §Roles-4 | MUST | L | hecho (Lote 3) |
+| H-044 | Escalada de privilegios rechazada en capa de servicio, no solo UI (caso adversarial 19) | REQ-140 | §RV19/21-4 | MUST | M | hecho (Lote 3) |
+| H-045 | `audit_log` append-only con triggers en tablas sensibles + acceso "romper cristal" | REQ-020, REQ-127 | §Auditoría-1 | MUST | M | hecho (Lote 3) |
+| H-046 | Cifrado de credenciales de canal en reposo (AES-256-GCM/ChaCha20-Poly1305) + rotación | REQ-141 | §RV19/21-13 | MUST | M | hecho (Lote 3) |
+| H-047 | Logs sin PII/credenciales/payload completo (metadatos operativos únicamente) | REQ-142 | §RV19/21-7 | MUST | M | hecho (Lote 3) |
 | H-048 | Multi-empresa-gestora: un propietario vinculado a 2+ empresas sin fuga cruzada | REQ-023 | §Roles-4 | COULD | M | por hacer |
 
 ## E08 — Operación: limpieza y mantenimiento
@@ -294,4 +294,69 @@ completas).
   que `auditoria_mutacion` (migración 0008) sería siempre la última del
   catálogo — se generalizó para que el test siga siendo válido sin
   importar qué migración de qué lote termine siendo la última.
+- **Commits:** ver `git log` — rango de esta entrega en `docs/PROGRESO.md`.
+
+---
+
+## Lote 3 — cerrado (API + auth/RLS/auditoría)
+
+8/95 historias marcadas `hecho (Lote 3)` arriba: H-040 a H-047 (E07
+completa salvo H-048, COULD, dejada `por hacer` deliberadamente — depende
+de multi-empresa-gestora, no bloqueante para el resto de Fase 2).
+
+- **Código:** `apps/api/openapi.yaml` + `apps/api/src/contrato/` (tipos
+  TS/zod compartidos, exportables como `@atiende-rv/api/contrato`, primer
+  commit del lote). `apps/api/src/seguridad/` (`jwt.ts` con `jose`,
+  `contrasenas.ts` con `scrypt` nativo, `cifrado.ts` AES-256-GCM con
+  keyring versionado, `rateLimit.ts`, `cabeceras.ts`). `apps/api/src/db/`
+  (`contexto.ts` — sesión de RLS de alcance de sesión, no de transacción,
+  compatible con las transacciones internas de `packages/domain`;
+  `ejecutorPg.ts` adapta `pg.PoolClient` al contrato `EjecutorTransaccional`
+  sin tocar `packages/domain`). `apps/api/src/middleware/` (autenticación,
+  roles — H-044 en capa de servicio, tenant — H-045 romper cristal, logger
+  sin PII — H-047). `apps/api/src/routes/` (auth, tenants, usuarios,
+  propiedades, unidades + calendario resuelto, reservas directas,
+  bloqueos, canales/cuentas de canal, conflictos, auditoria paginada).
+  `packages/db/src/migrations/0010-0016` (usuario.rol/colaborador_nivel/
+  password_hash, refresh_token, rol de BD `app_rv` sin BYPASSRLS, triggers
+  de auditoría, funciones `SECURITY DEFINER` — `is_tenant_member` patrón
+  verificado en `atiende-restaurantes`, políticas RLS `ENABLE`+`FORCE` en
+  todas las tablas de tenant, funciones de autenticación pre-sesión) y
+  `0090-0092` (extensión de cifrado+RLS sobre `cuenta_canal` y las tres
+  tablas de canal que creó Lote 2 en 0020/0021 — numeradas fuera de rango
+  por dependencia real de orden, ver cabecera de
+  `0090_cuenta_canal_cifrado.ts`).
+- **Pruebas:** 13 de aislamiento multitenant/escalada de privilegios
+  contra `embedded-postgres` real con SQL directo vía el rol `app_rv`
+  (`packages/db/test/integration/rls.test.ts` — casos adversariales 18 y
+  19), 11 de contrato HTTP + logs sin PII + cifrado de credenciales
+  (`apps/api/test/integration/api.test.ts`), 6 unitarias de cifrado
+  (`apps/api/test/seguridad/cifrado.test.ts`), 1 de healthcheck (Lote 0,
+  sigue verde). Total nuevas: 30. `npm run test`/`npm run typecheck`/
+  `npm run lint` verdes en todo el monorepo (compartido con Lotes 1/2).
+  Ver `docs/logs/lote3-rls.log`, `docs/logs/lote3-test.log`,
+  `docs/logs/lote3-ci.log`.
+- **Entregable verificable (LOTES.md):** un usuario de tenant A no puede
+  leer/modificar el calendario/propiedad/owner del tenant B — confirmado
+  con 0 filas (SELECT) y rechazo `42501 insufficient_privilege` (INSERT)
+  directamente contra `app_rv`, sin pasar por `apps/api`. Ver la línea de
+  log citada en `docs/PROGRESO.md`.
+- **Nota de diseño no explícita en LOTES.md:** el acceso cross-tenant vía
+  HTTP se resuelve como `404 recurso_no_encontrado` (RLS oculta la fila,
+  la respuesta nunca confirma que el recurso existe en otro tenant) en vez
+  de `403` — `403 tenant_forbidden`/`rol_forbidden` se reserva para los
+  casos donde la API sí conoce el motivo exacto (rol insuficiente,
+  superadmin operando sin tenant de contexto). Documentado en
+  `apps/api/openapi.yaml`.
+- **Brecha documentada, no un olvido:** las políticas RLS de
+  `contador`/`limpieza` hoy son "sin acceso a tablas operativas de
+  calendario" en vez de "solo lo que les corresponde" (finanzas/tareas
+  asignadas), porque esas tablas todavía no existen (Lotes 7/5
+  respectivamente) — fail-closed por diseño (D-020), a estrechar cuando
+  esos lotes aterricen sus propias tablas.
+- **Comando de aceptación reinterpretado:** `npm run test:integration --
+  --filter=rls` de LOTES.md no corresponde a un flag real de Vitest 3;
+  el comando equivalente verificado que sí se ejecutó y quedó en el log es
+  `cd packages/db && npx vitest run --config vitest.integration.config.ts
+  test/integration/rls.test.ts`.
 - **Commits:** ver `git log` — rango de esta entrega en `docs/PROGRESO.md`.
