@@ -35,8 +35,8 @@ externa").
 | H-012 | `cuenta_canal`/`listing_canal` con unicidad parcial `(unidad_id, cuenta_canal_id) WHERE activo` | RV17 §6.3 | §Conectividad-1 | MUST | S | por hacer |
 | H-013 | Interfaz `ChannelAdapter` con `ChannelCapabilities` declaradas honestamente | REQ-086 | §Conectividad-1 | MUST | M | hecho (Lote 1, solo contrato — implementación real es Lote 2) |
 | H-014 | `getConnectionState()` con enum cerrado, nunca `producción` sin evidencia reciente | REQ-008, REQ-017 | §Conectividad-1 | MUST | M | hecho (Lote 1, función pura `evaluarEstadoConexion`) |
-| H-015 | Matriz de conectividad en UI (latencia por canal, estados bloqueados/pausados) | REQ-039, REQ-052, REQ-075, REQ-076, REQ-077, REQ-085 | §Conectividad-2, §Conectividad-4 | MUST | L | por hacer |
-| H-016 | Anti-paridad: ninguna pantalla afirma paridad de permisos/latencia entre canales sin nota | REQ-018 | §Roles-3 | MUST | S | por hacer |
+| H-015 | Matriz de conectividad en UI (latencia por canal, estados bloqueados/pausados) | REQ-039, REQ-052, REQ-075, REQ-076, REQ-077, REQ-085 | §Conectividad-2, §Conectividad-4 | MUST | L | hecho (Lote 4) |
+| H-016 | Anti-paridad: ninguna pantalla afirma paridad de permisos/latencia entre canales sin nota | REQ-018 | §Roles-3 | MUST | S | hecho (Lote 4) |
 
 ## E03 — Reservas y bloqueos por capas
 
@@ -78,8 +78,8 @@ externa").
 | H-035 | Instrumentación OTel: Gauge edad última sync, Counter errores (`error_class`), Histogram latencia, UpDownCounter cola | REQ-038, REQ-156 | §Operación-2 | MUST | L | por hacer |
 | H-036 | Trazas distribuidas del ciclo webhook/import→cola→worker→escritura→confirmación | REQ-157 | §Operación-2 | MUST | M | por hacer |
 | H-037 | Alertas y runbooks (edad sync, tasa error, drift, cola creciente) — nunca cancelan ni contactan | REQ-009, REQ-163 | §Operación-1 | MUST | L | por hacer |
-| H-038 | Panel de monitor de sync en UI (drift, conflictos activos, edad por canal/unidad) | REQ-038 | §Operación-2 | MUST | M | por hacer |
-| H-039 | Descomposición de latencia interna vs. por canal en UI y reporting | REQ-039 | §RV19/21-8 | MUST | M | por hacer |
+| H-038 | Panel de monitor de sync en UI (drift, conflictos activos, edad por canal/unidad) | REQ-038 | §Operación-2 | MUST | M | hecho (Lote 4, panel de UI — edad/estado/conflictos reales; errores/cuarentena/drift muestran "no expuesto aún", instrumentación OTel de H-035/H-036 sigue pendiente) |
+| H-039 | Descomposición de latencia interna vs. por canal en UI y reporting | REQ-039 | §RV19/21-8 | MUST | M | hecho (Lote 4, parte de UI — monitor y matriz muestran latencia interna vs. por canal siempre separadas; el Histogram OTel de H-035 sigue pendiente) |
 
 ## E07 — Auth, roles, multitenant, RLS, auditoría
 
