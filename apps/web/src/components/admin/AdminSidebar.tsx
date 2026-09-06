@@ -30,6 +30,7 @@ import {
   Globe2,
   Bot,
   ShieldCheck,
+  CreditCard,
   ChevronDown,
   LogOut,
   PanelLeftClose,
@@ -90,6 +91,7 @@ export const MENU_SECTIONS: GrupoMenu[] = [
       { id: "finanzas", etiqueta: "Finanzas/owners", icono: Wallet, ruta: "/finanzas" },
       { id: "pricing", etiqueta: "Pricing", icono: Tag, ruta: "/pricing" },
       { id: "reportes", etiqueta: "Reportes", icono: FileBarChart, ruta: "/reportes" },
+      { id: "facturacion", etiqueta: "Facturación", icono: CreditCard, ruta: "/facturacion" },
     ],
   },
   {

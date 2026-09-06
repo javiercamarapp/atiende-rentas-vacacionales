@@ -76,7 +76,6 @@ function obtenerApp(): Hono {
     appCache = crearApp();
   } catch (err) {
     const motivo = err instanceof Error ? err.message : "Error de configuración desconocido";
-    // eslint-disable-next-line no-console -- diagnóstico de cold start fail-closed, sin PII (solo el mensaje de validación de config).
     console.error(`[api/vercel] arranque fail-closed en el borde: ${motivo}`);
     appCache = construirAppSinConfigurar(motivo);
   }

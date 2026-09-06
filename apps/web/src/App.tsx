@@ -1,4 +1,14 @@
 import { Navigate, Route, Routes } from "react-router-dom";
+import { LandingPage } from "./pages/publica/LandingPage";
+import { PreciosPage } from "./pages/publica/PreciosPage";
+import { EstadoPage } from "./pages/publica/EstadoPage";
+import { AvisoPrivacidadPage } from "./pages/publica/legal/AvisoPrivacidadPage";
+import { TerminosPage } from "./pages/publica/legal/TerminosPage";
+import { CookiesPage } from "./pages/publica/legal/CookiesPage";
+import { DpaPage } from "./pages/publica/legal/DpaPage";
+import { OnboardingRegistroPage } from "./pages/onboarding/OnboardingRegistroPage";
+import { OnboardingAsistentePage } from "./pages/onboarding/OnboardingAsistentePage";
+import { FacturacionPage } from "./pages/facturacion/FacturacionPage";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { RegistroPage } from "./pages/auth/RegistroPage";
 import { VerificarCorreoPage } from "./pages/auth/VerificarCorreoPage";
@@ -52,6 +62,20 @@ export default function App() {
   return (
     <SesionProvider>
       <Routes>
+        {/* Lote 3.3 — sitio público (landing/precios/estado/legal) +
+            paso 1 de onboarding self-serve, todos ANTES del catch-all
+            `/*` protegido por sesión (RutaProtegida) — nunca exigen
+            login. `LandingPage` internamente redirige a /calendario si
+            ya hay sesión, para no romper el atajo histórico de "/" =
+            "entra a la app" para usuarios ya logueados. */}
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/precios" element={<PreciosPage />} />
+        <Route path="/estado" element={<EstadoPage />} />
+        <Route path="/legal/aviso-de-privacidad" element={<AvisoPrivacidadPage />} />
+        <Route path="/legal/terminos" element={<TerminosPage />} />
+        <Route path="/legal/cookies" element={<CookiesPage />} />
+        <Route path="/legal/dpa" element={<DpaPage />} />
+        <Route path="/onboarding" element={<OnboardingRegistroPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/registro" element={<RegistroPage />} />
         <Route path="/verificar-correo" element={<VerificarCorreoPage />} />
@@ -89,6 +113,15 @@ export default function App() {
                     }
                   />
                   <Route path="/reservas" element={<Navigate to="/calendario" replace />} />
+                  <Route path="/onboarding/asistente" element={<OnboardingAsistentePage />} />
+                  <Route
+                    path="/facturacion"
+                    element={
+                      <RutaConRol roles={ROLES_ADMIN}>
+                        <FacturacionPage />
+                      </RutaConRol>
+                    }
+                  />
                   <Route path="/cuenta" element={<CuentaPage />} />
                   <Route path="/operacion" element={<OperacionPage />} />
                   <Route path="/mensajes" element={<BandejaPage />} />
