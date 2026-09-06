@@ -361,11 +361,17 @@ export function crearRutasFacturacion(deps: DependenciasFacturacion): Hono {
       return c.json({ recibido: true, ignorado: true });
     }
 
-    const { rows } = await pool.query<{ tenant_id: string }>(
-      "SELECT tenant_id FROM suscripcion_tenant WHERE cliente_externo_id = $1",
+    // Encontrado en pruebas de integración reales (ver comentario de
+    // cabecera de la migración 0125): un `pool.query` normal aquí queda
+    // BLOQUEADO en silencio por RLS (suscripcion_tenant está FORCEado y
+    // exige una sesión de usuario que un webhook nunca trae) —
+    // `facturacion_tenant_por_cliente_externo` es SECURITY DEFINER
+    // precisamente para este caso legítimo sin sesión.
+    const { rows } = await pool.query<{ facturacion_tenant_por_cliente_externo: string | null }>(
+      "SELECT facturacion_tenant_por_cliente_externo($1)",
       [evento.clienteExternoId],
     );
-    const tenantId = rows[0]?.tenant_id;
+    const tenantId = rows[0]?.facturacion_tenant_por_cliente_externo ?? undefined;
     if (!tenantId) {
       // Cliente de Stripe sin tenant asociado en nuestra base — no
       // debería ocurrir en operación normal, pero responder 200 evita

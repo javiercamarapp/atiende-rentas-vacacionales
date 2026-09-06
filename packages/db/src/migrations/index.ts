@@ -80,6 +80,7 @@ import { migracion0121OnboardingFunciones } from "./0121_onboarding_funciones.js
 import { migracion0122FacturacionEsquema } from "./0122_facturacion_esquema.js";
 import { migracion0123FacturacionRls } from "./0123_facturacion_rls.js";
 import { migracion0124FacturacionWebhook } from "./0124_facturacion_webhook.js";
+import { migracion0125FacturacionWebhookLookup } from "./0125_facturacion_webhook_lookup.js";
 
 // Orden fijo, nunca reordenar migraciones ya aplicadas en algún entorno
 // (patrón expand/contract real llega en Lote 10 — H-088). Cada lote
@@ -189,4 +190,5 @@ export const migraciones: Migracion[] = [
   migracion0122FacturacionEsquema,
   migracion0123FacturacionRls,
   migracion0124FacturacionWebhook,
+  migracion0125FacturacionWebhookLookup,
 ];
