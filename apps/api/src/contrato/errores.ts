@@ -39,6 +39,11 @@ export const CODIGOS_ERROR = [
   "google_vinculacion_no_permitida",
   "oidc_invalido",
   "csrf_invalido",
+  // Lote 3.3 (RV16, onboarding/facturación):
+  "plan_limite_alcanzado",
+  "plan_no_encontrado",
+  "webhook_firma_invalida",
+  "suscripcion_no_encontrada",
 ] as const;
 
 export type CodigoError = (typeof CODIGOS_ERROR)[number];
@@ -73,6 +78,13 @@ const HTTP_POR_CODIGO: Record<CodigoError, number> = {
   google_vinculacion_no_permitida: 403,
   oidc_invalido: 401,
   csrf_invalido: 403,
+  // Lote 3.3 (RV16, onboarding/facturación): 402 a propósito (Payment
+  // Required) — el bloqueo se levanta pagando/actualizando de plan, no
+  // cambiando de rol/permisos (eso sería 403).
+  plan_limite_alcanzado: 402,
+  plan_no_encontrado: 404,
+  webhook_firma_invalida: 400,
+  suscripcion_no_encontrada: 404,
 };
 
 export class ErrorDominio extends Error {

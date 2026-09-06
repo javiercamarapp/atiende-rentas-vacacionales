@@ -65,6 +65,17 @@ export interface ConfiguracionApi {
    * de correo/restablecer contraseña y el redirect final tras el login
    * con Google (nunca se redirige a una URL fuera de este origen). */
   urlPublicaWeb: string;
+  /** Lote 3.3 (RV16, facturación): Stripe real (Checkout + webhooks +
+   * portal de cliente) SOLO se activa si AMBAS variables están presentes
+   * — ver `construirPagosStripeDesdeEntorno` en
+   * packages/domain/src/facturacion/pagos/stripe.ts. Sin ellas (el valor
+   * por defecto en cualquier checkout de desarrollo), la API monta
+   * únicamente `PagosSimulado`, nunca llama a Stripe real. Sin claves de
+   * Stripe en este repo — ambas vienen siempre de `process.env`. */
+  stripe: {
+    claveSecreta: string | null;
+    secretoWebhook: string | null;
+  };
 }
 
 /** Quita diacríticos y normaliza mayúsculas/espacios — mismo criterio que
@@ -240,5 +251,9 @@ export function cargarConfiguracion(env: NodeJS.ProcessEnv = process.env): Confi
       duracionMs: Number.parseInt(env.BLOQUEO_CUENTA_DURACION_MS ?? "900000", 10), // 15 minutos
     },
     urlPublicaWeb: env.WEB_ORIGIN ?? "http://localhost:5173",
+    stripe: {
+      claveSecreta: env.STRIPE_SECRET_KEY?.trim() || null,
+      secretoWebhook: env.STRIPE_WEBHOOK_SECRET?.trim() || null,
+    },
   };
 }

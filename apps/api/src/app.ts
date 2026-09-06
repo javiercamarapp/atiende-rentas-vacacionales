@@ -9,6 +9,7 @@ import { registrarRutas } from "./routes/index.js";
 import { cabecerasSeguridad } from "./seguridad/cabeceras.js";
 import { KeyringCifradoCanal } from "./seguridad/cifrado.js";
 import { construirAdaptadorCorreo } from "./seguridad/correo.js";
+import { construirPagosStripeDesdeEntorno, PagosSimulado } from "@atiende-rv/domain/facturacion";
 import { crearRateLimit } from "./seguridad/rateLimit.js";
 import { ZodError, type ZodIssue } from "zod";
 import {
@@ -55,6 +56,13 @@ export function crearApp(opciones: OpcionesCrearApp = {}) {
 
   const pool = opciones.pool ?? new pg.Pool({ connectionString: config.databaseUrl || undefined });
   const keyring = new KeyringCifradoCanal(config.cifradoCanalClaves);
+  // Lote 3.3 (RV16): Stripe real SOLO si AMBAS variables están presentes
+  // (fail-safe hacia PagosSimulado, nunca un adaptador Stripe a medias) —
+  // ver packages/domain/src/facturacion/pagos/stripe.ts.
+  const pagos = construirPagosStripeDesdeEntorno({
+    STRIPE_SECRET_KEY: config.stripe.claveSecreta ?? undefined,
+    STRIPE_WEBHOOK_SECRET: config.stripe.secretoWebhook ?? undefined,
+  }) ?? new PagosSimulado();
 
   app.use("*", cabecerasSeguridad);
   // `credentials: true` (Lote 3.2, H-096): imprescindible para que el
@@ -105,6 +113,7 @@ export function crearApp(opciones: OpcionesCrearApp = {}) {
     keyring,
     urlPublicaApi: config.urlPublicaApi,
     rateLimitLoginPorEmail: config.rateLimitLoginPorEmail,
+    pagos,
     // Lote 3.2 (H-096+): auth extendida (Google OIDC, correo, política de
     // contraseñas/bloqueo, proveedor OIDC simulado) — ver DependenciasAuth
     // en routes/auth.ts.

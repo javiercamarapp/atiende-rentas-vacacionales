@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type pg from "pg";
+import type { AdaptadorPagos } from "@atiende-rv/domain/facturacion";
 import type { KeyringCifradoCanal } from "../seguridad/cifrado.js";
 import { crearRutasAgentes } from "./agentes/index.js";
 import { crearRutasAuditoria } from "./auditoria.js";
@@ -10,10 +11,12 @@ import { crearRutasCanales } from "./canales.js";
 import { crearRutasCanalesCatalogo } from "./canalesCatalogo.js";
 import { crearRutasConflictos } from "./conflictos.js";
 import { crearRutasExportIcal } from "./exportIcal.js";
+import { crearRutasFacturacion } from "./facturacion.js";
 import { crearRutasFinanzas } from "./finanzas.js";
 import { crearRutasLimpieza } from "./limpieza/index.js";
 import { crearRutasMensajeria } from "./mensajeria/index.js";
 import { crearRutasNotificaciones } from "./notificaciones.js";
+import { crearRutasOnboarding } from "./onboarding.js";
 import { crearRutasPricing } from "./pricing.js";
 import { crearRutasPropiedades } from "./propiedades.js";
 import { crearRutasReportes } from "./reportes.js";
@@ -40,6 +43,9 @@ export interface DependenciasRutas {
    * no inflar más esta interfaz compartida entre lotes; ver
    * `DependenciasAuth` en ./auth.ts. */
   auth: Omit<DependenciasAuth, "pool" | "jwtSecret" | "keyring" | "rateLimitLoginPorEmail">;
+  /** Lote 3.3 (RV16, facturación): PagosSimulado o Stripe real, decidido
+   * en apps/api/src/app.ts según `construirPagosStripeDesdeEntorno`. */
+  pagos: AdaptadorPagos;
 }
 
 // Registro de rutas de apps/api (Lote 3: primera carga real, sobre el
@@ -48,7 +54,7 @@ export interface DependenciasRutas {
 // propio `app.route(...)` aquí, en un commit pequeño y separado — nunca
 // reescriben este archivo completo.
 export function registrarRutas(app: Hono, deps: DependenciasRutas): Hono {
-  const { pool, jwtSecret, keyring, urlPublicaApi, rateLimitLoginPorEmail, auth } = deps;
+  const { pool, jwtSecret, keyring, urlPublicaApi, rateLimitLoginPorEmail, auth, pagos } = deps;
 
   app.route("/auth", crearRutasAuth({ pool, jwtSecret, keyring, rateLimitLoginPorEmail, ...auth }));
   app.route("/tenants", crearRutasTenants(pool, jwtSecret));
@@ -73,6 +79,18 @@ export function registrarRutas(app: Hono, deps: DependenciasRutas): Hono {
   app.route("/agentes", crearRutasAgentes(pool, jwtSecret));
   app.route("/export-ical", crearRutasExportIcal(pool, jwtSecret, urlPublicaApi));
   app.route("/notificaciones", crearRutasNotificaciones(pool, jwtSecret));
+  // Lote 3.3 (RV16): onboarding self-serve + planes/facturación.
+  app.route(
+    "/onboarding",
+    crearRutasOnboarding({
+      pool,
+      jwtSecret,
+      correo: auth.correo,
+      urlPublicaWeb: auth.urlPublicaWeb,
+      politicaContrasenaHibp: auth.politicaContrasenaHibp,
+    }),
+  );
+  app.route("/facturacion", crearRutasFacturacion({ pool, jwtSecret, pagos, urlPublicaWeb: auth.urlPublicaWeb }));
 
   return app;
 }
