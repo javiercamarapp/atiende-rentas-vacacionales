@@ -66,10 +66,29 @@ export function assertNoParecerProduccion(opciones: OpcionesArranqueSimulador): 
     // se infiere de NODE_ENV con una deny-list normalizada (cierra el
     // bypass original de S-04: "producción" con tilde, "PRODUCTION", etc.
     // ya se detectan porque se normalizan diacríticos antes de comparar).
-    const normalizado = normalizarEntornoTexto(process.env.NODE_ENV ?? "");
+    //
+    // INVARIANTE (hallazgo nuevo, docs/auditoria-2/REVERIFICACION.md §3,
+    // mismo criterio que apps/api/src/config/env.ts): "sin NODE_ENV" es
+    // ÚNICAMENTE `undefined`. Una variable DEFINIDA pero vacía o de solo
+    // espacios (`NODE_ENV=""`/`"   "`) es un valor "desconocido" explícito,
+    // no una ausencia — y "desconocido" jamás debe permitir que un
+    // simulador arranque en silencio. Antes de este fix, `normalizado`
+    // quedaba en `""`, no coincidía con "production"/"produccion" y el
+    // simulador arrancaba igual: el mismo tipo de bypass que motivó S-04,
+    // por una vía no cubierta por la auditoría original (camino real:
+    // apps/api/src/routes/mensajeria/borradores.ts — `new
+    // SimuladorMensajeria(...)` sin `entorno`/`ATIENDE_ENTORNO`).
+    const valorCrudoNodeEnv = process.env.NODE_ENV;
+    if (valorCrudoNodeEnv !== undefined && valorCrudoNodeEnv.trim() === "") {
+      throw new CredencialesSospechosasDeProduccionError(
+        "NODE_ENV está definido pero vacío/solo espacios — entorno \"desconocido\": fail-closed, " +
+          "los simuladores no arrancan sin un entorno de desarrollo/pruebas reconocido explícitamente (D-019)",
+      );
+    }
+    const normalizado = normalizarEntornoTexto(valorCrudoNodeEnv ?? "");
     if (normalizado === "production" || normalizado === "produccion") {
       throw new CredencialesSospechosasDeProduccionError(
-        `entorno declarado como "${process.env.NODE_ENV}" — los simuladores no existen en producción (D-019)`,
+        `entorno declarado como "${valorCrudoNodeEnv}" — los simuladores no existen en producción (D-019)`,
       );
     }
   }

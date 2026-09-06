@@ -260,6 +260,52 @@ describe("H-059/D-006: sin envío sin aprobación humana", () => {
     expect(segundaAprobacion.status).toBe(422);
   });
 
+  /**
+   * Regresión permanente — hallazgo NUEVO de la reverificación
+   * independiente (docs/auditoria-2/REVERIFICACION.md §3): camino de
+   * producción real citado explícitamente,
+   * apps/api/src/routes/mensajeria/borradores.ts:175
+   * (`new SimuladorMensajeria(borrador.canal_codigo)`, sin `entorno`/
+   * `ATIENDE_ENTORNO`). Con `NODE_ENV=""` (definida pero vacía, no
+   * `undefined`) el simulador debe RECHAZAR el arranque (entorno
+   * "desconocido" → fail-closed, D-019/S-04) — antes de la corrección,
+   * este mismo endpoint completaba la aprobación con 200 en silencio.
+   */
+  it("aprobar un borrador con NODE_ENV='' (vacío/desconocido) falla-cerrado: el simulador de mensajería rechaza el arranque", async () => {
+    const nodeEnvOriginal = process.env.NODE_ENV;
+    const atiendeEntornoOriginal = process.env.ATIENDE_ENTORNO;
+    process.env.NODE_ENV = "";
+    delete process.env.ATIENDE_ENTORNO;
+    try {
+      const { accessToken } = await login(fx.emailAdmin, fx.passwordAdmin);
+      const conversacionId = await crearConversacion(accessToken!, "vrbo");
+      const borrador = await app.request(
+        `/mensajeria/conversaciones/${conversacionId}/borradores`,
+        autenticado(accessToken!, { method: "POST", body: JSON.stringify({}) }),
+      );
+      const { id: borradorId } = (await borrador.json()) as { id: string };
+
+      const aprobar = await app.request(
+        `/mensajeria/borradores/${borradorId}/aprobar`,
+        autenticado(accessToken!, { method: "POST" }),
+      );
+      expect(aprobar.status).toBe(500);
+
+      // Nunca queda en 'enviado' ni se crea el mensaje saliente.
+      const estado = await pool.query<{ estado: string }>(`SELECT estado FROM borrador_mensaje WHERE id = $1`, [borradorId]);
+      expect(estado.rows[0]!.estado).not.toBe("enviado");
+      const mensajeSaliente = await pool.query(`SELECT id FROM mensaje WHERE conversacion_id = $1 AND direccion = 'saliente'`, [
+        conversacionId,
+      ]);
+      expect(mensajeSaliente.rows).toHaveLength(0);
+    } finally {
+      if (nodeEnvOriginal === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = nodeEnvOriginal;
+      if (atiendeEntornoOriginal === undefined) delete process.env.ATIENDE_ENTORNO;
+      else process.env.ATIENDE_ENTORNO = atiendeEntornoOriginal;
+    }
+  });
+
   it("rechazar un borrador exige motivo y lo deja en estado 'rechazado' (nunca enviado)", async () => {
     const { accessToken } = await login(fx.emailAdmin, fx.passwordAdmin);
     const conversacionId = await crearConversacion(accessToken!, "vrbo");

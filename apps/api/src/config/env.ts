@@ -58,9 +58,20 @@ const ENTORNOS_PRUEBAS = new Set(["test", "pruebas", "testing"]);
  * reconocen expl\u00edcitamente; CUALQUIER OTRO valor (incluida cualquier
  * variante mal escrita de "production", o uno completamente desconocido)
  * se clasifica como "production" \u2014 fail-closed, nunca al rev\u00e9s. Solo la
- * AUSENCIA total de `NODE_ENV` se trata como desarrollo local (D-017). */
+ * AUSENCIA total de `NODE_ENV` se trata como desarrollo local (D-017).
+ *
+ * INVARIANTE (reverificaci\u00f3n independiente, hallazgo nuevo, docs/auditoria-2/
+ * REVERIFICACION.md \u00a73): "AUSENCIA total" significa `valor === undefined`
+ * \u00daNICAMENTE. Una variable DEFINIDA pero vac\u00eda o compuesta solo de
+ * espacios (`NODE_ENV=""` o `NODE_ENV="   "`) NO es ausencia \u2014 es un valor
+ * "desconocido" expl\u00edcito, y por tanto cae en el mismo fail-closed que
+ * cualquier otro valor no reconocido ("production"). Tratarla como
+ * "development" reabrir\u00eda exactamente el bypass de S-02/S-03/S-04/S-11 por
+ * una veta no probada por la auditor\u00eda original (camino real:
+ * apps/api/src/routes/mensajeria/borradores.ts, `new SimuladorMensajeria(...)`
+ * sin `entorno`/`ATIENDE_ENTORNO` expl\u00edcitos). */
 function leerEntorno(valor: string | undefined): ConfiguracionApi["entorno"] {
-  if (valor === undefined || valor.trim() === "") return "development";
+  if (valor === undefined) return "development";
   const normalizado = normalizarEntornoTexto(valor);
   if (ENTORNOS_DESARROLLO.has(normalizado)) return "development";
   if (ENTORNOS_PRUEBAS.has(normalizado)) return "test";
@@ -73,11 +84,17 @@ function leerEntorno(valor: string | undefined): ConfiguracionApi["entorno"] {
  * reconocido explícitamente aquí (incluida cualquier variante mal
  * escrita/acentuada/mayúscula de "production", o un valor por completo
  * desconocido) se trata como productivo a efectos de exigir secretos —
- * nunca al revés. Un `NODE_ENV` ausente se trata como desarrollo local. */
+ * nunca al revés. Un `NODE_ENV` ausente (`undefined`) se trata como
+ * desarrollo local.
+ *
+ * INVARIANTE (hallazgo nuevo, docs/auditoria-2/REVERIFICACION.md §3): igual
+ * que en `leerEntorno`, solo `undefined` cuenta como ausencia. `NODE_ENV=""`
+ * o `NODE_ENV="   "` es una variable DEFINIDA con un valor "desconocido" —
+ * exige secretos explícitos (fail-closed), nunca se trata como desarrollo. */
 const ENTORNOS_CON_SECRETOS_RELAJADOS = new Set(["development", "desarrollo", "test", "pruebas", "dev", "testing"]);
 
 function exigeSecretosExplicitos(valorCrudoNodeEnv: string | undefined): boolean {
-  if (valorCrudoNodeEnv === undefined || valorCrudoNodeEnv.trim() === "") return false;
+  if (valorCrudoNodeEnv === undefined) return false;
   return !ENTORNOS_CON_SECRETOS_RELAJADOS.has(normalizarEntornoTexto(valorCrudoNodeEnv));
 }
 

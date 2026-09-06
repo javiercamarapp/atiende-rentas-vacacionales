@@ -116,8 +116,57 @@ describe("cargarConfiguracion — S-11: entorno se clasifica fail-closed", () =>
     }
   });
 
-  it("NODE_ENV ausente o vacío se clasifica como 'development' (D-017, desarrollo local)", () => {
+  it("NODE_ENV ausente (undefined) se clasifica como 'development' (D-017, desarrollo local)", () => {
     expect(cargarConfiguracion({}).entorno).toBe("development");
-    expect(cargarConfiguracion({ NODE_ENV: "" }).entorno).toBe("development");
+    expect(cargarConfiguracion({ NODE_ENV: undefined }).entorno).toBe("development");
+  });
+});
+
+/**
+ * Regresión permanente — hallazgo NUEVO de la reverificación independiente
+ * (docs/auditoria-2/REVERIFICACION.md §3): `NODE_ENV=""` (cadena vacía
+ * DEFINIDA, no `undefined`) NO debe activar el camino permisivo de
+ * "desarrollo" — es un valor "desconocido" y debe tratarse EXACTAMENTE
+ * igual que cualquier otro valor no reconocido ("production" fail-closed).
+ * Antes de esta corrección, `leerEntorno`/`exigeSecretosExplicitos` hacían
+ * `valor.trim() === ""` equivalente a `valor === undefined`, lo que
+ * reabría el bypass de S-02/S-03/S-04/S-11 por una vía no probada por la
+ * auditoría original (camino real:
+ * apps/api/src/routes/mensajeria/borradores.ts:175, `new
+ * SimuladorMensajeria(...)`, sin `entorno`/`ATIENDE_ENTORNO`).
+ */
+describe("cargarConfiguracion — hallazgo nuevo: NODE_ENV=\"\" (vacío/solo-espacios) es 'desconocido', NUNCA 'development'", () => {
+  const secretosValidos = {
+    JWT_SECRET: "secreto-de-produccion-real-con-al-menos-32-caracteres",
+    CANAL_CIFRADO_CLAVES: "v1:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+  };
+
+  it("NODE_ENV='' se clasifica como 'production' (fail-closed), no 'development'", () => {
+    expect(cargarConfiguracion({ NODE_ENV: "", ...secretosValidos }).entorno).toBe("production");
+  });
+
+  it("NODE_ENV='   ' (solo espacios) se clasifica como 'production' (fail-closed), no 'development'", () => {
+    expect(cargarConfiguracion({ NODE_ENV: "   ", ...secretosValidos }).entorno).toBe("production");
+  });
+
+  it("NODE_ENV='' exige JWT_SECRET/CANAL_CIFRADO_CLAVES explícitos — lanza si faltan", () => {
+    expect(() => cargarConfiguracion({ NODE_ENV: "" })).toThrow(/JWT_SECRET es obligatorio/);
+    expect(() => cargarConfiguracion({ NODE_ENV: "  " })).toThrow(/JWT_SECRET es obligatorio/);
+  });
+
+  it("undefined sigue siendo el único valor tratado como ausencia (desarrollo local)", () => {
+    expect(cargarConfiguracion({ NODE_ENV: undefined }).entorno).toBe("development");
+    expect(() => cargarConfiguracion({ NODE_ENV: undefined })).not.toThrow();
+  });
+
+  it("matriz completa del invariante: undefined/development/test → laxo; ''/'  '/production/producción → fail-closed", () => {
+    const casosLaxos: Array<string | undefined> = [undefined, "development", "test"];
+    for (const valor of casosLaxos) {
+      expect(() => cargarConfiguracion({ NODE_ENV: valor }), `NODE_ENV=${valor}`).not.toThrow();
+    }
+    const casosFailClosed = ["", "  ", "production", "producción"];
+    for (const valor of casosFailClosed) {
+      expect(() => cargarConfiguracion({ NODE_ENV: valor }), `NODE_ENV=${valor}`).toThrow(/obligatorio/);
+    }
   });
 });
