@@ -19,6 +19,7 @@ interface FilaCuentaCanal {
   id: string;
   nombre: string;
   canal_codigo: string;
+  tipo_conexion: string | null;
   es_simulador: boolean;
   es_sandbox: boolean;
   partner_aprobado: boolean;
@@ -26,6 +27,12 @@ interface FilaCuentaCanal {
   ultima_sincronizacion_exitosa_en: string | null;
 }
 
+// Auditoría 2, corrección D-DSD-13 (docs/auditoria-2/dominio-sync-datos.md):
+// `evaluarEstadoConexion` ya soporta un `tipoConexion` opcional
+// ("ical" | "api") para nunca reportar "partner_pendiente" en una cuenta
+// iCal sana (`partner_aprobado` nunca se establece para tipo_conexion=
+// 'ical', queda en su DEFAULT false) — pero esta ruta no lo pasaba, así
+// que el fix de dominio nunca se activaba en `GET /canales`.
 function estadoDeFila(fila: FilaCuentaCanal): string {
   return evaluarEstadoConexion({
     credencialesPresentes: fila.credenciales_cifradas !== null,
@@ -34,6 +41,7 @@ function estadoDeFila(fila: FilaCuentaCanal): string {
     ventanaMaximaMs: VENTANA_SYNC_RECIENTE_MS,
     partnerAprobado: fila.partner_aprobado,
     esSandbox: fila.es_sandbox,
+    tipoConexion: fila.tipo_conexion === "ical" ? "ical" : "api",
   });
 }
 
@@ -48,7 +56,7 @@ export function crearRutasCanales(pool: pg.Pool, jwtSecret: string, keyring: Key
     const auth = c.get("auth");
     const filas = await conSesion(pool, sesionDeAuth(auth), async (cliente) => {
       const { rows } = await cliente.query<FilaCuentaCanal>(
-        `SELECT cc.id, cc.nombre, ca.codigo AS canal_codigo, cc.es_simulador, cc.es_sandbox,
+        `SELECT cc.id, cc.nombre, ca.codigo AS canal_codigo, cc.tipo_conexion, cc.es_simulador, cc.es_sandbox,
                 cc.partner_aprobado, cc.credenciales_cifradas, cc.ultima_sincronizacion_exitosa_en
          FROM cuenta_canal cc
          JOIN canal ca ON ca.id = cc.canal_id

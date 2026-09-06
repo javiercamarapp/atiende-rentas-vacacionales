@@ -34,6 +34,10 @@ function serializar(f: FilaCuentaCanal) {
     // "ical"/"partner_pendiente"/"simulador" — nunca inferido a partir de
     // banderas sueltas para no dejar un estado indefinido en la UI.
     tipoConexion: f.tipo_conexion,
+    // Auditoría 2, corrección D-DSD-13: falta pasar `tipoConexion` al
+    // dominio (que ya soporta este campo opcional) — sin esto, una cuenta
+    // `tipo_conexion='ical'` sana se reportaba como `partner_pendiente`
+    // porque `partner_aprobado` nunca se establece para esa vía.
     estadoConexion: evaluarEstadoConexion({
       credencialesPresentes: f.credenciales_cifradas !== null,
       esSimulador: f.es_simulador,
@@ -41,6 +45,7 @@ function serializar(f: FilaCuentaCanal) {
       ventanaMaximaMs: VENTANA_SYNC_RECIENTE_MS,
       partnerAprobado: f.partner_aprobado,
       esSandbox: f.es_sandbox,
+      tipoConexion: f.tipo_conexion === "ical" ? "ical" : "api",
     }),
     // §RV19/21-13: NUNCA se devuelve la credencial en claro ni cifrada —
     // solo si está "configurada" o no.

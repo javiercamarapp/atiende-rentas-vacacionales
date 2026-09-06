@@ -285,6 +285,38 @@ describe("H-012: multi-unidad con cantidad + cuentas de canal sin credenciales e
     expect(lineasLog.join("\n")).not.toContain("secreto-super-confidencial-12345");
   });
 
+  it("Auditoría 2, D-DSD-13: una cuenta iCal sana (sync reciente, sin aprobación de partner) se reporta como 'ical', nunca 'partner_pendiente'", async () => {
+    // `evaluarEstadoConexion` (packages/domain/src/channelAdapter.ts) ya
+    // soporta un `tipoConexion` opcional para esta rama, pero
+    // apps/api/src/routes/backoffice/cuentasCanal.ts (y apps/api/src/
+    // routes/canales.ts) no se lo pasaban — sin ese wiring, cualquier
+    // cuenta tipo_conexion='ical' se reportaba como 'partner_pendiente'
+    // (partner_aprobado nunca se establece para esa vía, queda en su
+    // DEFAULT false) aunque estuviera sincronizando con éxito.
+    const { accessToken } = await login(fx.emailAdminA, fx.passwordAdminA);
+    const creado = await jsonPost("/backoffice/cuentas-canal", accessToken, {
+      canalCodigo: "vrbo",
+      nombre: "Vrbo iCal sano D-DSD-13",
+      tipoConexion: "ical",
+      credenciales: { url: "https://vrbo.example/feed.ics" },
+    });
+    expect(creado.status).toBe(201);
+    const cuentaId = (creado.body as { id: string }).id;
+
+    // Simula una sincronización real exitosa reciente (lo que un ciclo de
+    // sync real escribiría) — nunca se establece `partner_aprobado`, que
+    // no aplica a iCal.
+    await superusuario.query("UPDATE cuenta_canal SET ultima_sincronizacion_exitosa_en = now() WHERE id = $1", [
+      cuentaId,
+    ]);
+
+    const listado = await jsonGet("/backoffice/cuentas-canal", accessToken);
+    expect(listado.status).toBe(200);
+    const cuentas = (listado.body as { cuentas: { id: string; estadoConexion: string }[] }).cuentas;
+    const cuenta = cuentas.find((c) => c.id === cuentaId);
+    expect(cuenta?.estadoConexion).toBe("ical");
+  });
+
   it("un simulador nunca se presenta como conexión productiva: bloqueado fuera de development/test", async () => {
     const { accessToken } = await login(fx.emailAdminA, fx.passwordAdminA);
     const nodeEnvOriginal = process.env.NODE_ENV;
