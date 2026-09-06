@@ -96,3 +96,8 @@
 2026-09-06 12:32:40 | DESPERTAR | usuario pide continuar; comprobando #45 #46 #47
 2026-09-06 12:46:30 | PUBLICACION | GitHub privado creado y main empujado; reanudando #45 #46 #47; despachando 3.3
 2026-09-06 12:49:26 | DESPACHO | 3.3 #48:    2 "model":"claude-sonnet-5" 
+2026-09-06 12:51:56 | REANUDACION | #45 3.0 reanudado; #47 3.4 reintento tras 429; #46 3.2 y #48 3.3 activos
+2026-09-06 12:55:13 | 429 SOSTENIDO | #45 y #46 caídos de nuevo; en curso solo #47 y #48; #45/#46 se reanudan al cerrar alguno o en el próximo despertar
+2026-09-06 12:58:23 | 429 SOSTENIDO | #48 3.3 caído de nuevo; solo #47 activo; espera hasta el despertar 13:14 antes de reanudar de uno en uno
+2026-09-06 13:11:17 | LATIDO-CRON 95b67309 | sin agentes activos (429 sostenido); reanudación escalonada: 3.3 (Vercel) primero
+2026-09-06 13:11:41 | VERCEL | proyecto vinculado; #48 reanudado; #45 #46 #47 en pausa escalonada
