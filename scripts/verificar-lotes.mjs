@@ -103,11 +103,36 @@ function parsearConteo(salidaCruda) {
   return entrada;
 }
 
+/**
+ * Auditoría 2, corrección Q-10 (calidad-codigo.md): antes, si Vitest
+ * cambiara el formato de su resumen ("Tests  27 passed (27)"), este
+ * script reportaría silenciosamente "0 tests" para un workspace que SÍ
+ * corrió pruebas — indistinguible de un workspace real sin suite Vitest
+ * (`--if-present` sin script `test`). Se distingue explícitamente ambos
+ * casos: si la salida cruda contiene el propio banner de arranque de
+ * Vitest ("RUN v" — impreso siempre al iniciar, antes de cualquier
+ * resumen) pero `parsearConteo` no encontró una línea "Tests"/"Test
+ * Files", es una falla de parseo, no una ausencia real de pruebas.
+ */
+const VITEST_ARRANCO = /\bRUN\s+v\d/;
+
+function conteoOFalloDeParseo(paquete, script, salidaCruda) {
+  const entrada = parsearConteo(salidaCruda);
+  if (VITEST_ARRANCO.test(quitarAnsi(salidaCruda)) && !entrada.tieneSuite) {
+    throw new Error(
+      `verificar-lotes: Vitest arrancó en "${paquete}" (script "${script}") pero no se pudo parsear su resumen ` +
+        `("Tests"/"Test Files") — probablemente cambió el formato de salida de Vitest. Revisa la salida cruda en ` +
+        `vez de confiar en un conteo de "0 tests", que aquí sería engañoso (el workspace sí corrió pruebas).`,
+    );
+  }
+  return entrada;
+}
+
 async function conteosPorPaquete(workspaces, script) {
   const conteos = [];
   for (const paquete of workspaces) {
     const resultado = await correr("npm", ["run", script, `--workspace=${paquete}`, "--if-present"]);
-    const entrada = parsearConteo(resultado.salida);
+    const entrada = conteoOFalloDeParseo(paquete, script, resultado.salida);
     conteos.push({ paquete, ...entrada });
   }
   return conteos;
@@ -159,7 +184,7 @@ async function main() {
 // módulo sin disparar `main()` (que lanza `npm run test` de verdad por cada
 // workspace) — mismo patrón que un script CLI con guardia
 // `require.main === module`, adaptado a ESM.
-export { parsearConteo, listarWorkspaces, quitarAnsi };
+export { parsearConteo, listarWorkspaces, quitarAnsi, conteoOFalloDeParseo };
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   main();

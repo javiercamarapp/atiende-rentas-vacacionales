@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parsearConteo, listarWorkspaces, quitarAnsi } from "./verificar-lotes.mjs";
+import { parsearConteo, listarWorkspaces, quitarAnsi, conteoOFalloDeParseo } from "./verificar-lotes.mjs";
 
 // Regresión (Lote 11B): `npm run verificar:lotes` reportaba "0 tests" al
 // ejecutarse con `npm -s` (silencioso) porque el parser anterior dependía
@@ -87,6 +87,36 @@ describe("verificar-lotes: parsearConteo", () => {
     const resultado = parsearConteo("[stub] test: 0 casos ejecutados (esperado en este lote) — saliendo con código 0.");
     expect(resultado.tests).toBe(0);
     expect(resultado.tieneSuite).toBe(false);
+  });
+});
+
+describe("verificar-lotes: conteoOFalloDeParseo (Auditoría 2, corrección Q-10)", () => {
+  it("no lanza cuando el workspace legítimamente no tiene suite Vitest (--if-present sin script)", () => {
+    const resultado = conteoOFalloDeParseo(
+      "@atiende-rv/algo",
+      "test",
+      "[stub] test: 0 casos ejecutados (esperado en este lote) — saliendo con código 0.",
+    );
+    expect(resultado.tieneSuite).toBe(false);
+    expect(resultado.tests).toBe(0);
+  });
+
+  it("no lanza cuando Vitest corrió y su resumen se parseó bien", () => {
+    const resultado = conteoOFalloDeParseo("@atiende-rv/domain", "test", SALIDA_SILENCIOSA_CON_COLOR);
+    expect(resultado.tests).toBe(20);
+  });
+
+  it("LANZA explícito cuando Vitest arrancó (banner 'RUN v...') pero el resumen no se pudo parsear — nunca reporta 0 en silencio", () => {
+    const salidaFormatoCambiado = [
+      " RUN v9.0.0 /repo/packages/domain",
+      "",
+      // Formato hipotético futuro de Vitest que ya no calza con el regex
+      // `/^\s*Tests\s+.*\((\d+)\)\s*$/` de parsearConteo.
+      "  Summary: 20 tests passed",
+    ].join("\n");
+    expect(() => conteoOFalloDeParseo("@atiende-rv/domain", "test", salidaFormatoCambiado)).toThrow(
+      /no se pudo parsear su resumen/,
+    );
   });
 });
 
