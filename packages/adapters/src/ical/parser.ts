@@ -250,6 +250,17 @@ function construirVEvent(lineas: LineaContenido[]): VEventNormalizado {
   const dtstampLinea = porNombre.get("DTSTAMP");
   const dtstartLinea = porNombre.get("DTSTART");
   if (!uidLinea) throw new IcsParseError("campo_requerido_ausente", "VEVENT sin UID (RFC 5545 §3.8.4.7)");
+  // S-18 (docs/auditoria-2/seguridad.md): un `UID:` presente pero vacío
+  // (tras trim()) se aceptaba antes sin validar longitud/no-vacío —
+  // combinado con "última ocurrencia gana" (construirVEvent línea
+  // superior), permitía que dos eventos legítimos con UID distinto
+  // colisionaran trivialmente si alguno traía una línea `UID:` vacía
+  // inyectada al final. Un UID vacío es, a efectos prácticos, tan inútil
+  // como uno ausente (RFC 5545 §3.8.4.7 exige un identificador único no
+  // vacío) — se trata igual: campo requerido ausente.
+  if (uidLinea.valor.trim() === "") {
+    throw new IcsParseError("campo_requerido_ausente", "VEVENT con UID vacío (RFC 5545 §3.8.4.7)");
+  }
   if (!dtstampLinea)
     throw new IcsParseError("campo_requerido_ausente", "VEVENT sin DTSTAMP (RFC 5545 §3.8.7.2)");
   if (!dtstartLinea)

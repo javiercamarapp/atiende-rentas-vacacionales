@@ -564,19 +564,24 @@ describe("H7 (control, NO vulnerable pero documentado) — propiedades duplicada
     expect(resultado.eventos[0]!.dtstart).toEqual({ tipo: "DATE", fecha: "2028-01-01" });
   });
 
-  it("dos UID: gana el último; el UID vacío también se acepta sin validar longitud/no-vacío", () => {
+  it("[CORREGIDO S-18] dos UID, el segundo vacío: ya NO se acepta silenciosamente — lanza IcsParseError('campo_requerido_ausente')", () => {
     const feed =
       `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//EN\r\nBEGIN:VEVENT\r\n` +
       `UID:primero@x\r\nUID:\r\nDTSTAMP:20270101T000000Z\r\n` +
       `DTSTART;VALUE=DATE:20270101\r\nDTEND;VALUE=DATE:20270102\r\n` +
       `END:VEVENT\r\nEND:VCALENDAR\r\n`;
-    const resultado = parsearIcs(feed);
-    console.log("UID resultante tras UID duplicado (segundo vacío):", JSON.stringify(resultado.eventos[0]!.uid));
-    // BUG menor: UID vacío se acepta sin ninguna validación de no-vacío;
-    // combinado con "última ocurrencia gana", dos eventos legítimos con UID
-    // distinto pero una línea `UID:` vacía inyectada al final colisionarían
-    // trivialmente entre sí (mismo UID "").
-    expect(resultado.eventos[0]!.uid).toBe("");
+    let lanzo: unknown;
+    try {
+      parsearIcs(feed);
+    } catch (e) {
+      lanzo = e;
+    }
+    // Antes de la corrección: se aceptaba silenciosamente con uid="" —
+    // combinado con "última ocurrencia gana", dos eventos legítimos con
+    // UID distinto pero una línea `UID:` vacía inyectada al final
+    // colisionarían trivialmente entre sí (mismo UID ""). Ahora un UID
+    // vacío (tras trim()) se trata igual que un UID ausente.
+    expect((lanzo as { codigo?: string })?.codigo).toBe("campo_requerido_ausente");
   });
 });
 

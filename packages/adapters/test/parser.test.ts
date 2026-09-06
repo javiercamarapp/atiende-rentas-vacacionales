@@ -80,6 +80,34 @@ describe("parsearIcs — validación semántica de fecha/hora (S-07, docs/audito
   });
 });
 
+describe("parsearIcs — UID vacío se rechaza (S-18, docs/auditoria-2/seguridad.md)", () => {
+  it("UID: (vacío) lanza IcsParseError('campo_requerido_ausente')", () => {
+    const feed = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//EN\r\nBEGIN:VEVENT\r\n" +
+      "UID:\r\nDTSTAMP:20270101T000000Z\r\nDTSTART;VALUE=DATE:20270101\r\nDTEND;VALUE=DATE:20270102\r\n" +
+      "END:VEVENT\r\nEND:VCALENDAR\r\n";
+    expect(() => parsearIcs(feed)).toThrow(IcsParseError);
+    try {
+      parsearIcs(feed);
+    } catch (e) {
+      expect((e as IcsParseError).codigo).toBe("campo_requerido_ausente");
+    }
+  });
+
+  it("UID: seguido de solo espacios también se trata como vacío", () => {
+    const feed = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//EN\r\nBEGIN:VEVENT\r\n" +
+      "UID:   \r\nDTSTAMP:20270101T000000Z\r\nDTSTART;VALUE=DATE:20270101\r\nDTEND;VALUE=DATE:20270102\r\n" +
+      "END:VEVENT\r\nEND:VCALENDAR\r\n";
+    expect(() => parsearIcs(feed)).toThrow(/UID vacío/);
+  });
+
+  it("dos UID donde el segundo (ganador por 'última ocurrencia') es vacío: se rechaza en vez de colisionar silenciosamente con uid=''", () => {
+    const feed = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//EN\r\nBEGIN:VEVENT\r\n" +
+      "UID:legitimo@x\r\nUID:\r\nDTSTAMP:20270101T000000Z\r\nDTSTART;VALUE=DATE:20270101\r\nDTEND;VALUE=DATE:20270102\r\n" +
+      "END:VEVENT\r\nEND:VCALENDAR\r\n";
+    expect(() => parsearIcs(feed)).toThrow(IcsParseError);
+  });
+});
+
 describe("parsearIcs", () => {
   it("parsea un VEVENT básico con DTEND;VALUE=DATE exclusivo", () => {
     const resultado = parsearIcs(feed(VEVENT_BASICO));
