@@ -1,0 +1,33 @@
+2026-09-05 18:38:48 | INICIO | encargo leído; staging creado; fase 1; despachando investigadores Sonnet
+2026-09-05 18:43:37 | DESPACHO | 9 agentes Sonnet verificados; cron 71e0bad6 creado; ScheduleWakeup programado (1500 s)
+2026-09-05 18:45:21 | AGENTE | RV03 completado (1/9); 8 en curso
+2026-09-05 18:45:43 | AGENTE | ref-plan completado (2/9); 7 en curso
+2026-09-05 18:47:38 | AGENTE | RV04 completado (3/9); 6 en curso; B-002 registrado
+2026-09-05 18:51:44 | AGENTE | RV05/08/14 completados (4/9); 5 en curso; B-002 ampliado
+2026-09-05 18:53:02 | AGENTE | RV06/07 completados (5/9); 4 en curso
+2026-09-05 18:54:04 | AGENTE | RV12/13/15/16 completados (6/9); 3 en curso (RV01/02/09/10/11, RV17/18/20, RV19/21)
+2026-09-05 18:55:11 | AGENTE | RV01/02/09/10/11 completados (7/9); 2 en curso (RV17/18/20, RV19/21)
+2026-09-05 18:55:45 | DESPACHO | agente #10 (B-002 Chrome) lanzado con model=sonnet
+2026-09-05 18:55:00 | AGENTE | RV17/18/20 completados (8/9); ledger consolidado docs/fuentes/rv17-18-20.md (32 entradas)
+2026-09-05 18:56:28 | AGENTE | RV17/18/20 completados (8/9); B-002 intento 1 fallido; lanzando intento 2 (archivo)
+2026-09-05 18:57:10 | DESPACHO | agente #11 (B-002 archivo) model efectivo:   14 "model":"claude-sonnet-5" 
+2026-09-05 19:05:20 | FASE1 | 9/9 familias completas; despachando auditor independiente, consolidador y blueprint (Sonnet)
+2026-09-05 19:07:08 | DESPACHO | agentes #12 auditor, #13 consolidador, #14 blueprint lanzados (sonnet)
+2026-09-05 19:10:27 | AGENTE | B-002 intento 2 parcial; hallazgo crítico: Booking pausa nuevos providers; notificar a #14 blueprint
+2026-09-05 19:21:30 | AGENTE | consolidación #13 completa; esperando #12 auditor y #14 blueprint
+2026-09-05 19:22:54 | AGENTE | blueprint #14 completo; despachando auditor de blueprint #15
+2026-09-05 19:23:47 | DESPACHO | #15 auditor blueprint:    5 "model":"claude-sonnet-5" 
+2026-09-05 19:28:23 | AUDITORIA | investigación NO LISTA; correcciones C1-C5 + altas; despachando correctores
+2026-09-05 19:29:44 | DESPACHO | correctores #16 A y #17 B lanzados; #15 auditor blueprint en curso
+2026-09-05 19:36:25 | AUDITORIA | blueprint APTO CON CORRECCIONES; despachando #18
+2026-09-05 19:37:06 | DESPACHO | #18 corrector blueprint:    8 "model":"claude-sonnet-5" ; en curso #16, #17, #18
+2026-09-05 19:43:37 | AGENTE | corrector A completo; en curso #17 B, #18 blueprint
+2026-09-05 19:49:58 | AGENTE | corrector blueprint completo; en curso #17 B
+2026-09-05 19:50:56 | AGENTE | corrector B completo; despachando reverificador #19
+2026-09-05 19:52:08 | DESPACHO | #19 reverificador:    9 "model":"claude-sonnet-5" ; #20 PDF lanzado
+2026-09-05 19:54:01 | AGENTE | PDF generado; en curso #19 reverificador
+2026-09-05 20:04:06 | REVERIFICACION | cierre condicionado; 8 condiciones; despachando #21
+2026-09-05 20:04:54 | DESPACHO | #21 ronda final:   13 "model":"claude-sonnet-5" 
+2026-09-05 20:17:35 | AGENTE | ronda final completa; reanudando #19 para confirmar cierre
+2026-09-05 20:25:31 | FASE1 | CIERRE APROBADO; regenerando PDF; iniciando Fase 2
+2026-09-05 20:26:49 | FASE2 | planificador #22:   15 "model":"claude-sonnet-5" 

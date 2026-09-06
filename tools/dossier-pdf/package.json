@@ -1,0 +1,14 @@
+{
+  "name": "dossier-pdf",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Generador del dossier consolidado de Fase 1 (HTML + PDF) a partir de los Markdown fuente.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "markdown-it": "^14.1.0",
+    "markdown-it-anchor": "^9.2.0"
+  }
+}

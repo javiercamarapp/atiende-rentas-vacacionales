@@ -1,0 +1,29 @@
+# Dependencias
+node_modules/
+.pnp
+.pnp.js
+
+# Build/artefactos
+dist/
+build/
+*.tsbuildinfo
+coverage/
+
+# Entorno y secretos — nunca commitear
+.env
+.env.*
+!.env.example
+
+# Logs (excepto el log operativo de Fase 1, que sí se versiona)
+*.log
+!docs/logs/bucle.log
+
+# Sistema operativo / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Bases de datos embebidas de prueba (embedded-postgres/PGlite)
+.pgdata/
+*.pgdata/
