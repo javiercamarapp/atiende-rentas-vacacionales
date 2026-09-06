@@ -654,3 +654,47 @@ Fase 2, más la auditoría de atribución de commits de B-007).
   `ca8252b`, `1742320`, `a707d50`, `2f3039c`, `f9f13ac`, `e976d99` (más
   la parte del commit `6d4f2ae` de Lote 11A que absorbió 3 archivos de la
   corrección #3, documentado en la auditoría).
+
+## Lote 3.4 — cerrado (canales de distribución usados en México, RV22)
+
+Historias nuevas H-140–H-148, trazadas a `docs/investigacion/RV22-canales-mexico.md`
+(§4, niveles A/B/C) y a D-003/D-004/D-011/D-019. Ningún canal Nivel C tiene
+código de adaptador (ni real ni simulador) — solo catálogo declarativo con
+motivo y fuente citada.
+
+| ID | Historia | Fuente RV22 | Nivel | Estimación | Estado |
+|---|---|---|---|---|---|
+| H-140 | `canal_catalogo` (migración 0110): niveles A/B/C, estado honesto, capacidades, latencia+confianza, URL oficial, requisitos de credenciales para ~20 canales | RV22 §1, §4 | transversal | L | hecho |
+| H-141 | Agoda — adaptador iCal (mismo motor que Airbnb/Vrbo) + revisión de ventana de importación de 2 años de Airbnb | RV22 F02, F31 | A | S | hecho |
+| H-142 | Booking.com — adaptador completo contra OTA/B.XML (`OTA_HotelAvailNotifRQ`, roomstosell/CTA/CTD/min-max stay, `OTA_HotelRateAmountNotifRQ` opcional) + simulador extendido | RV04 F09, RV22 F03 | B | L | hecho |
+| H-143 | Expedia Group — cliente contra sandbox (`api.sandbox.expediagroup.com`), Availability & Rates con lotes de 5,000, Booking Retrieval/Confirmation, + simulador | RV22 F04-F13 | B | L | hecho |
+| H-144 | Vrbo API propia y Airbnb API partner — esqueletos separados de sus adaptadores iCal (RV22-R-02/R-05), sin simulador por spec no pública | RV22 F13, RV03 | B | M | hecho |
+| H-145 | Google Vacation Rentals — esqueleto de adaptador (invitación exclusiva, sin autoservicio) | RV22 F29-F30 | B | S | hecho |
+| H-146 | Puente SiteMinder pmsXchange (cubre Booking/Expedia/Vrbo/Despegar/PriceTravel) + simulador con caso de eco cruzado | RV22 F24-F25 | B | L | hecho |
+| H-147 | API de catálogo + asistente de conexión (`GET /canales-mexico/catalogo`, `GET /canales-mexico/:canal/asistente`) y matriz de conectividad México en web, sin botón de "marcar conectado" | RV22-R-06 | transversal | M | hecho |
+| H-148 | Adversariales de canales: doble reserva Expedia+Airbnb, ack perdido Expedia, puente reexporta bloqueo (anti-eco) | pedido explícito del lote | transversal | M | hecho |
+
+- **Adaptadores por nivel:** Nivel A con simulador — Airbnb, Vrbo, Agoda
+  (los 3 sobre el mismo `ServidorIcalSimulado`). Nivel B con simulador —
+  Booking.com, Expedia, SiteMinder (puente a Despegar/PriceTravel/Booking/
+  Expedia/Vrbo). Nivel B esqueleto sin simulador (spec no pública) — Vrbo
+  API propia, Airbnb API partner, Google Vacation Rentals. Nivel C — sin
+  ningún código de adaptador: Best Day, TripAdvisor Rentals, FlipKey,
+  HomeToGo, Marriott Homes & Villas, Plum Guide, Hopper Homes, Facebook
+  Marketplace (catálogo `no_aplica`/`manual`); Mercado Libre catalogado en
+  Nivel A como `manual` (sin calendario).
+- **Estado de conexión:** ningún canal reporta `sandbox`/`producción` sin
+  `partnerAprobado` + evidencia real de sync reciente (D-017) — todo canal
+  Nivel B queda en `partner_pendiente` con motivo citado hasta que el
+  usuario cargue credenciales reales aprobadas por el canal.
+- **Verificación:** `npm run typecheck`/`lint` verdes en los 7 workspaces;
+  `npm run test`/`test:integration` verdes salvo una falla preexistente
+  ajena a este lote (`packages/db/test/backup/exportarRestaurar.test.ts`,
+  H-086/H-087: serialización de columnas `text[]` nativas de Postgres mal
+  interpretadas como JSON — introducida por la migración 0101/0107 de
+  Lote 3.2, `dominios_google_permitidos`, no tocada por Lote 3.4, reportada
+  para que la corrija el dueño de esa área); `npm run test:adversarial`
+  100% verde (6 archivos, 52 pruebas, incluida la suite nueva
+  `tests/adversarial/canales/`). Logs en `docs/logs/lote3-4-*.log`.
+- **Commits:** ver `git log --oneline --grep="canales-mx"` (13 commits,
+  un canal/pieza por commit según B-007).
