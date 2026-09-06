@@ -104,7 +104,7 @@ externa").
 | H-051 | Checklist con fotos/timestamps por ítem; incompleto puede bloquear reapertura | REQ-113, REQ-114 | §Limpieza-2 | SHOULD | M | hecho (Lote 5) |
 | H-052 | Inventario/ropa blanca con alertas de stock bajo, descuento automático | REQ-115 | §Limpieza-2 | SHOULD | M | hecho (Lote 5) |
 | H-053 | Portal de proveedor externo con acceso acotado a su tarea asignada | REQ-116 | §Limpieza-2 | MUST | M | hecho (Lote 5) |
-| H-054 | Notificación multicanal configurable por evento de tarea | REQ-117 | §Limpieza-2 | SHOULD | S | hecho (Lote 5, parcial — registra intención/canal resuelto por evento en `notificacion_tarea`; el adaptador de envío real por canal queda fuera de alcance, nunca simulado como enviado) |
+| H-054 | Notificación multicanal configurable por evento de tarea | REQ-117 | §Limpieza-2 | SHOULD | S | hecho (Lote 3.0, `45df8af`+`cbd96af` — completa la base de Lote 5): 3 canales (`in_app` ya existente vía `alerta`/`notificacion_tarea`, `correo` con `AdaptadorCorreoSimulado` etiquetado + punto de extensión SMTP real desactivado por defecto, `webhook` saliente firmado HMAC-SHA256 por tenant con secreto cifrado AES-256-GCM en reposo); preferencias opt-in por usuario+evento+canal (migración 0120); wiring real en `POST /pricing/.../paridad` (H-071) |
 | H-055 | Incidencias de mantenimiento documentables sin cierre/cancelación automática | REQ-118, REQ-119 | §RV19/21-6 | MUST | M | hecho (Lote 5) |
 
 ## E09 — Mensajes con aprobación humana
@@ -136,14 +136,14 @@ externa").
 | H-068 | Motor de reglas base + estacionalidad + descuentos por duración | REQ-130, REQ-131, REQ-132 | §Pricing-1 | SHOULD | L | hecho (Lote 7) |
 | H-069 | Sincronización de tarifa condicionada a integración API activa (nunca vía iCal) | REQ-130 | §Pricing-1 | MUST | S | hecho (Lote 7) |
 | H-070 | Desactivación explícita del pricing nativo del canal al activar el propio | REQ-133 | §Pricing-1 | MUST | S | hecho (Lote 7) |
-| H-071 | Paridad de precios configurable por jurisdicción/mercado | REQ-135 | §Pricing-2 | SHOULD | S | por hacer |
+| H-071 | Paridad de precios configurable por jurisdicción/mercado | REQ-135 | §Pricing-2 | SHOULD | S | hecho (Lote 3.0, `ba5b62f`) — comparador puro (`packages/domain/src/pricing/paridad.ts`) sobre el markup de `tarifa_regla_canal` (RV13), `POST /pricing/unidades/:id/paridad` registra violaciones como `alerta` (migración 0111) sin publicar nunca, UI en Pricing |
 
 ## E12 — Reporting
 
 | ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
 |---|---|---|---|---|---|---|
 | H-072 | Reportes operativos/financieros derivados de `reserva`/`statement`/`tarea_limpieza` sin duplicar lógica de cálculo | RV17 §12 | §Finanzas-1 | SHOULD | M | hecho (Lote 7, parcial — ocupación/ADR/RevPAR e ingresos por canal/propiedad/mes desde `reserva_financiero`; no cruza `tarea_limpieza` de Lote 5) |
-| H-073 | Reporte de latencia interna vs. por canal con percentiles p50/p95/p99 | REQ-039, REQ-171 | §RV19/21-8, §Plan-1 | MUST | M | por hacer |
+| H-073 | Reporte de latencia interna vs. por canal con percentiles p50/p95/p99 | REQ-039, REQ-171 | §RV19/21-8, §Plan-1 | MUST | M | hecho (Lote 3.0, `a6108a9` — commit del Lote 3.2 concurrente que absorbió estos archivos por índice git compartido, contenido verificado idéntico, ver `docs/BLOQUEOS.md`) — latencia interna medida etiquetada por canal Y cuenta de canal (`latenciaCanalCuenta.ts`), `resumenLatenciaEtiquetada` separa explícitamente "interna medida" de "externa declarada (confianza)" en `/health/detallado`, panel nuevo en el monitor de sync |
 
 ## E13 — Back office / superadmin
 
@@ -176,7 +176,7 @@ externa").
 | H-088 | Migraciones patrón expand/contract, nunca bloqueantes en horario de check-in/checkout | REQ-162 | §Operación-3 | MUST | M | hecho (Lote 10, parcial — chequeo de DROP/ALTER destructivo + orden/colisiones + dry-run implementados y probados contra el catálogo real; la restricción de horario de check-in/checkout es una regla de despliegue/runbook, no verificable por código sin un orquestador de despliegues) |
 | H-089 | Feature flags default `false` para funcionalidad que module dinero/cancelación/contacto | REQ-163 | §Operación-1 | MUST | S | hecho (Lote 10) |
 | H-090 | Pausa automática de push ante token de canal revocado/expirado | REQ-165 | §Operación-1 | MUST | M | hecho (Lote 10) |
-| H-091 | Modo degradado de solo-lectura del calendario si la BD primaria no responde | REQ-166 | §Operación-3 | MUST | L | por hacer |
+| H-091 | Modo degradado de solo-lectura del calendario si la BD primaria no responde | REQ-166 | §Operación-3 | MUST | L | parcial (Lote 3.0, `cc45be9`) — la pieza de infraestructura que bloqueaba este ítem (réplica de lectura) ya existe: `EnrutadorLecturaReplica` con `DATABASE_URL_REPLICA` opcional y fallback automático al primario, probado con pools falsos y con DOS clusters `embedded-postgres` reales (apagar el proceso de la "réplica" fuerza un fallback real). Pendiente, deliberadamente fuera de esta sesión por riesgo de colisión sobre `app.ts`/rutas de reportes-calendario con Lotes 3.2/3.4 concurrentes: wiring del enrutador en un endpoint HTTP real y el "modo degradado" específico del calendario (qué ve un operador cuando el primario no responde) |
 
 ## E16 — Pruebas adversariales (20 casos) y carga
 
@@ -868,3 +868,75 @@ RV19 (privacidad/legal — páginas legales como borrador para revisión).
 - **Commits:** ver `git log --oneline --grep="Lote 3.3"` y los commits de
   `feat(facturacion)`/`feat(onboarding)`/`feat(despliegue)`/`fix(facturacion)`/
   `fix(web)`/`test(facturacion,onboarding)` del 2026-09-06.
+
+## Lote 3.0 — cierre del backlog restante de Fase 2 (Auditoría 2 + historias)
+
+7 ítems cerrados (4 historias, 3 hallazgos de calidad/producto de
+`docs/auditoria-2/`), corriendo en paralelo con Lotes 3.2 (auth extendida)
+y 3.4 (canales de distribución México) sobre el mismo árbol de trabajo —
+ver notas de colisión de commit abajo, mismo patrón ya documentado en
+Lotes 5/7/11B.
+
+- **H-054** (notificaciones multicanal): ver tabla arriba. Commits
+  `45df8af` (dominio: tipos/preferencias/firma HMAC — absorbido por un
+  commit de Lote 3.4, contenido verificado) y `cbd96af` (API/DB/simulador
+  de correo). 25 pruebas nuevas (14 dominio + 4 simulador + 6 cifrado + 8
+  webhook saliente + 7 dispatcher + 8 integración HTTP).
+- **H-071** (paridad de precios): ver tabla arriba. Commit `ba5b62f`. 8
+  pruebas de dominio + 2 de integración HTTP + 1 de componente web.
+- **H-073** (percentiles de latencia interna/externa): ver tabla arriba.
+  Commit `a6108a9` (absorbido por Lote 3.2). Corrección de bug real
+  encontrada en el camino: `PATRON_TELEFONO` de `otel.ts` confundía un
+  uuid v4 con un teléfono pegado si por azar contenía un tramo largo de
+  solo dígitos/guiones (falso positivo no determinista, afectaba
+  `cuenta_canal_id`/`unidad_id` como etiquetas de métrica) — corregido con
+  una exención explícita para uuids válidos, 2 pruebas nuevas en
+  `otel.test.ts`.
+- **H-091** (réplica de lectura, parcial): ver tabla arriba. Commit
+  `cc45be9`. Único ítem que queda `parcial`, honestamente: la
+  infraestructura de streaming replication real no existe en este
+  entorno de construcción (mismo motivo que Lote 10 dejó este ítem
+  documentado como bloqueado, no un olvido).
+- **Q-04** (`docs/auditoria-2/calidad-codigo.md`, 30 sitios de literales de
+  rol repetidos): commit `e0e046c`. Nuevo `apps/api/src/rolesComunes.ts`
+  (deliberadamente fuera de `middleware/`/`seguridad/`, en edición activa
+  de Lote 3.2) con 6 grupos de roles; 19 archivos de rutas actualizados
+  para usarlos vía spread. `exigirRol`/`requiereRol` no se tocaron.
+- **Q-06** (`@vitest/coverage-v8` en los 7 workspaces): commit `67f92a8`.
+  Script `test:coverage` separado (nunca invocado por `npm test`/`npm run
+  ci`), sin `thresholds` que puedan romper nada. Medición real documentada
+  en `docs/fase2/COBERTURA.md` — corrige el "0.14" nunca medido del
+  informe original de Auditoría 2.
+- **P-08** (`docs/auditoria-2/producto-ux-operacion.md`, cajas de error
+  403 apiladas): commit `7a01cf2`. Nuevo `RutaConRol` — guarda de rol a
+  nivel de ruta en las 5 rutas del grupo "PLATAFORMA" del sidebar; si el
+  rol no coincide, `children` nunca se monta.
+
+**Colisiones de commit (mismo patrón documentado en Lotes 5/7/11B, B-006
+de `docs/BLOQUEOS.md`)**: con 2-3 constructores activos sobre el mismo
+índice git, `git commit` de otro lote absorbió en más de una ocasión
+archivos ya editados-pero-no-comiteados-todavía de esta sesión (contenido
+siempre verificado idéntico, solo la atribución del commit cambia):
+`45df8af` (dominio de notificaciones), `a6108a9` (H-073 completo). Mitigado
+parcialmente escribiendo+comiteando cada ítem lo más rápido posible tras
+verificar sus pruebas, sin dejar cambios sin comitear más tiempo del
+necesario.
+
+**Gates finales de la sesión** (después del cierre de Lotes 3.2/3.3/3.4,
+sin concurrencia activa): `npm run typecheck` verde 7/7 workspaces,
+`npm run lint` 0 errores (11 warnings preexistentes, ninguno de este
+lote), `npm run test` verde 7/7 workspaces (780 pruebas), `npm run
+test:integration` verde 2/2 workspaces (186 pruebas), `npm run
+test:adversarial` verde (52 pruebas). La falla intermitente de
+`packages/db/test/backup/exportarRestaurar.test.ts` observada a mitad de
+sesión (con Lote 3.2 todavía escribiendo migraciones) desapareció al
+cerrar esa concurrencia — confirmado no relacionado con ningún cambio de
+este lote. Logs en `docs/logs/lote3-0-*.log` (no versionados, como el
+resto de logs de lote) y capturas reales en `docs/capturas/lote3-0-*.png`.
+- **Commits:** `74d7241`/`e0e046c` (Q-04), `b4fea64`/`7a01cf2` (P-08),
+  `6ca6bf7`/`67f92a8` (Q-06), `5c97e9d…97cbb56`/`cbd96af` (H-073/H-054,
+  rango completo en `git log`), `37332c6`/`ba5b62f` (H-071),
+  `5ead903`/`cc45be9` (H-091), `157775c` (capturas). Pares "hash
+  original/hash tras reescritura de historial" porque el orquestador
+  reescribió la autoría de todo el repo a mitad de esta sesión (working
+  tree preservado, contenido idéntico verificado).
