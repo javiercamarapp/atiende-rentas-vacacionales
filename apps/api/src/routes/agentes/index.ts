@@ -1,13 +1,14 @@
 import { Hono } from "hono";
 import type pg from "pg";
 import { toolsDisponiblesParaActor, type ActorAgente } from "@atiende-rv/domain/agentes";
-import { agentesHabilitadoParaTenant, invocarRondaAgente } from "../../agentes/servicio.js";
+import { agentesHabilitadoParaTenant, invocarRondaAgente, registroFlagsAgentesInstancia } from "../../agentes/servicio.js";
 import { obtenerCuotaTenant, listarTrazasTenant, resolverContextoUnidad } from "../../agentes/repositorio.js";
 import { CuerpoInvocarAgente, ErrorDominio, QueryTrazasAgente } from "../../contrato/tipos.js";
 import { conSesion } from "../../db/contexto.js";
 import { requiereAutenticacion } from "../../middleware/autenticacion.js";
 import { exigirRol } from "../../middleware/roles.js";
 import { sesionDeAuth } from "../../middleware/tenant.js";
+import { crearRutasAgentesFlags } from "./flags.js";
 
 /**
  * Lote 9 (BACKLOG E14, H-077 a H-085): endpoints para invocar tools desde
@@ -27,15 +28,27 @@ export function crearRutasAgentes(pool: pg.Pool, jwtSecret: string): Hono {
   const app = new Hono();
   app.use("*", requiereAutenticacion(jwtSecret));
 
+  // Corrección Auditoría 2 (P-01): `/agentes/flags` expone el estado del
+  // flag `agentes.habilitado` (y `agentes.proveedor_real_habilitado`) con
+  // toggle admin-only + auditoría — ver flags.ts para el detalle de roles.
+  app.route("/flags", crearRutasAgentesFlags(registroFlagsAgentesInstancia()));
+
   app.get("/tools", async (c) => {
     const auth = c.get("auth");
     const actor: ActorAgente = { usuarioId: auth.usuarioId, rol: auth.rol, colaboradorNivel: auth.colaboradorNivel };
+    // `rolesPermitidos`/`nivelesColaboradorPermitidos` añadidos en la
+    // corrección P-01 (Auditoría 2): la página de "Automatización
+    // agéntica" necesita mostrar qué roles pueden usar cada tool, no solo
+    // cuáles puede usar el actor actual (que para superadmin/admin_gestora
+    // ya coincide con el catálogo casi completo).
     const tools = toolsDisponiblesParaActor(actor).map((tool) => ({
       nombre: tool.nombre,
       descripcion: tool.descripcion,
       efecto: tool.efecto,
       requiereLlm: tool.requiereLlm,
       maxLlamadasPorConversacion: tool.limites.maxLlamadasPorConversacion,
+      rolesPermitidos: tool.rolesPermitidos,
+      nivelesColaboradorPermitidos: tool.nivelesColaboradorPermitidos ?? null,
     }));
     return c.json({ tools });
   });

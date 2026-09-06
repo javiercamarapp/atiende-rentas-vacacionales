@@ -273,6 +273,69 @@ describe("con agentes.habilitado activo para el tenant", () => {
   });
 });
 
+describe("Auditoría 2, corrección P-01: GET/PATCH /agentes/flags (agentes.habilitado)", () => {
+  it("GET /agentes/flags refleja el valor efectivo ya activado para este tenant por el describe anterior", async () => {
+    const { accessToken } = await login(fx.emailAdmin, fx.passwordAdmin);
+    const res = await app.request("/agentes/flags", autenticado(accessToken!));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { flags: Array<{ id: string; valorEfectivo: boolean }> };
+    const flag = body.flags.find((f) => f.id === FLAG_AGENTES_HABILITADO);
+    expect(flag?.valorEfectivo).toBe(true);
+  });
+
+  it("un operador puede LEER el flag pero PATCH le responde 403 rol_forbidden", async () => {
+    const { accessToken } = await login(fx.emailOperador, fx.passwordOperador);
+    const lectura = await app.request("/agentes/flags", autenticado(accessToken!));
+    expect(lectura.status).toBe(200);
+
+    const escritura = await app.request(
+      `/agentes/flags/${FLAG_AGENTES_HABILITADO}`,
+      autenticado(accessToken!, { method: "PATCH", body: JSON.stringify({ valor: false, motivo: "intento de operador" }) }),
+    );
+    expect(escritura.status).toBe(403);
+  });
+
+  it("un propietario/contador no pueden ni leer /agentes/flags (fuera de los roles de operación de agentes)", async () => {
+    const { accessToken: tokenPropietario } = await login(fx.emailPropietario, fx.passwordPropietario);
+    const resPropietario = await app.request("/agentes/flags", autenticado(tokenPropietario!));
+    expect(resPropietario.status).toBe(403);
+  });
+
+  it("admin_gestora puede desactivar el flag con motivo obligatorio y el cambio queda auditado", async () => {
+    const { accessToken } = await login(fx.emailAdmin, fx.passwordAdmin);
+
+    const sinMotivo = await app.request(
+      `/agentes/flags/${FLAG_AGENTES_HABILITADO}`,
+      autenticado(accessToken!, { method: "PATCH", body: JSON.stringify({ valor: false }) }),
+    );
+    expect(sinMotivo.status).toBe(422); // CuerpoEstablecerFlag exige `motivo`
+
+    const cambio = await app.request(
+      `/agentes/flags/${FLAG_AGENTES_HABILITADO}`,
+      autenticado(accessToken!, {
+        method: "PATCH",
+        body: JSON.stringify({ valor: false, motivo: "Auditoría 2 — corrección P-01, prueba de toggle admin" }),
+      }),
+    );
+    expect(cambio.status).toBe(200);
+
+    const auditoria = await app.request(`/agentes/flags/${FLAG_AGENTES_HABILITADO}/auditoria`, autenticado(accessToken!));
+    expect(auditoria.status).toBe(200);
+    const bodyAuditoria = (await auditoria.json()) as { entradas: Array<{ motivo: string; valor: boolean }> };
+    expect(bodyAuditoria.entradas.some((e) => e.motivo.includes("corrección P-01"))).toBe(true);
+
+    // Se reactiva para no afectar el resto de la suite de este archivo
+    // (otros describes de este mismo tenant dependen de que quede activo).
+    registroFlagsAgentesInstancia().establecer({
+      flagId: FLAG_AGENTES_HABILITADO,
+      valor: true,
+      tenantId: fx.tenantId,
+      actor: "test-lote9-p01",
+      motivo: "revertido tras la prueba de toggle de Auditoría 2",
+    });
+  });
+});
+
 describe("presupuesto agotado (H-079, §Automatización-1)", () => {
   it("con saldo de llamadas en cero, la ronda responde 429 tipado sin invocar al proveedor", async () => {
     const tenantAgotado = await superusuario.query<{ id: string }>("INSERT INTO tenant (nombre) VALUES ('T-Lote9-Agotado') RETURNING id");

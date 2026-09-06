@@ -96,7 +96,7 @@ export const MENU_SECTIONS: GrupoMenu[] = [
     items: [
       { id: "propiedades", etiqueta: "Propiedades y unidades", icono: Building2, ruta: "/propiedades" },
       { id: "cuentas-canal", etiqueta: "Cuentas de canal", icono: Link2, ruta: "/cuentas-canal" },
-      { id: "agentes", etiqueta: "Automatización agéntica", icono: Bot, lote: "Lote 9" },
+      { id: "agentes", etiqueta: "Automatización agéntica", icono: Bot, ruta: "/agentes" },
       { id: "backoffice", etiqueta: "Back office", icono: ShieldCheck, ruta: "/administracion" },
       { id: "estadisticas", etiqueta: "Panel superadmin", icono: BarChart3, ruta: "/backoffice/superadmin" },
     ],

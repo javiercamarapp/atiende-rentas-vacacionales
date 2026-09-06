@@ -17,6 +17,7 @@ import { SuperadminPage } from "./pages/backoffice/SuperadminPage";
 import { PropiedadesPage } from "./pages/backoffice/PropiedadesPage";
 import { CuentasCanalPage } from "./pages/backoffice/CuentasCanalPage";
 import { AdministracionPage } from "./pages/backoffice/AdministracionPage";
+import { AgentesPage } from "./pages/agentes/AgentesPage";
 import { AdminLayout } from "./components/admin/AdminLayout";
 import { RutaProtegida } from "./components/admin/RutaProtegida";
 import { SesionProvider } from "./lib/sesion/SesionProvider";
@@ -60,6 +61,7 @@ export default function App() {
                   <Route path="/pricing" element={<PricingPage />} />
                   <Route path="/reportes" element={<ReportesPage />} />
                   <Route path="/administracion" element={<AdministracionPage />} />
+                  <Route path="/agentes" element={<AgentesPage />} />
                   <Route path="/backoffice/superadmin" element={<SuperadminPage />} />
                   <Route path="*" element={<Navigate to="/calendario" replace />} />
                 </Routes>
