@@ -25,6 +25,11 @@ import { migracion0036RlsOperacion } from "./0036_rls_operacion.js";
 import { migracion0037AuditoriaTriggersOperacion } from "./0037_auditoria_triggers_operacion.js";
 import { migracion0038RlsOutboxLecturaOperacion } from "./0038_rls_outbox_lectura_operacion.js";
 import { migracion0039HelperUnidadNombreOperacion } from "./0039_helper_unidad_nombre_operacion.js";
+import { migracion0040MensajeriaEsquema } from "./0040_mensajeria_esquema.js";
+import { migracion0041MensajeriaPlantillas } from "./0041_mensajeria_plantillas.js";
+import { migracion0042MensajeriaBorradorAprobacion } from "./0042_mensajeria_borrador_aprobacion.js";
+import { migracion0043MensajeriaRls } from "./0043_mensajeria_rls.js";
+import { migracion0044MensajeriaAuditoria } from "./0044_mensajeria_auditoria.js";
 import { migracion0050FinanzasEsquema } from "./0050_finanzas_esquema.js";
 import { migracion0051PayoutConciliacion } from "./0051_payout_conciliacion.js";
 import { migracion0052OwnerStatement } from "./0052_owner_statement.js";
@@ -36,6 +41,9 @@ import { migracion0061AccesoRomperCristal } from "./0061_acceso_romper_cristal.j
 import { migracion0062InvitacionUsuario } from "./0062_invitacion_usuario.js";
 import { migracion0063BackofficeMetricasTenant } from "./0063_backoffice_metricas_tenant.js";
 import { migracion0064CuentaCanalConexionHonesta } from "./0064_cuenta_canal_conexion_honesta.js";
+import { migracion0070AgentesEsquema } from "./0070_agentes_esquema.js";
+import { migracion0071AgentesRls } from "./0071_agentes_rls.js";
+import { migracion0072AgentesAuditoria } from "./0072_agentes_auditoria.js";
 import { migracion0080OutboxConsumidoObservabilidad } from "./0080_outbox_consumido_observabilidad.js";
 import { migracion0081Alerta } from "./0081_alerta.js";
 import { migracion0090CuentaCanalCifrado } from "./0090_cuenta_canal_cifrado.js";
@@ -62,8 +70,12 @@ import { migracion0092RlsTablasCanalLote2 } from "./0092_rls_tablas_canal_lote2.
 // reservado a Lote 10 (observabilidad/recuperación, E15) — ledger propio
 // de idempotencia del worker de outbox y tabla de alertas, mismo patrón de
 // "tabla de seguimiento propia" que ya usa Lote 5 (ver 0035_outbox_consumido_limpieza.ts).
-// Rango 0060-0069 reservado a Lote 8 (back office/superadmin, E13) — ver
-// comentario de cabecera en 0060_backoffice_columnas.ts.
+// Rango 0040-0049 reservado a Lote 6 (mensajería con aprobación humana,
+// E09) — ver comentario de cabecera en 0040_mensajeria_esquema.ts. Rango
+// 0060-0069 reservado a Lote 8 (back office/superadmin, E13) — ver
+// comentario de cabecera en 0060_backoffice_columnas.ts. Rango 0070-0079
+// reservado a Lote 9 (automatización agéntica, E14) — ver comentario de
+// cabecera en 0070_agentes_esquema.ts.
 export const migraciones: Migracion[] = [
   migracion0001Extensiones,
   migracion0002TenantEmpresaOwner,
@@ -91,6 +103,11 @@ export const migraciones: Migracion[] = [
   migracion0037AuditoriaTriggersOperacion,
   migracion0038RlsOutboxLecturaOperacion,
   migracion0039HelperUnidadNombreOperacion,
+  migracion0040MensajeriaEsquema,
+  migracion0041MensajeriaPlantillas,
+  migracion0042MensajeriaBorradorAprobacion,
+  migracion0043MensajeriaRls,
+  migracion0044MensajeriaAuditoria,
   migracion0050FinanzasEsquema,
   migracion0051PayoutConciliacion,
   migracion0052OwnerStatement,
@@ -102,6 +119,9 @@ export const migraciones: Migracion[] = [
   migracion0062InvitacionUsuario,
   migracion0063BackofficeMetricasTenant,
   migracion0064CuentaCanalConexionHonesta,
+  migracion0070AgentesEsquema,
+  migracion0071AgentesRls,
+  migracion0072AgentesAuditoria,
   migracion0080OutboxConsumidoObservabilidad,
   migracion0081Alerta,
   migracion0090CuentaCanalCifrado,
