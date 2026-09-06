@@ -152,7 +152,6 @@ function diasEntre(desde: string, hasta: string): number {
   return Math.round((fin - inicio) / (24 * 60 * 60 * 1000));
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 // Auditoría 2, corrección Q-08 (calidad-codigo.md): último `any` del
 // repo fuera de finanzas.ts (ya tipado en la corrección Q-01) — `Context`
 // de Hono es fácilmente tipable, no había motivo real para `any` aquí.
