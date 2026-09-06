@@ -57,7 +57,12 @@ export function crearApp(opciones: OpcionesCrearApp = {}) {
   const keyring = new KeyringCifradoCanal(config.cifradoCanalClaves);
 
   app.use("*", cabecerasSeguridad);
-  app.use("*", cors({ origin: config.origenWeb }));
+  // `credentials: true` (Lote 3.2, H-096): imprescindible para que el
+  // navegador envíe/reciba la cookie httpOnly de refresh + la cookie CSRF
+  // del cliente 'web' en peticiones cross-origin (apps/web en :5173, esta
+  // API en :8787 en desarrollo) — sin esto el navegador descarta
+  // silenciosamente cualquier `Set-Cookie` de una respuesta CORS.
+  app.use("*", cors({ origin: config.origenWeb, credentials: true }));
   app.use("*", crearRateLimit(config.rateLimit));
   app.use("*", crearLogger());
 
