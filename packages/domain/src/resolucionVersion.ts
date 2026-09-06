@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { rangosSeSuperponen, sonRangosContiguos } from "./fechas.js";
+import type { RangoFechas } from "./tipos.js";
 
 /**
  * Motor de resolución de versión `UID → SEQUENCE → DTSTAMP` + hash de
@@ -26,6 +28,13 @@ export interface VersionEvento {
   /** Hash de `(unidad, DTSTART, DTEND, razón inferida)` — ver
    * `calcularHashContenido`. */
   hash: string;
+  /** Rango de fechas `[dtstart, dtend)` de esta versión del evento, cuando
+   * el llamador lo tiene disponible (D-DSD-03: señal independiente del
+   * hash para la heurística de "UID reciclado" sin `SEQUENCE`
+   * comparable). Opcional por compatibilidad hacia atrás — sin él, esa
+   * rama conserva el comportamiento anterior (nunca marca sospecha
+   * adicional por rango). */
+  rango?: RangoFechas;
 }
 
 export type AccionResolucion =
@@ -50,6 +59,21 @@ export function calcularHashContenido(campos: {
 }): string {
   const canonico = `${campos.unidadId}|${campos.dtstart}|${campos.dtend}|${campos.razon}`;
   return createHash("sha256").update(canonico).digest("hex");
+}
+
+/** D-DSD-03: `true` cuando ambos rangos están disponibles y no comparten
+ * ninguna relación razonable (ni se solapan ni son contiguos) — sin
+ * información de rango en cualquiera de los dos lados, no hay base para
+ * sospechar y se devuelve `false` (comportamiento anterior, sin regresión
+ * para llamadores que todavía no pasan `rango`). */
+function esCambioDeRangoSospechoso(
+  anterior: RangoFechas | undefined,
+  entrante: RangoFechas | undefined,
+): boolean {
+  if (!anterior || !entrante) return false;
+  if (rangosSeSuperponen(anterior, entrante)) return false;
+  if (sonRangosContiguos(anterior, entrante)) return false;
+  return true;
 }
 
 export function resolverVersion(
@@ -99,8 +123,31 @@ export function resolverVersion(
 
   // SEQUENCE no comparable (ausente en uno de los dos, o feed sin
   // garantía) o SEQUENCE igual: DTSTAMP decide (caso adversarial 1: mismo
-  // UID+SEQUENCE, contenido distinto → DTSTAMP desempata).
+  // UID+SEQUENCE, contenido distinto → DTSTAMP desempata; ahí SEQUENCE SÍ
+  // es comparable, solo que idéntico en ambos lados — reenvío legítimo del
+  // mismo canal, nunca sospechoso por sí solo, sin importar cuán distinto
+  // sea el rango nuevo).
   if (entrante.dtstamp > actual.dtstamp) {
+    // D-DSD-03: la heurística de "rango completamente disjunto" de abajo
+    // solo aplica cuando SEQUENCE NO es comparable en absoluto (ausente en
+    // alguno de los dos lados) — ese es el caso que el propio diseño
+    // reconoce como plausible ("NO hay evidencia de que los canales
+    // incrementen SEQUENCE de forma fiable") y en el que un DTSTAMP más
+    // reciente por sí solo no distingue "modificación legítima de la
+    // misma reserva" de "el canal recicló este UID para una reserva nueva
+    // y no relacionada" (caso adversarial 13). Cuando SEQUENCE SÍ es
+    // comparable pero igual (caso adversarial 1: el canal reenvía el
+    // mismo UID+SEQUENCE con contenido distinto), el propio SEQUENCE
+    // idéntico ya es la señal de "sigue siendo la misma versión lógica" —
+    // no se aplica esta sospecha adicional por rango.
+    if (!secuenciaComparable && esCambioDeRangoSospechoso(actual.rango, entrante.rango)) {
+      return {
+        accion: "revisar_uid_reciclado",
+        motivo:
+          "DTSTAMP entrante más reciente, SEQUENCE no comparable, y el rango de fechas entrante es " +
+          "completamente disjunto y no contiguo con el anterior",
+      };
+    }
     return { accion: "aplicar", motivo: "DTSTAMP entrante más reciente" };
   }
   if (entrante.dtstamp < actual.dtstamp) {

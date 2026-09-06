@@ -79,6 +79,71 @@ describe("resolverVersion — motor UID→SEQUENCE→DTSTAMP+hash (H-006)", () =
     const entrante = version({ sequence: 5, dtstamp: "2026-06-05T00:00:00Z", hash: HASH_B });
     expect(resolverVersion(actual, entrante).accion).toBe("aplicar");
   });
+
+  describe("D-DSD-03 (regresión): UID reciclado sin SEQUENCE comparable, usando el rango de fechas como señal independiente", () => {
+    it("SEQUENCE ausente en ambos + DTSTAMP más reciente + rango COMPLETAMENTE DISJUNTO Y NO CONTIGUO → revisión humana, nunca fusión silenciosa", () => {
+      // Reserva real, huésped A, 2027-01-10..2027-01-15.
+      const actual = version({
+        sequence: null,
+        dtstamp: "2026-12-01T00:00:00Z",
+        hash: HASH_A,
+        rango: { inicio: "2027-01-10", fin: "2027-01-15" },
+      });
+      // El canal recicla el mismo UID meses después para una reserva
+      // totalmente distinta (huésped B, fechas sin ninguna relación).
+      const entrante = version({
+        sequence: null,
+        dtstamp: "2027-06-01T00:00:00Z",
+        hash: HASH_B,
+        rango: { inicio: "2027-11-20", fin: "2027-11-22" },
+      });
+      expect(resolverVersion(actual, entrante).accion).toBe("revisar_uid_reciclado");
+    });
+
+    it("SEQUENCE ausente en ambos + DTSTAMP más reciente + rango SOLAPADO (ampliación/reducción real) → se aplica normalmente", () => {
+      const actual = version({
+        sequence: null,
+        dtstamp: "2026-12-01T00:00:00Z",
+        hash: HASH_A,
+        rango: { inicio: "2027-01-10", fin: "2027-01-15" },
+      });
+      // Modificación legítima de la MISMA reserva: se amplía una noche.
+      const entrante = version({
+        sequence: null,
+        dtstamp: "2026-12-02T00:00:00Z",
+        hash: HASH_B,
+        rango: { inicio: "2027-01-10", fin: "2027-01-16" },
+      });
+      expect(resolverVersion(actual, entrante).accion).toBe("aplicar");
+    });
+
+    it("SEQUENCE ausente en ambos + DTSTAMP más reciente + rango CONTIGUO (checkout=check-in) → se aplica normalmente", () => {
+      const actual = version({
+        sequence: null,
+        dtstamp: "2026-12-01T00:00:00Z",
+        hash: HASH_A,
+        rango: { inicio: "2027-01-10", fin: "2027-01-15" },
+      });
+      const entrante = version({
+        sequence: null,
+        dtstamp: "2026-12-02T00:00:00Z",
+        hash: HASH_B,
+        rango: { inicio: "2027-01-15", fin: "2027-01-18" },
+      });
+      expect(resolverVersion(actual, entrante).accion).toBe("aplicar");
+    });
+
+    it("sin información de rango en alguno de los dos lados, conserva el comportamiento anterior (aplicar) — sin regresión para llamadores que no pasan rango", () => {
+      const actual = version({ sequence: null, dtstamp: "2026-12-01T00:00:00Z", hash: HASH_A });
+      const entrante = version({
+        sequence: null,
+        dtstamp: "2027-06-01T00:00:00Z",
+        hash: HASH_B,
+        rango: { inicio: "2027-11-20", fin: "2027-11-22" },
+      });
+      expect(resolverVersion(actual, entrante).accion).toBe("aplicar");
+    });
+  });
 });
 
 describe("calcularHashContenido", () => {

@@ -130,21 +130,33 @@ interface FilaVersionPrevia {
   dtstamp: string;
   hash_contenido: string;
   ocupacion_unidad_id: string | null;
+  rango_inicio: string | null;
+  rango_fin: string | null;
 }
 
 async function obtenerVersionPrevia(
   ctx: ContextoSincronizacion,
   uid: string,
 ): Promise<{ version: VersionEvento; ocupacionUnidadId: string | null } | null> {
+  // D-DSD-03: el LEFT JOIN trae el rango vigente de la ocupación asociada
+  // (cuando existe) para que `resolverVersion` pueda usarlo como señal
+  // independiente del hash en la heurística de "UID reciclado" sin
+  // SEQUENCE comparable — sin este dato, esa rama no puede distinguir un
+  // reciclado real de una modificación legítima de la misma reserva.
   const fila = await ctx.ejecutor.query<FilaVersionPrevia>(
-    `SELECT sequence, dtstamp::text AS dtstamp, hash_contenido, ocupacion_unidad_id
-     FROM evento_canal_importado WHERE unidad_id = $1 AND canal_id = $2 AND uid_evento = $3`,
+    `SELECT eci.sequence, eci.dtstamp::text AS dtstamp, eci.hash_contenido, eci.ocupacion_unidad_id,
+            lower(ou.rango)::text AS rango_inicio, upper(ou.rango)::text AS rango_fin
+     FROM evento_canal_importado eci
+     LEFT JOIN ocupacion_unidad ou ON ou.id = eci.ocupacion_unidad_id
+     WHERE eci.unidad_id = $1 AND eci.canal_id = $2 AND eci.uid_evento = $3`,
     [ctx.unidadId, ctx.canalId, uid],
   );
   const f = fila.rows[0];
   if (!f) return null;
+  const rango: RangoFechas | undefined =
+    f.rango_inicio !== null && f.rango_fin !== null ? { inicio: f.rango_inicio, fin: f.rango_fin } : undefined;
   return {
-    version: { uid, sequence: f.sequence, dtstamp: f.dtstamp, hash: f.hash_contenido },
+    version: { uid, sequence: f.sequence, dtstamp: f.dtstamp, hash: f.hash_contenido, rango },
     ocupacionUnidadId: f.ocupacion_unidad_id,
   };
 }
@@ -327,6 +339,9 @@ export async function ejecutarCicloImport(
       sequence: evento.sequence,
       dtstamp: evento.dtstamp,
       hash: hashVersion,
+      // D-DSD-03: rango real del evento entrante, para la heurística de
+      // "UID reciclado" sin SEQUENCE comparable (ver obtenerVersionPrevia).
+      rango,
     };
 
     if (eco.esEco) {

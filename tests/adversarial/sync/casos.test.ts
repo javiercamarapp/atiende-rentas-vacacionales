@@ -287,6 +287,55 @@ describe("caso 13 — UID reciclado: revisión humana, nunca fusión silenciosa"
   });
 });
 
+describe("D-DSD-03 (regresión, pipeline real) — UID reciclado SIN SEQUENCE también se marca para revisión", () => {
+  it("mismo UID, SEQUENCE ausente en ambos eventos, DTSTAMP más reciente pero rango completamente disjunto: revisión humana, nunca fusión silenciosa", async () => {
+    const unidadId = await entorno.crearUnidad("d-dsd-03-sin-sequence");
+    const uid = "d-dsd-03-sin-sequence@canal-externo.com";
+
+    await ciclo(
+      unidadId,
+      feedIcsDePrueba([{ uid, sequence: null, dtstamp: "20261201T000000Z", dtstart: "20270110", dtend: "20270115" }]),
+    );
+    const rReciclado = await ciclo(
+      unidadId,
+      feedIcsDePrueba([{ uid, sequence: null, dtstamp: "20270601T000000Z", dtstart: "20271120", dtend: "20271122" }]),
+    );
+
+    expect(rReciclado.revisionesUidReciclado).toBe(1);
+    expect(rReciclado.eventosAplicados).toBe(0);
+
+    // La reserva original nunca se tocó ni se fusionó con el contenido nuevo.
+    const fila = await entorno.motor.ejecutor.query<{ inicio: string }>(
+      `SELECT lower(rango)::text AS inicio FROM ocupacion_unidad WHERE unidad_id = $1 AND estado <> 'cancelado'`,
+      [unidadId],
+    );
+    expect(fila.rows[0]!.inicio).toBe("2027-01-10");
+  });
+
+  it("mismo UID, SEQUENCE ausente en ambos, DTSTAMP más reciente y rango SOLAPADO (modificación real): se aplica normalmente, sin falso positivo", async () => {
+    const unidadId = await entorno.crearUnidad("d-dsd-03-sin-sequence-legitimo");
+    const uid = "d-dsd-03-sin-sequence-legitimo@canal-externo.com";
+
+    await ciclo(
+      unidadId,
+      feedIcsDePrueba([{ uid, sequence: null, dtstamp: "20261201T000000Z", dtstart: "20270110", dtend: "20270115" }]),
+    );
+    const rModificado = await ciclo(
+      unidadId,
+      feedIcsDePrueba([{ uid, sequence: null, dtstamp: "20261202T000000Z", dtstart: "20270110", dtend: "20270116" }]),
+    );
+
+    expect(rModificado.revisionesUidReciclado).toBe(0);
+    expect(rModificado.eventosAplicados).toBe(1);
+
+    const fila = await entorno.motor.ejecutor.query<{ inicio: string; fin: string }>(
+      `SELECT lower(rango)::text AS inicio, upper(rango)::text AS fin FROM ocupacion_unidad WHERE unidad_id = $1 AND estado <> 'cancelado'`,
+      [unidadId],
+    );
+    expect(fila.rows[0]).toEqual({ inicio: "2027-01-10", fin: "2027-01-16" });
+  });
+});
+
 describe("caso 16 — crash/replay a mitad de batch: reprocesar el batch completo equivale a procesarlo una vez", () => {
   it("repetir el mismo ciclo con 2 eventos no duplica ninguno de los dos", async () => {
     const unidadId = await entorno.crearUnidad("caso-16");
