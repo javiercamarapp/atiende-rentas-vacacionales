@@ -67,8 +67,21 @@ export interface OpcionesPeticion {
 // exportar y `apps/web/src/pages/reportes/api.ts` (`descargarCsv`) no podía
 // reusarla, así que reimplementaba a mano la misma lógica de armado de URL
 // + querystring. Un solo lugar para esa lógica ahora.
+// Lote 3.3 (despliegue): `VITE_API_URL` puede ser relativa ("/api") en el
+// despliegue de Vercel de un solo proyecto (mismo origen para web + API
+// vía `vercel.json`, sin CORS cross-origin) — `new URL(ruta, base)` exige
+// que `base` sea absoluta o lanza `TypeError: Invalid URL`. En
+// desarrollo/e2e, `VITE_API_URL` sigue siendo absoluta
+// (http://localhost:8787) y esta función es un no-op sobre ese valor.
+function baseUrlAbsoluta(): string {
+  if (/^https?:\/\//i.test(BASE_URL)) return BASE_URL;
+  const origen = typeof window !== "undefined" && window.location ? window.location.origin : "";
+  return `${origen}${BASE_URL.startsWith("/") ? "" : "/"}${BASE_URL}`;
+}
+
 export function construirUrl(ruta: string, query?: OpcionesPeticion["query"]): string {
-  const url = new URL(ruta.replace(/^\//, ""), BASE_URL.endsWith("/") ? BASE_URL : `${BASE_URL}/`);
+  const base = baseUrlAbsoluta();
+  const url = new URL(ruta.replace(/^\//, ""), base.endsWith("/") ? base : `${base}/`);
   if (query) {
     for (const [clave, valor] of Object.entries(query)) {
       if (valor !== undefined) url.searchParams.set(clave, String(valor));

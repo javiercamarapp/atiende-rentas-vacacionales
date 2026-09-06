@@ -32,5 +32,11 @@ Thumbs.db
 apps/web/test-results/
 apps/web/playwright-report/
 apps/web/blob-report/
+
+# Lote 3.3 (despliegue): `/api/index.js` es un artefacto GENERADO por
+# `npm run build:api-vercel` (deploy/build-api-vercel.mjs) a partir de
+# `apps/api/api/index.ts` — nunca se edita ni se versiona a mano, igual
+# que `apps/web/dist/`.
+/api/
 .vercel
 .env*

@@ -83,6 +83,13 @@ export function crearApp(opciones: OpcionesCrearApp = {}) {
       // Recordatorio explícito en el propio healthcheck: sin conexiones
       // productivas de ningún canal (DEFINICION-DE-HECHO §1).
       aviso: "Entorno de desarrollo — sin conexiones productivas",
+      // Lote 3.3 (despliegue): estado honesto de `DATABASE_URL` — nunca
+      // "ok" ciego cuando no hay Postgres gestionado configurado todavía
+      // (p. ej. un proyecto de Vercel recién creado antes de aprovisionar
+      // la base de datos). Chequeo barato (sin abrir conexión real); ver
+      // `GET /health/detallado` para el chequeo con conexión real a la
+      // base de datos (workers/observabilidad/rutas.ts).
+      baseDeDatos: config.databaseUrl ? "configurada" : "sin_configurar",
     }),
   );
 
