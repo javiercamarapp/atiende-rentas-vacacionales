@@ -71,3 +71,53 @@ describe("cargarConfiguracion — S-02/S-03: secretos obligatorios fuera de desa
     expect(() => cargarConfiguracion({ NODE_ENV: "development", JWT_SECRET: "corto" })).toThrow(/entropía insuficiente/);
   });
 });
+
+/**
+ * Regresión permanente S-11 (docs/auditoria-2/seguridad.md): el campo
+ * `entorno` (usado directamente por guards de aplicación como
+ * apps/api/src/routes/backoffice/cuentasCanal.ts, "un simulador nunca se
+ * presenta como conexión productiva") debe clasificar CUALQUIER variante
+ * mal escrita de "production" — y cualquier valor desconocido — como
+ * "production", nunca degradar a "development" por no coincidir
+ * exactamente con el string "production".
+ */
+describe("cargarConfiguracion — S-11: entorno se clasifica fail-closed", () => {
+  const secretosValidos = {
+    JWT_SECRET: "secreto-de-produccion-real-con-al-menos-32-caracteres",
+    CANAL_CIFRADO_CLAVES: "v1:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+  };
+
+  it("reconoce 'production' exacto", () => {
+    expect(cargarConfiguracion({ NODE_ENV: "production", ...secretosValidos }).entorno).toBe("production");
+  });
+
+  it("reconoce variantes con acentos/mayúsculas de 'production' como 'production' (antes caían a 'development')", () => {
+    for (const valor of ["producción", "PRODUCTION", "Producción", "PRODUCCION"]) {
+      expect(cargarConfiguracion({ NODE_ENV: valor, ...secretosValidos }).entorno, `NODE_ENV=${valor}`).toBe(
+        "production",
+      );
+    }
+  });
+
+  it("clasifica cualquier valor desconocido (staging, ci, un typo) como 'production' — fail-closed, nunca 'development'", () => {
+    for (const valor of ["staging", "ci", "qa", "produciton"]) {
+      expect(cargarConfiguracion({ NODE_ENV: valor, ...secretosValidos }).entorno, `NODE_ENV=${valor}`).toBe(
+        "production",
+      );
+    }
+  });
+
+  it("reconoce development/desarrollo/dev y test/pruebas/testing explícitamente, con y sin acentos/mayúsculas", () => {
+    for (const valor of ["development", "Development", "desarrollo", "DESARROLLO", "dev"]) {
+      expect(cargarConfiguracion({ NODE_ENV: valor }).entorno, `NODE_ENV=${valor}`).toBe("development");
+    }
+    for (const valor of ["test", "Test", "pruebas", "PRUEBAS", "testing"]) {
+      expect(cargarConfiguracion({ NODE_ENV: valor }).entorno, `NODE_ENV=${valor}`).toBe("test");
+    }
+  });
+
+  it("NODE_ENV ausente o vacío se clasifica como 'development' (D-017, desarrollo local)", () => {
+    expect(cargarConfiguracion({}).entorno).toBe("development");
+    expect(cargarConfiguracion({ NODE_ENV: "" }).entorno).toBe("development");
+  });
+});

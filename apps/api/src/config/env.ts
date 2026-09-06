@@ -32,11 +32,6 @@ export interface ConfiguracionApi {
   urlPublicaApi: string;
 }
 
-function leerEntorno(valor: string | undefined): ConfiguracionApi["entorno"] {
-  if (valor === "test" || valor === "production") return valor;
-  return "development";
-}
-
 /** Quita diacríticos y normaliza mayúsculas/espacios — mismo criterio que
  * `packages/sim/src/comun/etiquetado.ts` (S-04): `.toLowerCase()` a secas
  * NO reconoce "producción" (con tilde) como "produccion". */
@@ -46,6 +41,30 @@ function normalizarEntornoTexto(valor: string): string {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .trim();
+}
+
+const ENTORNOS_DESARROLLO = new Set(["development", "desarrollo", "dev"]);
+const ENTORNOS_PRUEBAS = new Set(["test", "pruebas", "testing"]);
+
+/** S-11 (docs/auditoria-2/seguridad.md): antes, `leerEntorno` comparaba
+ * `valor === "production"` de forma exacta y sensible a may\u00fasculas/
+ * acentos \u2014 cualquier variante ("PRODUCTION", "producci\u00f3n", o cualquier
+ * typo) ca\u00eda al `return "development"` por defecto, el valor M\u00c1S
+ * PERMISIVO posible. Eso desactivaba en silencio cualquier guard aguas
+ * abajo que comparara `entorno === "production"` (p. ej.
+ * apps/api/src/routes/backoffice/cuentasCanal.ts: "un simulador nunca se
+ * presenta como conexi\u00f3n productiva"). Ahora, tras normalizar diacr\u00edticos/
+ * may\u00fasculas: development/desarrollo/dev y test/pruebas/testing se
+ * reconocen expl\u00edcitamente; CUALQUIER OTRO valor (incluida cualquier
+ * variante mal escrita de "production", o uno completamente desconocido)
+ * se clasifica como "production" \u2014 fail-closed, nunca al rev\u00e9s. Solo la
+ * AUSENCIA total de `NODE_ENV` se trata como desarrollo local (D-017). */
+function leerEntorno(valor: string | undefined): ConfiguracionApi["entorno"] {
+  if (valor === undefined || valor.trim() === "") return "development";
+  const normalizado = normalizarEntornoTexto(valor);
+  if (ENTORNOS_DESARROLLO.has(normalizado)) return "development";
+  if (ENTORNOS_PRUEBAS.has(normalizado)) return "test";
+  return "production";
 }
 
 /** Entornos donde está permitido degradar a un secreto efímero generado

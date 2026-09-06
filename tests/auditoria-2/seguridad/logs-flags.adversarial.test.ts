@@ -441,24 +441,31 @@ describe("Bloque B — simuladores/flags: NODE_ENV ausente o mal escrito", () =>
     expect(() => assertNoParecerProduccion({})).not.toThrow();
   });
 
-  it("B7 — CONFIRMADO/ALTO: cargarConfiguracion() (apps/api/src/config/env.ts) con NODE_ENV='producción' NO reconoce el entorno como 'production' — cae a 'development' (fail-closed a nivel de ESTA función, pero fail-open para cualquier guard aguas abajo que compare `entorno === 'production'`, como apps/api/src/routes/backoffice/cuentasCanal.ts:100)", () => {
+  it("[CORREGIDO S-11] B7 — cargarConfiguracion() (apps/api/src/config/env.ts) con NODE_ENV='producción' AHORA SÍ reconoce el entorno como 'production' (fail-closed, no cae más a 'development')", () => {
     const config = cargarConfiguracion({ ...process.env, NODE_ENV: "producción" } as NodeJS.ProcessEnv);
-    expect(config.entorno).toBe("development");
+    expect(config.entorno).toBe("production");
   });
 
-  it("B8 — CONFIRMADO/ALTO: cargarConfiguracion() también falla con mayúsculas — NODE_ENV='PRODUCTION' (muy común en configuraciones de CI/Windows) tampoco es reconocido como 'production' (comparación case-sensitive, sin .toLowerCase())", () => {
+  it("[CORREGIDO S-11] B8 — cargarConfiguracion() también reconoce mayúsculas — NODE_ENV='PRODUCTION' (muy común en configuraciones de CI/Windows) ahora SÍ se clasifica como 'production'", () => {
     const config = cargarConfiguracion({ ...process.env, NODE_ENV: "PRODUCTION" } as NodeJS.ProcessEnv);
-    expect(config.entorno).toBe("development");
+    expect(config.entorno).toBe("production");
   });
 
-  it("B9 — reproducción end-to-end del hueco de B7: la guardia real de apps/api/src/routes/backoffice/cuentasCanal.ts ('if (entorno === \"production\") throw ...') se replica aquí con la misma comparación — con NODE_ENV mal escrito, un simulador de canal SÍ pasaría ese guard en lo que el operador creía producción", () => {
+  it("[CORREGIDO S-11] B9 — la guardia real de apps/api/src/routes/backoffice/cuentasCanal.ts ('if (entorno === \"production\") throw ...') AHORA SÍ se activa con NODE_ENV mal escrito — un simulador de canal ya no pasaría ese guard creyendo estar en producción", () => {
     const configTypo = cargarConfiguracion({ ...process.env, NODE_ENV: "producción" } as NodeJS.ProcessEnv);
     const bloqueadoConTypo = configTypo.entorno === "production";
     const configCorrecta = cargarConfiguracion({ ...process.env, NODE_ENV: "production" } as NodeJS.ProcessEnv);
     const bloqueadoCorrecto = configCorrecta.entorno === "production";
 
-    expect(bloqueadoConTypo).toBe(false); // el guard NO se activa (hueco)
-    expect(bloqueadoCorrecto).toBe(true); // el guard SÍ se activa con el valor exacto
+    expect(bloqueadoConTypo).toBe(true); // antes: false (hueco); ahora corregido
+    expect(bloqueadoCorrecto).toBe(true); // el guard SÍ se activa con el valor exacto (sin cambios)
+  });
+
+  it("[NUEVO S-11] B9b — un NODE_ENV totalmente desconocido ('staging', 'ci') también se clasifica fail-closed como 'production', nunca como 'development'", () => {
+    for (const valor of ["staging", "ci", "qa", "produciton" /* typo real plausible */]) {
+      const config = cargarConfiguracion({ ...process.env, NODE_ENV: valor } as NodeJS.ProcessEnv);
+      expect(config.entorno, `NODE_ENV=${valor}`).toBe("production");
+    }
   });
 
   it("B10 — `agentes.habilitado` y `agentes.proveedor_real_habilitado`: default-off REAL en el catálogo de dominio, sin ninguna configuración adicional (RegistroFlags fresco, sin overrides de tenant)", () => {
