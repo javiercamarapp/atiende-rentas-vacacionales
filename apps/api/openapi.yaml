@@ -334,6 +334,90 @@ paths:
         "404": { $ref: "#/components/responses/NoEncontrado" }
         "403": { $ref: "#/components/responses/RolForbidden" }
 
+  # ---------------------------------------------------------------------
+  # Exportación iCal propia por unidad/canal (Lote 11B, corrección cruzada
+  # #3): `/export-ical/*` es AUTENTICADO (admin_gestora/superadmin, mismo
+  # rol que escribir configuración de canal) y entrega/rota la URL del
+  # feed público `/feed/ical/{token}` — ese último SIN autenticación, el
+  # token opaco es la única credencial (documentado aparte, fuera del
+  # bloque `security` global de este archivo).
+  /export-ical/{unidadId}/{canalCodigo}:
+    get:
+      tags: [canales]
+      summary: >-
+        URL del feed .ics de exportación de esta unidad/canal — crea el
+        token si todavía no existe (idempotente, nunca rota uno ya
+        emitido). admin_gestora/superadmin.
+      parameters:
+        - name: unidadId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: canalCodigo
+          in: path
+          required: true
+          description: >-
+            Código estable del canal (`airbnb`/`vrbo`/`booking`, catálogo
+            de `apps/web/src/pages/conectividad/catalogoCanales.ts`), no
+            su uuid interno — el frontend nunca necesita resolverlo aparte.
+          schema: { type: string }
+      responses:
+        "200":
+          description: URL del feed (token opaco incluido)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UrlFeedIcal" }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+
+  /export-ical/{unidadId}/{canalCodigo}/rotar:
+    post:
+      tags: [canales]
+      summary: >-
+        Rota el token del feed — invalida el anterior de inmediato (la
+        URL vieja empieza a devolver 404 en la siguiente solicitud, nunca
+        sigue funcionando "hasta que expire"). admin_gestora/superadmin.
+      parameters:
+        - name: unidadId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: canalCodigo
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Nueva URL del feed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UrlFeedIcal" }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+
+  /feed/ical/{token}:
+    get:
+      tags: [canales]
+      summary: >-
+        Feed .ics público de exportación — SIN autenticación, el token
+        opaco en la URL es la única credencial (para que un canal externo
+        lo suscriba como "importar calendario desde URL"). Nunca incluye
+        datos de huésped/tarifa (D-021), solo razón de bloqueo genérica.
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+          description: Acepta el sufijo opcional ".ics" (convención de clientes de calendario).
+      responses:
+        "200":
+          description: Calendario iCalendar (RFC 5545)
+          content:
+            text/calendar:
+              schema: { type: string }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+
   /auditoria:
     get:
       tags: [auditoria]
@@ -1832,6 +1916,23 @@ components:
         estadoConexion: { $ref: "#/components/schemas/EstadoConexionCanal" }
         esSimulador: { type: boolean }
         ultimaSincronizacionExitosaEn: { type: string, format: date-time, nullable: true }
+
+    UrlFeedIcal:
+      type: object
+      description: >-
+        Lote 11B, corrección #3. `token` se incluye además de `url` solo
+        para que la UI pueda mostrar "rotado hace X" comparando contra la
+        última rotación devuelta — nunca se persiste en el cliente aparte
+        de la propia URL.
+      properties:
+        unidadId: { type: string, format: uuid }
+        canalCodigo: { type: string }
+        token: { type: string }
+        url:
+          type: string
+          format: uri
+          description: URL absoluta lista para pegar en "importar calendario desde URL" del canal externo.
+        rotadoEn: { type: string, format: date-time, nullable: true }
 
     CuerpoCrearCuentaCanal:
       type: object

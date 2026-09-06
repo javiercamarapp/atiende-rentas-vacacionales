@@ -35,7 +35,6 @@ let app: ReturnType<typeof crearApp>;
 
 let tenantId: string;
 let unidadId: string;
-let canalAirbnbId: string;
 let accessToken: string;
 
 function puertoAleatorio(): number {
@@ -86,9 +85,6 @@ beforeAll(async () => {
     [propiedad.rows[0]!.id],
   );
   unidadId = unidad.rows[0]!.id;
-  const canal = await superusuario.query<{ id: string }>("SELECT id FROM canal WHERE codigo = 'airbnb'");
-  canalAirbnbId = canal.rows[0]!.id;
-
   // Una reserva confirmada (RESERVA_CANAL) para que el feed exportado
   // tenga al menos un VEVENT real que el parser propio pueda validar.
   await superusuario.query(
@@ -142,7 +138,7 @@ describe("GET /feed/ical/:token — feed público de exportación", () => {
 
   it("token válido devuelve un feed .ics que el parser propio parsea correctamente, sin PII", async () => {
     const emision = await app.request(
-      `/export-ical/${unidadId}/${canalAirbnbId}`,
+      `/export-ical/${unidadId}/airbnb`,
       autenticado({ method: "GET" }),
     );
     expect(emision.status).toBe(200);
@@ -163,13 +159,13 @@ describe("GET /feed/ical/:token — feed público de exportación", () => {
 
   it("rotar el token invalida el anterior de inmediato y el nuevo funciona", async () => {
     const emision = await app.request(
-      `/export-ical/${unidadId}/${canalAirbnbId}`,
+      `/export-ical/${unidadId}/airbnb`,
       autenticado({ method: "GET" }),
     );
     const { token: tokenViejo } = (await emision.json()) as { token: string };
 
     const rotacion = await app.request(
-      `/export-ical/${unidadId}/${canalAirbnbId}/rotar`,
+      `/export-ical/${unidadId}/airbnb/rotar`,
       autenticado({ method: "POST" }),
     );
     expect(rotacion.status).toBe(200);
@@ -184,7 +180,7 @@ describe("GET /feed/ical/:token — feed público de exportación", () => {
   });
 
   it("GET /export-ical sin autenticación es rechazado", async () => {
-    const res = await app.request(`/export-ical/${unidadId}/${canalAirbnbId}`);
+    const res = await app.request(`/export-ical/${unidadId}/airbnb`);
     expect(res.status).toBe(401);
   });
 });
