@@ -16,25 +16,25 @@ externa").
 
 | ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
 |---|---|---|---|---|---|---|
-| H-001 | Tabla `ocupacion_unidad` con `EXCLUDE USING gist` + `btree_gist` | REQ-024, REQ-025, REQ-026, REQ-033 | §Calendario-1 | MUST | L | por hacer |
-| H-002 | `daterange` semiabierto `[check_in,check_out)` con validación de bounds y normalización | REQ-024, REQ-026 | §Calendario-1, §Calendario-2 (caso 15) | MUST | S | por hacer |
-| H-003 | Precedencia de capas (`RESERVA_CANAL>BLOQUEO_PROPIETARIO>MANTENIMIENTO>BUFFER_LIMPIEZA`) y tabla `conflicto_calendario` | REQ-006, REQ-035, REQ-044 | §Calendario-2 (caso 5) | MUST | M | por hacer |
-| H-004 | Zona horaria IANA obligatoria por propiedad; ninguna columna operativa `timestamp` sin zona | REQ-032, REQ-033 | §Calendario-2 (caso 14) | MUST | S | por hacer |
-| H-005 | Validación empírica de concurrencia real del `EXCLUDE` contra `embedded-postgres` (dos inserts concurrentes solapados) | REQ-025 (D-012) | §Calendario-1 | MUST | M | por hacer |
-| H-006 | Motor de resolución `UID→SEQUENCE→DTSTAMP` + hash de contenido como respaldo obligatorio | REQ-028, REQ-167, REQ-179 | §Calendario-2 (casos 1, 3, 13), §RV19/21-1 | MUST | L | por hacer |
-| H-007 | Estados de `ocupacion_unidad` (`confirmado/provisional/cancelado/conflicto_pendiente`) + campo independiente `bloqueante` | REQ-091, REQ-048, REQ-068 | §UX-1 | MUST | M | por hacer |
-| H-008 | Buffer de limpieza como bloqueo tipado `BUFFER_LIMPIEZA` | REQ-042, REQ-054, REQ-112 | §Calendario-2 (caso 15) | MUST | S | por hacer |
-| H-009 | Duración mínima como regla en fuente de verdad interna | REQ-043 | §Calendario-1 | SHOULD | S | por hacer |
-| H-010 | `huesped_minimo` con minimización de datos (sin CRM) | REQ-045, REQ-106 | §Privacidad-1 | MUST | S | por hacer |
+| H-001 | Tabla `ocupacion_unidad` con `EXCLUDE USING gist` + `btree_gist` | REQ-024, REQ-025, REQ-026, REQ-033 | §Calendario-1 | MUST | L | hecho (Lote 1) |
+| H-002 | `daterange` semiabierto `[check_in,check_out)` con validación de bounds y normalización | REQ-024, REQ-026 | §Calendario-1, §Calendario-2 (caso 15) | MUST | S | hecho (Lote 1) |
+| H-003 | Precedencia de capas (`RESERVA_CANAL>BLOQUEO_PROPIETARIO>MANTENIMIENTO>BUFFER_LIMPIEZA`) y tabla `conflicto_calendario` | REQ-006, REQ-035, REQ-044 | §Calendario-2 (caso 5) | MUST | M | hecho (Lote 1) |
+| H-004 | Zona horaria IANA obligatoria por propiedad; ninguna columna operativa `timestamp` sin zona | REQ-032, REQ-033 | §Calendario-2 (caso 14) | MUST | S | hecho (Lote 1) |
+| H-005 | Validación empírica de concurrencia real del `EXCLUDE` contra `embedded-postgres` (dos inserts concurrentes solapados) | REQ-025 (D-012) | §Calendario-1 | MUST | M | hecho (Lote 1) |
+| H-006 | Motor de resolución `UID→SEQUENCE→DTSTAMP` + hash de contenido como respaldo obligatorio | REQ-028, REQ-167, REQ-179 | §Calendario-2 (casos 1, 3, 13), §RV19/21-1 | MUST | L | hecho (Lote 1) |
+| H-007 | Estados de `ocupacion_unidad` (`confirmado/provisional/cancelado/conflicto_pendiente`) + campo independiente `bloqueante` | REQ-091, REQ-048, REQ-068 | §UX-1 | MUST | M | hecho (Lote 1) |
+| H-008 | Buffer de limpieza como bloqueo tipado `BUFFER_LIMPIEZA` | REQ-042, REQ-054, REQ-112 | §Calendario-2 (caso 15) | MUST | S | hecho (Lote 1) |
+| H-009 | Duración mínima como regla en fuente de verdad interna | REQ-043 | §Calendario-1 | SHOULD | S | hecho (Lote 1) |
+| H-010 | `huesped_minimo` con minimización de datos (sin CRM) | REQ-045, REQ-106 | §Privacidad-1 | MUST | S | hecho (Lote 1, solo esquema mínimo — sin CRUD/UI, eso es Lote 8) |
 
 ## E02 — Propiedades, unidades, canales, cuentas y matriz de conectividad
 
 | ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
 |---|---|---|---|---|---|---|
-| H-011 | Modelo `propiedad`/`unidad` con soporte multi-unidad | REQ-071, REQ-136 | §Datos-1 | MUST | M | por hacer |
+| H-011 | Modelo `propiedad`/`unidad` con soporte multi-unidad | REQ-071, REQ-136 | §Datos-1 | MUST | M | hecho (Lote 1) |
 | H-012 | `cuenta_canal`/`listing_canal` con unicidad parcial `(unidad_id, cuenta_canal_id) WHERE activo` | RV17 §6.3 | §Conectividad-1 | MUST | S | por hacer |
-| H-013 | Interfaz `ChannelAdapter` con `ChannelCapabilities` declaradas honestamente | REQ-086 | §Conectividad-1 | MUST | M | por hacer |
-| H-014 | `getConnectionState()` con enum cerrado, nunca `producción` sin evidencia reciente | REQ-008, REQ-017 | §Conectividad-1 | MUST | M | por hacer |
+| H-013 | Interfaz `ChannelAdapter` con `ChannelCapabilities` declaradas honestamente | REQ-086 | §Conectividad-1 | MUST | M | hecho (Lote 1, solo contrato — implementación real es Lote 2) |
+| H-014 | `getConnectionState()` con enum cerrado, nunca `producción` sin evidencia reciente | REQ-008, REQ-017 | §Conectividad-1 | MUST | M | hecho (Lote 1, función pura `evaluarEstadoConexion`) |
 | H-015 | Matriz de conectividad en UI (latencia por canal, estados bloqueados/pausados) | REQ-039, REQ-052, REQ-075, REQ-076, REQ-077, REQ-085 | §Conectividad-2, §Conectividad-4 | MUST | L | por hacer |
 | H-016 | Anti-paridad: ninguna pantalla afirma paridad de permisos/latencia entre canales sin nota | REQ-018 | §Roles-3 | MUST | S | por hacer |
 
@@ -42,12 +42,12 @@ externa").
 
 | ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
 |---|---|---|---|---|---|---|
-| H-017 | Flujo de creación de reserva confirmada (transacción + outbox en el mismo commit) | REQ-034, REQ-041 | §Calendario-1, §Calendario-4 | MUST | M | por hacer |
-| H-018 | Cancelación que nunca reabre noche ocupada por otra causa | REQ-006, REQ-044 | §Calendario-2 (caso 5) | MUST | M | por hacer |
-| H-019 | Modificación de fechas (ampliar/reducir/mover) con verificación de solapamiento | RV07 §6 | §Calendario-2 (caso 4) | MUST | M | por hacer |
-| H-020 | Estancias contiguas sin falso solapamiento (checkout=checkin mismo día) | REQ-024 | §Calendario-2 (caso 15) | MUST | S | por hacer |
-| H-021 | Solicitudes pendientes: bloqueante (Airbnb) vs. no bloqueante (Booking RtB) | REQ-048, REQ-068 | §Calendario-2 (caso 2) | MUST | M | por hacer |
-| H-022 | Bloqueo manual de propietario/mantenimiento propagado a canales conectados | REQ-118, REQ-119 | §Calendario-1 | MUST | S | por hacer |
+| H-017 | Flujo de creación de reserva confirmada (transacción + outbox en el mismo commit) | REQ-034, REQ-041 | §Calendario-1, §Calendario-4 | MUST | M | hecho (Lote 1) |
+| H-018 | Cancelación que nunca reabre noche ocupada por otra causa | REQ-006, REQ-044 | §Calendario-2 (caso 5) | MUST | M | hecho (Lote 1) |
+| H-019 | Modificación de fechas (ampliar/reducir/mover) con verificación de solapamiento | RV07 §6 | §Calendario-2 (caso 4) | MUST | M | hecho (Lote 1) |
+| H-020 | Estancias contiguas sin falso solapamiento (checkout=checkin mismo día) | REQ-024 | §Calendario-2 (caso 15) | MUST | S | hecho (Lote 1) |
+| H-021 | Solicitudes pendientes: bloqueante (Airbnb) vs. no bloqueante (Booking RtB) | REQ-048, REQ-068 | §Calendario-2 (caso 2) | MUST | M | hecho (Lote 1) |
+| H-022 | Bloqueo manual de propietario/mantenimiento propagado a canales conectados | REQ-118, REQ-119 | §Calendario-1 | MUST | S | hecho (Lote 1, propagación real a canales es Lote 2/3 — aquí `crearBloqueo` + esqueleto `outbox_evento`) |
 
 ## E04 — Import/export iCal SSRF-safe y parser robusto
 
@@ -196,3 +196,33 @@ externa").
 - **Por prioridad:** 79 MUST, 12 SHOULD, 4 COULD (conteo manual sobre las tablas de arriba; recalcular con `grep -c` al actualizar este archivo)
 - **Estado inicial:** 95/95 "por hacer"
 - Cobertura explícita confirmada: núcleo de calendario (E01, E03), propiedades/canales/matriz (E02), import/export iCal SSRF-safe (E04), anti-eco/dedupe/cuarentena/reconciliación (E05), monitor de sync y alertas (E06), auth/roles/RLS/auditoría (E07), limpieza/mantenimiento (E08), mensajería con aprobación humana (E09), finanzas/owners (E10), pricing (E11), reporting (E12), back office (E13), automatización agéntica (E14), observabilidad/recuperación (E15), pruebas adversariales y carga (E16).
+
+---
+
+## Lote 1 — cerrado (dominio de calendario + BD + migraciones + invariantes)
+
+15/95 historias marcadas `hecho (Lote 1)` arriba: H-001 a H-011, H-013, H-014,
+H-017 a H-022. Fuera de alcance de Lote 1 y dejadas `por hacer`
+deliberadamente: H-012 (`cuenta_canal`, requiere credenciales/UI de Lote 2/3),
+H-015/H-016 (UI, Lote 4).
+
+- **Código:** `packages/db/` (esquema SQL versionado en
+  `src/migrations/0001..0008`, runner propio `src/runner/migrar.ts`,
+  motores `motorPglite.ts`/`motorEmbeddedPostgres.ts`); `packages/domain/`
+  (`fechas.ts`, `capas.ts`, `estados.ts`, `resolucionVersion.ts`,
+  `channelAdapter.ts`, `aplicacion/reservas.ts`); `tests/fixtures/schema/seed-demo.sql`.
+- **Pruebas:** 92 unitarias (`npm run test`, PGlite incluido) + 9 de
+  integración contra `embedded-postgres` real (`npm run test:integration`),
+  con SQLSTATE `23P01` verificado explícitamente en el log. Ver
+  `docs/logs/lote1-test.log`, `docs/logs/lote1-integration.log`,
+  `docs/logs/lote1-ci.log`.
+- **Commits:** ver `git log` — rango de esta entrega en `docs/PROGRESO.md`.
+- **Nota de arquitectura no prevista en el backlog original:** se añadió
+  `pg_advisory_xact_lock` por `unidad_id` en la capa de aplicación
+  (`packages/domain/src/aplicacion/ejecutor.ts`,
+  `bloquearUnidadEnTransaccion`) tras observar empíricamente que dos
+  inserciones verdaderamente concurrentes sin ese lock pueden resolverse
+  como `40P01` (deadlock) en vez de `23P01` (exclusion_violation) — ambos
+  SQLSTATE indican que la base de datos rechazó el overbooking, pero D-012/
+  RV17 §7.4 ya anticipaba este refuerzo explícitamente. Documentado en
+  `docs/PROGRESO.md`.
