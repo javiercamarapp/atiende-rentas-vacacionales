@@ -7,6 +7,16 @@ import type { EjecutorTransaccional } from "../../src/aplicacion/ejecutor.js";
  * pruebas de la capa de aplicación de packages/domain corren siempre
  * contra el mismo esquema versionado que produce packages/db). Devuelve
  * también un tenant/propiedad/unidad de prueba ya creados.
+ *
+ * EXCEPCIÓN ARQUITECTÓNICA DECLARADA (Auditoría 2, corrección Q-09/
+ * `docs/auditoria-2/calidad-codigo.md`): este archivo vive bajo `test/` e
+ * importa `@atiende-rv/db`, rompiendo en apariencia la regla de capas
+ * "`packages/domain/src` nunca depende de infraestructura" — esa regla
+ * aplica al código de PRODUCCIÓN de domain (`src/`), nunca se relajó ahí.
+ * Aquí, en `test/`, es deliberado: da a las pruebas de la capa de
+ * aplicación un esquema real versionado (en vez de un mock de tablas que
+ * podría divergir silenciosamente del esquema real). Ningún archivo de
+ * `packages/domain/src/` importa `@atiende-rv/db` ni `@atiende-rv/adapters`.
  */
 export async function crearFixtureEsquema() {
   const { ejecutor, cerrar } = await crearMotorPglite();
