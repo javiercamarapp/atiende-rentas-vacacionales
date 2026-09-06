@@ -3,6 +3,7 @@ import type pg from "pg";
 import type { KeyringCifradoCanal } from "../seguridad/cifrado.js";
 import { crearRutasAuditoria } from "./auditoria.js";
 import { crearRutasAuth } from "./auth.js";
+import { crearRutasBackoffice } from "./backoffice/index.js";
 import { crearRutasBloqueos } from "./bloqueos.js";
 import { crearRutasCanales } from "./canales.js";
 import { crearRutasConflictos } from "./conflictos.js";
@@ -44,6 +45,7 @@ export function registrarRutas(app: Hono, deps: DependenciasRutas): Hono {
   app.route("/finanzas", crearRutasFinanzas(pool, jwtSecret));
   app.route("/pricing", crearRutasPricing(pool, jwtSecret));
   app.route("/reportes", crearRutasReportes(pool, jwtSecret));
+  app.route("/backoffice", crearRutasBackoffice(pool, jwtSecret, keyring));
 
   return app;
 }

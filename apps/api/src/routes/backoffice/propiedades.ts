@@ -1,0 +1,153 @@
+import { Hono } from "hono";
+import type pg from "pg";
+import { validarZonaHorariaIana } from "@atiende-rv/domain";
+import {
+  CuerpoActualizarPropiedadBackoffice,
+  CuerpoCrearPropiedadBackoffice,
+  ErrorDominio,
+} from "../../contrato/tipos.js";
+import { conSesion, enTransaccion } from "../../db/contexto.js";
+import { requiereAutenticacion } from "../../middleware/autenticacion.js";
+import { exigirRol } from "../../middleware/roles.js";
+import { sesionDeAuth } from "../../middleware/tenant.js";
+import { relanzarSiRlsRechazo, resolverTenantId } from "./comun.js";
+
+interface FilaPropiedad {
+  id: string;
+  tenant_id: string;
+  nombre: string;
+  zona_horaria: string;
+  moneda: string | null;
+  direccion_linea1: string | null;
+  direccion_ciudad: string | null;
+  direccion_pais: string | null;
+}
+
+function serializar(f: FilaPropiedad) {
+  return {
+    id: f.id,
+    tenantId: f.tenant_id,
+    nombre: f.nombre,
+    zonaHoraria: f.zona_horaria,
+    moneda: f.moneda,
+    direccion:
+      f.direccion_linea1 || f.direccion_ciudad || f.direccion_pais
+        ? { linea1: f.direccion_linea1, ciudad: f.direccion_ciudad, pais: f.direccion_pais }
+        : null,
+  };
+}
+
+const SELECT_PROPIEDAD =
+  "SELECT id, tenant_id, nombre, zona_horaria, moneda, direccion_linea1, direccion_ciudad, direccion_pais FROM propiedad";
+
+/**
+ * CRUD de administración de propiedades (H-011): zona horaria IANA,
+ * dirección mínima y moneda obligatorias en el alta — a diferencia de
+ * `apps/api/src/routes/propiedades.ts` (Lote 3, alta mínima sin estos
+ * campos), esta es la superficie completa de back office (E02 en su parte
+ * de formulario CRUD, LOTES.md Lote 8). Un superadmin solo puede leer/
+ * escribir propiedades de un tenant con concesión "romper cristal" vigente
+ * (RLS, packages/db migración 0061) — `relanzarSiRlsRechazo` traduce ese
+ * rechazo a un mensaje explícito.
+ */
+export function crearRutasBackofficePropiedades(pool: pg.Pool, jwtSecret: string): Hono {
+  const app = new Hono();
+  app.use("*", requiereAutenticacion(jwtSecret));
+
+  app.get("/", async (c) => {
+    const auth = c.get("auth");
+    exigirRol(auth, "superadmin", "admin_gestora");
+    const tenantId = resolverTenantId(auth, c.req.query("tenantId"));
+
+    const filas = await relanzarSiRlsRechazo(() =>
+      conSesion(pool, sesionDeAuth(auth), async (cliente) => {
+        const { rows } = await cliente.query<FilaPropiedad>(
+          `${SELECT_PROPIEDAD} WHERE tenant_id = $1 ORDER BY creado_en DESC`,
+          [tenantId],
+        );
+        return rows;
+      }),
+    );
+
+    return c.json({ propiedades: filas.map(serializar) });
+  });
+
+  app.post("/", async (c) => {
+    const auth = c.get("auth");
+    exigirRol(auth, "superadmin", "admin_gestora");
+    const cuerpo = CuerpoCrearPropiedadBackoffice.parse(await c.req.json());
+    const tenantId = resolverTenantId(auth, cuerpo.tenantId);
+
+    if (!validarZonaHorariaIana(cuerpo.zonaHoraria)) {
+      throw new ErrorDominio("validacion", `Zona horaria IANA inválida: "${cuerpo.zonaHoraria}"`);
+    }
+
+    const fila = await relanzarSiRlsRechazo(() =>
+      conSesion(pool, sesionDeAuth(auth), async (cliente) =>
+        enTransaccion(cliente, async () => {
+          const { rows } = await cliente.query<FilaPropiedad>(
+            `INSERT INTO propiedad (tenant_id, nombre, zona_horaria, moneda, direccion_linea1, direccion_ciudad, direccion_pais)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             RETURNING id, tenant_id, nombre, zona_horaria, moneda, direccion_linea1, direccion_ciudad, direccion_pais`,
+            [
+              tenantId,
+              cuerpo.nombre,
+              cuerpo.zonaHoraria,
+              cuerpo.moneda,
+              cuerpo.direccion.linea1,
+              cuerpo.direccion.ciudad,
+              cuerpo.direccion.pais,
+            ],
+          );
+          return rows[0]!;
+        }),
+      ),
+    );
+
+    return c.json(serializar(fila), 201);
+  });
+
+  app.patch("/:id", async (c) => {
+    const auth = c.get("auth");
+    exigirRol(auth, "superadmin", "admin_gestora");
+    const id = c.req.param("id");
+    const cuerpo = CuerpoActualizarPropiedadBackoffice.parse(await c.req.json());
+
+    if (cuerpo.zonaHoraria && !validarZonaHorariaIana(cuerpo.zonaHoraria)) {
+      throw new ErrorDominio("validacion", `Zona horaria IANA inválida: "${cuerpo.zonaHoraria}"`);
+    }
+
+    const fila = await relanzarSiRlsRechazo(() =>
+      conSesion(pool, sesionDeAuth(auth), async (cliente) =>
+        enTransaccion(cliente, async () => {
+          const { rows } = await cliente.query<FilaPropiedad>(
+            `UPDATE propiedad SET
+               nombre = COALESCE($2, nombre),
+               zona_horaria = COALESCE($3, zona_horaria),
+               moneda = COALESCE($4, moneda),
+               direccion_linea1 = COALESCE($5, direccion_linea1),
+               direccion_ciudad = COALESCE($6, direccion_ciudad),
+               direccion_pais = COALESCE($7, direccion_pais)
+             WHERE id = $1
+             RETURNING id, tenant_id, nombre, zona_horaria, moneda, direccion_linea1, direccion_ciudad, direccion_pais`,
+            [
+              id,
+              cuerpo.nombre ?? null,
+              cuerpo.zonaHoraria ?? null,
+              cuerpo.moneda ?? null,
+              cuerpo.direccion?.linea1 ?? null,
+              cuerpo.direccion?.ciudad ?? null,
+              cuerpo.direccion?.pais ?? null,
+            ],
+          );
+          return rows[0] ?? null;
+        }),
+      ),
+    );
+    if (!fila) throw new ErrorDominio("recurso_no_encontrado", "Propiedad no encontrada o sin permiso");
+
+    return c.json(serializar(fila));
+  });
+
+  return app;
+}

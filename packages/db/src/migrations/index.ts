@@ -35,6 +35,7 @@ import { migracion0060BackofficeColumnas } from "./0060_backoffice_columnas.js";
 import { migracion0061AccesoRomperCristal } from "./0061_acceso_romper_cristal.js";
 import { migracion0062InvitacionUsuario } from "./0062_invitacion_usuario.js";
 import { migracion0063BackofficeMetricasTenant } from "./0063_backoffice_metricas_tenant.js";
+import { migracion0064CuentaCanalConexionHonesta } from "./0064_cuenta_canal_conexion_honesta.js";
 import { migracion0080OutboxConsumidoObservabilidad } from "./0080_outbox_consumido_observabilidad.js";
 import { migracion0081Alerta } from "./0081_alerta.js";
 import { migracion0090CuentaCanalCifrado } from "./0090_cuenta_canal_cifrado.js";
@@ -100,6 +101,7 @@ export const migraciones: Migracion[] = [
   migracion0061AccesoRomperCristal,
   migracion0062InvitacionUsuario,
   migracion0063BackofficeMetricasTenant,
+  migracion0064CuentaCanalConexionHonesta,
   migracion0080OutboxConsumidoObservabilidad,
   migracion0081Alerta,
   migracion0090CuentaCanalCifrado,

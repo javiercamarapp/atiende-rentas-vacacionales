@@ -508,5 +508,246 @@ export const QueryCalendarioTareas = z.object({
 });
 export type QueryCalendarioTareas = z.infer<typeof QueryCalendarioTareas>;
 
+// ---------------------------------------------------------------------------
+// Back office / superadmin (Lote 8, BACKLOG E13 + E02 H-011/H-012 parte de
+// formulario CRUD). Rutas en apps/api/src/routes/backoffice/.
+// ---------------------------------------------------------------------------
+
+export const EstadoTenantContrato = z.enum(["activo", "suspendido"]);
+export type EstadoTenantContrato = z.infer<typeof EstadoTenantContrato>;
+
+export const MetricasTenantContrato = z.object({
+  unidadesTotal: z.number().int().min(0),
+  cuentasCanalTotal: z.number().int().min(0),
+  cuentasCanalConfiguradas: z.number().int().min(0),
+  cuentasCanalSimulador: z.number().int().min(0),
+  alertasAbiertas: z.number().int().min(0),
+  outboxPendiente: z.number().int().min(0),
+});
+export type MetricasTenantContrato = z.infer<typeof MetricasTenantContrato>;
+
+/** Directorio de tenants (H-074): visible para superadmin SIN concesión
+ * "romper cristal" — nombre/tipo/estado + métricas agregadas, nunca
+ * contenido de negocio (packages/db migración 0061/0063). */
+export const TenantDirectorioContrato = z.object({
+  id: z.string().uuid(),
+  nombre: z.string(),
+  tipo: z.string(),
+  estado: EstadoTenantContrato,
+  suspendidoMotivo: z.string().nullable(),
+  creadoEn: z.string(),
+  metricas: MetricasTenantContrato,
+});
+export type TenantDirectorioContrato = z.infer<typeof TenantDirectorioContrato>;
+
+export const CuerpoCrearTenantBackoffice = z.object({
+  nombre: z.string().min(1),
+  razonSocial: z.string().min(1),
+});
+export type CuerpoCrearTenantBackoffice = z.infer<typeof CuerpoCrearTenantBackoffice>;
+
+export const CuerpoSuspenderTenant = z.object({
+  motivo: z.string().min(1, "Suspender un tenant exige un motivo explícito"),
+});
+export type CuerpoSuspenderTenant = z.infer<typeof CuerpoSuspenderTenant>;
+
+// ---------------------------------------------------------------------------
+// Acceso "romper cristal" (H-075/H-076): motivo obligatorio, ventana
+// temporal acotada, auditado (packages/db migración 0061).
+// ---------------------------------------------------------------------------
+
+export const CuerpoCrearAccesoRomperCristal = z.object({
+  tenantId: z.string().uuid(),
+  motivo: z.string().min(1, "El acceso 'romper cristal' exige un motivo explícito"),
+  alcance: z.string().min(1).default("general"),
+  minutos: z.number().int().min(1).max(24 * 60).default(30),
+});
+export type CuerpoCrearAccesoRomperCristal = z.infer<typeof CuerpoCrearAccesoRomperCristal>;
+
+export const AccesoRomperCristalContrato = z.object({
+  id: z.string().uuid(),
+  tenantId: z.string().uuid(),
+  motivo: z.string(),
+  alcance: z.string(),
+  creadoEn: z.string(),
+  expiraEn: z.string(),
+  revocadoEn: z.string().nullable(),
+});
+export type AccesoRomperCristalContrato = z.infer<typeof AccesoRomperCristalContrato>;
+
+// ---------------------------------------------------------------------------
+// Feature flags por tenant (packages/domain/flags, H-089 reutilizado desde
+// el back office con auditoría de cambios).
+// ---------------------------------------------------------------------------
+
+export const CuerpoEstablecerFlag = z.object({
+  valor: z.boolean(),
+  tenantId: z.string().uuid().optional(),
+  motivo: z.string().min(1, "Todo cambio de feature flag exige motivo (auditoría)"),
+});
+export type CuerpoEstablecerFlag = z.infer<typeof CuerpoEstablecerFlag>;
+
+export const FlagContrato = z.object({
+  id: z.string(),
+  descripcion: z.string(),
+  categoriaRiesgo: z.string(),
+  valorGlobal: z.boolean(),
+  valorEfectivo: z.boolean(),
+  overrideDeTenant: z.boolean(),
+});
+export type FlagContrato = z.infer<typeof FlagContrato>;
+
+// ---------------------------------------------------------------------------
+// Propiedades/unidades — CRUD de administración (H-011/H-012): zona
+// horaria IANA + dirección mínima + moneda obligatorias en el alta.
+// ---------------------------------------------------------------------------
+
+export const DireccionMinimaContrato = z.object({
+  linea1: z.string().min(1, "La dirección mínima requiere al menos una línea"),
+  ciudad: z.string().min(1),
+  pais: z.string().min(2).max(2, "País como código ISO 3166-1 alfa-2, ej. MX"),
+});
+export type DireccionMinimaContrato = z.infer<typeof DireccionMinimaContrato>;
+
+export const CuerpoCrearPropiedadBackoffice = z.object({
+  tenantId: z.string().uuid().optional(),
+  nombre: z.string().min(1),
+  zonaHoraria: z.string().min(1),
+  moneda: z.string().regex(/^[A-Z]{3}$/, "código de moneda ISO 4217, ej. MXN"),
+  direccion: DireccionMinimaContrato,
+});
+export type CuerpoCrearPropiedadBackoffice = z.infer<typeof CuerpoCrearPropiedadBackoffice>;
+
+export const CuerpoActualizarPropiedadBackoffice = z.object({
+  nombre: z.string().min(1).optional(),
+  zonaHoraria: z.string().min(1).optional(),
+  moneda: z
+    .string()
+    .regex(/^[A-Z]{3}$/, "código de moneda ISO 4217, ej. MXN")
+    .optional(),
+  direccion: DireccionMinimaContrato.partial().optional(),
+});
+export type CuerpoActualizarPropiedadBackoffice = z.infer<typeof CuerpoActualizarPropiedadBackoffice>;
+
+export const PropiedadBackofficeContrato = z.object({
+  id: z.string().uuid(),
+  tenantId: z.string().uuid(),
+  nombre: z.string(),
+  zonaHoraria: z.string(),
+  moneda: z.string().nullable(),
+  direccion: z
+    .object({
+      linea1: z.string().nullable(),
+      ciudad: z.string().nullable(),
+      pais: z.string().nullable(),
+    })
+    .nullable(),
+});
+export type PropiedadBackofficeContrato = z.infer<typeof PropiedadBackofficeContrato>;
+
+/** `cantidad` (H-012, multi-unidad): crea N unidades idénticas de una sola
+ * vez ("Unidad 1".."Unidad N" si no se personaliza `nombre`), cada una con
+ * su propio invariante de exclusión — nunca una sola fila compartida. */
+export const CuerpoCrearUnidadBackoffice = z.object({
+  propiedadId: z.string().uuid(),
+  nombre: z.string().min(1),
+  ownerId: z.string().uuid().optional(),
+  duracionMinimaNoches: z.number().int().min(1).optional(),
+  cantidad: z.number().int().min(1).max(50).default(1),
+});
+export type CuerpoCrearUnidadBackoffice = z.infer<typeof CuerpoCrearUnidadBackoffice>;
+
+export const CuerpoActualizarUnidadBackoffice = z.object({
+  nombre: z.string().min(1).optional(),
+  ownerId: z.string().uuid().nullable().optional(),
+  duracionMinimaNoches: z.number().int().min(1).optional(),
+});
+export type CuerpoActualizarUnidadBackoffice = z.infer<typeof CuerpoActualizarUnidadBackoffice>;
+
+// ---------------------------------------------------------------------------
+// Cuentas de canal — alta con tipo de conexión HONESTO (D-017/D-019): iCal
+// import/export, partner pendiente con motivo explícito, o simulador
+// (bloqueado fuera de entorno dev). Credenciales cifradas por Lote 3;
+// nunca se devuelven en claro — solo "configurada"/"no configurada".
+// ---------------------------------------------------------------------------
+
+export const TipoConexionCuentaCanalContrato = z.enum(["ical", "partner_pendiente", "simulador"]);
+export type TipoConexionCuentaCanalContrato = z.infer<typeof TipoConexionCuentaCanalContrato>;
+
+export const CuerpoCrearCuentaCanalBackoffice = z
+  .object({
+    tenantId: z.string().uuid().optional(),
+    propiedadId: z.string().uuid().optional(),
+    canalCodigo: z.enum(["airbnb", "vrbo", "booking", "manual"]),
+    nombre: z.string().min(1),
+    tipoConexion: TipoConexionCuentaCanalContrato,
+    motivoPartnerPendiente: z.string().min(1).optional(),
+    urlImport: z.string().url().optional(),
+    credenciales: z.record(z.string(), z.string()).optional(),
+  })
+  .refine((v) => v.tipoConexion !== "partner_pendiente" || !!v.motivoPartnerPendiente, {
+    message: "tipoConexion='partner_pendiente' exige motivoPartnerPendiente explícito (D-017)",
+    path: ["motivoPartnerPendiente"],
+  });
+export type CuerpoCrearCuentaCanalBackoffice = z.infer<typeof CuerpoCrearCuentaCanalBackoffice>;
+
+/** Nunca incluye credenciales en claro ni cifradas — solo si están
+ * "configuradas" (§RV19/21-13, "credenciales nunca en respuesta"). */
+export const CuentaCanalBackofficeContrato = z.object({
+  id: z.string().uuid(),
+  canalCodigo: z.string(),
+  nombre: z.string(),
+  tipoConexion: TipoConexionCuentaCanalContrato,
+  estadoConexion: EstadoConexionCanalContrato,
+  credencialesConfiguradas: z.boolean(),
+  motivoPartnerPendiente: z.string().nullable(),
+  esSimulador: z.boolean(),
+});
+export type CuentaCanalBackofficeContrato = z.infer<typeof CuentaCanalBackofficeContrato>;
+
+// ---------------------------------------------------------------------------
+// Usuarios/roles del tenant + invitaciones (RV12 §1, 3 niveles de
+// colaborador ya definidos en Lote 3).
+// ---------------------------------------------------------------------------
+
+export const CuerpoCrearInvitacion = z
+  .object({
+    email: z.string().email(),
+    rol: RolUsuario,
+    colaboradorNivel: ColaboradorNivel.optional(),
+    ownerId: z.string().uuid().optional(),
+    ttlHoras: z.number().int().min(1).max(24 * 30).default(72),
+  })
+  .refine((v) => v.rol !== "operador" || v.colaboradorNivel !== undefined, {
+    message: "colaboradorNivel es requerido cuando rol='operador'",
+  });
+export type CuerpoCrearInvitacion = z.infer<typeof CuerpoCrearInvitacion>;
+
+export const InvitacionUsuarioContrato = z.object({
+  id: z.string().uuid(),
+  email: z.string(),
+  rol: RolUsuario,
+  colaboradorNivel: ColaboradorNivel.nullable(),
+  creadoEn: z.string(),
+  expiraEn: z.string(),
+  aceptadaEn: z.string().nullable(),
+  revocadaEn: z.string().nullable(),
+});
+export type InvitacionUsuarioContrato = z.infer<typeof InvitacionUsuarioContrato>;
+
+// ---------------------------------------------------------------------------
+// Auditoría consultable con filtros (back office; extiende GET /auditoria
+// de Lote 3 sin modificar esa ruta — carpeta exclusiva de este lote).
+// ---------------------------------------------------------------------------
+
+export const QueryAuditoriaBackoffice = QueryPaginacion.extend({
+  tabla: z.string().optional(),
+  operacion: z.enum(["INSERT", "UPDATE", "DELETE", "ACCESO_ROMPER_CRISTAL"]).optional(),
+  actorId: z.string().uuid().optional(),
+  desde: z.string().optional(),
+  hasta: z.string().optional(),
+});
+export type QueryAuditoriaBackoffice = z.infer<typeof QueryAuditoriaBackoffice>;
+
 export { CODIGOS_ERROR, ErrorDominio } from "./errores.js";
 export type { CodigoError, CuerpoErrorHttp } from "./errores.js";

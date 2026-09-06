@@ -41,6 +41,7 @@ tags:
   - name: finanzas
   - name: pricing
   - name: reportes
+  - name: backoffice
 
 paths:
   /auth/login:
@@ -952,6 +953,339 @@ paths:
       responses:
         "200": { description: Reporte de ingresos (JSON o CSV descargable) }
 
+  # ---------------------------------------------------------------------
+  # Back office / superadmin (Lote 8, BACKLOG E13 + E02 H-011/H-012).
+  # `/backoffice/tenants` (directorio, sin concesión) vs. el resto de
+  # rutas (propiedades/unidades/cuentas-canal/usuarios/auditoria), que
+  # exigen una concesión "romper cristal" vigente para que un superadmin
+  # opere sobre un tenant que no es el suyo (RLS, packages/db migración
+  # 0061 — ver `AccesoRomperCristal` más abajo).
+  # ---------------------------------------------------------------------
+  /backoffice/tenants:
+    get:
+      tags: [backoffice]
+      summary: Directorio de tenants con métricas agregadas — superadmin, SIN concesión "romper cristal"
+      responses:
+        "200":
+          description: Directorio de tenants
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenants:
+                    type: array
+                    items: { $ref: "#/components/schemas/TenantDirectorio" }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+    post:
+      tags: [backoffice]
+      summary: Alta de tenant (empresa gestora) — superadmin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoCrearTenantBackoffice" }
+      responses:
+        "201": { description: Tenant creado }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+
+  /backoffice/tenants/{id}/suspender:
+    post:
+      tags: [backoffice]
+      summary: Suspender un tenant con motivo — superadmin
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoSuspenderTenant" }
+      responses:
+        "200": { description: Tenant suspendido }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+
+  /backoffice/tenants/{id}/activar:
+    post:
+      tags: [backoffice]
+      summary: Reactivar un tenant suspendido — superadmin
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200": { description: Tenant activo }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+
+  /backoffice/romper-cristal:
+    get:
+      tags: [backoffice]
+      summary: Concesiones "romper cristal" propias vigentes — superadmin (para el banner persistente)
+      responses:
+        "200":
+          description: Concesiones vigentes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accesos:
+                    type: array
+                    items: { $ref: "#/components/schemas/AccesoRomperCristal" }
+    post:
+      tags: [backoffice]
+      summary: Crear una concesión "romper cristal" (motivo obligatorio, ventana acotada) — superadmin
+      description: |
+        Genera una entrada `ACCESO_ROMPER_CRISTAL` en `auditoria_mutacion`
+        con actor, tenant y motivo (§Auditoría-1). Sin esta concesión,
+        `is_tenant_member` deniega a un superadmin el acceso a datos de
+        negocio de cualquier tenant (packages/db migración 0061).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoCrearAccesoRomperCristal" }
+      responses:
+        "201": { description: Concesión creada }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+
+  /backoffice/romper-cristal/{id}/revocar:
+    post:
+      tags: [backoffice]
+      summary: Revocar una concesión propia antes de su expiración — superadmin
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200": { description: Concesión revocada }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+
+  /backoffice/flags:
+    get:
+      tags: [backoffice]
+      summary: Catálogo de feature flags con valor global/por-tenant — superadmin
+      parameters:
+        - name: tenantId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Catálogo de flags
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  flags:
+                    type: array
+                    items: { $ref: "#/components/schemas/Flag" }
+
+  /backoffice/flags/{id}:
+    patch:
+      tags: [backoffice]
+      summary: Cambiar el valor de un flag (global o por tenant), con motivo auditado — superadmin
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoEstablecerFlag" }
+      responses:
+        "200": { description: Flag actualizado }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+
+  /backoffice/flags/{id}/auditoria:
+    get:
+      tags: [backoffice]
+      summary: Historial de cambios de un flag — superadmin
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200": { description: Entradas de auditoría del flag }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+
+  /backoffice/propiedades:
+    get:
+      tags: [backoffice]
+      summary: CRUD de administración de propiedades — zona horaria/dirección/moneda
+      parameters:
+        - name: tenantId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Propiedades del tenant
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  propiedades:
+                    type: array
+                    items: { $ref: "#/components/schemas/PropiedadBackoffice" }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+    post:
+      tags: [backoffice]
+      summary: Alta de propiedad — zona horaria IANA, dirección mínima y moneda obligatorias (H-011)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoCrearPropiedadBackoffice" }
+      responses:
+        "201": { description: Propiedad creada }
+        "422": { $ref: "#/components/responses/Validacion" }
+
+  /backoffice/propiedades/{id}:
+    patch:
+      tags: [backoffice]
+      summary: Actualizar propiedad
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoActualizarPropiedadBackoffice" }
+      responses:
+        "200": { description: Propiedad actualizada }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+
+  /backoffice/unidades:
+    get:
+      tags: [backoffice]
+      summary: CRUD de administración de unidades
+      parameters:
+        - name: propiedadId
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Unidades de la propiedad }
+    post:
+      tags: [backoffice]
+      summary: Alta de unidad(es) — `cantidad` crea N unidades independientes de una sola vez (H-012)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoCrearUnidadBackoffice" }
+      responses:
+        "201": { description: Unidad(es) creada(s) }
+
+  /backoffice/unidades/{id}:
+    patch:
+      tags: [backoffice]
+      summary: Actualizar unidad
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200": { description: Unidad actualizada }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+    delete:
+      tags: [backoffice]
+      summary: Eliminar unidad
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204": { description: Unidad eliminada }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+
+  /backoffice/cuentas-canal:
+    get:
+      tags: [backoffice]
+      summary: Cuentas de canal del tenant — nunca expone credenciales, solo "configurada/no configurada"
+      parameters:
+        - name: tenantId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Cuentas de canal del tenant }
+    post:
+      tags: [backoffice]
+      summary: Alta con tipo de conexión honesto — iCal / partner pendiente (con motivo) / simulador (solo dev)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoCrearCuentaCanalBackoffice" }
+      responses:
+        "201": { description: Cuenta creada }
+        "422": { $ref: "#/components/responses/Validacion" }
+
+  /backoffice/usuarios:
+    get:
+      tags: [backoffice]
+      summary: Usuarios/roles del tenant
+      parameters:
+        - name: tenantId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Usuarios del tenant }
+
+  /backoffice/usuarios/invitaciones:
+    get:
+      tags: [backoffice]
+      summary: Invitaciones del tenant
+      parameters:
+        - name: tenantId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Invitaciones del tenant }
+    post:
+      tags: [backoffice]
+      summary: Invitar a un colaborador (token devuelto UNA sola vez, nunca persistido en claro)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoCrearInvitacion" }
+      responses:
+        "201": { description: Invitación creada (incluye `token` una sola vez) }
+
+  /backoffice/usuarios/invitaciones/{id}/revocar:
+    post:
+      tags: [backoffice]
+      summary: Revocar una invitación pendiente
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200": { description: Invitación revocada }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+
+  /backoffice/auditoria:
+    get:
+      tags: [backoffice]
+      summary: Auditoría consultable con filtros (tabla/operación/actor/rango de fechas)
+      parameters:
+        - name: pagina
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: tamano
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: tabla
+          in: query
+          schema: { type: string }
+        - name: operacion
+          in: query
+          schema: { type: string, enum: [INSERT, UPDATE, DELETE, ACCESO_ROMPER_CRISTAL] }
+        - name: actorId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: desde
+          in: query
+          schema: { type: string, format: date-time }
+        - name: hasta
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Página de entradas de auditoría filtradas
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RespuestaAuditoriaPaginada" }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1483,3 +1817,153 @@ components:
         unidadId: { type: string, format: uuid }
         rango: { $ref: "#/components/schemas/RangoFechas" }
         canalCodigo: { type: string, enum: [airbnb, vrbo, booking, manual] }
+
+    # -----------------------------------------------------------------
+    # Back office / superadmin (Lote 8).
+    # -----------------------------------------------------------------
+    MetricasTenant:
+      type: object
+      properties:
+        unidadesTotal: { type: integer, minimum: 0 }
+        cuentasCanalTotal: { type: integer, minimum: 0 }
+        cuentasCanalConfiguradas: { type: integer, minimum: 0 }
+        cuentasCanalSimulador: { type: integer, minimum: 0 }
+        alertasAbiertas: { type: integer, minimum: 0 }
+        outboxPendiente: { type: integer, minimum: 0 }
+
+    TenantDirectorio:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        nombre: { type: string }
+        tipo: { type: string }
+        estado: { type: string, enum: [activo, suspendido] }
+        suspendidoMotivo: { type: string, nullable: true }
+        creadoEn: { type: string, format: date-time }
+        metricas: { $ref: "#/components/schemas/MetricasTenant" }
+
+    CuerpoCrearTenantBackoffice:
+      type: object
+      required: [nombre, razonSocial]
+      properties:
+        nombre: { type: string }
+        razonSocial: { type: string }
+
+    CuerpoSuspenderTenant:
+      type: object
+      required: [motivo]
+      properties:
+        motivo: { type: string, minLength: 1 }
+
+    CuerpoCrearAccesoRomperCristal:
+      type: object
+      required: [tenantId, motivo]
+      properties:
+        tenantId: { type: string, format: uuid }
+        motivo: { type: string, minLength: 1 }
+        alcance: { type: string, default: general }
+        minutos: { type: integer, minimum: 1, maximum: 1440, default: 30 }
+
+    AccesoRomperCristal:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tenantId: { type: string, format: uuid }
+        motivo: { type: string }
+        alcance: { type: string }
+        creadoEn: { type: string, format: date-time }
+        expiraEn: { type: string, format: date-time }
+        revocadoEn: { type: string, format: date-time, nullable: true }
+
+    CuerpoEstablecerFlag:
+      type: object
+      required: [valor, motivo]
+      properties:
+        valor: { type: boolean }
+        tenantId: { type: string, format: uuid }
+        motivo: { type: string, minLength: 1 }
+
+    Flag:
+      type: object
+      properties:
+        id: { type: string }
+        descripcion: { type: string }
+        categoriaRiesgo: { type: string }
+        valorGlobal: { type: boolean }
+        valorEfectivo: { type: boolean }
+        overrideDeTenant: { type: boolean }
+
+    DireccionMinima:
+      type: object
+      required: [linea1, ciudad, pais]
+      properties:
+        linea1: { type: string, minLength: 1 }
+        ciudad: { type: string, minLength: 1 }
+        pais: { type: string, minLength: 2, maxLength: 2, description: "ISO 3166-1 alfa-2, ej. MX" }
+
+    CuerpoCrearPropiedadBackoffice:
+      type: object
+      required: [nombre, zonaHoraria, moneda, direccion]
+      properties:
+        tenantId: { type: string, format: uuid, description: "Requerido si el actor es superadmin" }
+        nombre: { type: string }
+        zonaHoraria: { type: string, description: "IANA, ej. America/Mexico_City" }
+        moneda: { type: string, pattern: "^[A-Z]{3}$" }
+        direccion: { $ref: "#/components/schemas/DireccionMinima" }
+
+    CuerpoActualizarPropiedadBackoffice:
+      type: object
+      properties:
+        nombre: { type: string }
+        zonaHoraria: { type: string }
+        moneda: { type: string, pattern: "^[A-Z]{3}$" }
+        direccion: { $ref: "#/components/schemas/DireccionMinima" }
+
+    PropiedadBackoffice:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tenantId: { type: string, format: uuid }
+        nombre: { type: string }
+        zonaHoraria: { type: string }
+        moneda: { type: string, nullable: true }
+        direccion:
+          type: object
+          nullable: true
+          properties:
+            linea1: { type: string, nullable: true }
+            ciudad: { type: string, nullable: true }
+            pais: { type: string, nullable: true }
+
+    CuerpoCrearUnidadBackoffice:
+      type: object
+      required: [propiedadId, nombre]
+      properties:
+        propiedadId: { type: string, format: uuid }
+        nombre: { type: string }
+        ownerId: { type: string, format: uuid }
+        duracionMinimaNoches: { type: integer, minimum: 1 }
+        cantidad: { type: integer, minimum: 1, maximum: 50, default: 1, description: "Crea N unidades independientes (H-012)" }
+
+    CuerpoCrearCuentaCanalBackoffice:
+      type: object
+      required: [canalCodigo, nombre, tipoConexion]
+      properties:
+        tenantId: { type: string, format: uuid }
+        propiedadId: { type: string, format: uuid }
+        canalCodigo: { type: string, enum: [airbnb, vrbo, booking, manual] }
+        nombre: { type: string }
+        tipoConexion: { type: string, enum: [ical, partner_pendiente, simulador] }
+        motivoPartnerPendiente: { type: string, description: "Obligatorio si tipoConexion=partner_pendiente" }
+        urlImport: { type: string, format: uri }
+        credenciales: { type: object, additionalProperties: { type: string } }
+
+    CuerpoCrearInvitacion:
+      type: object
+      required: [email, rol]
+      properties:
+        email: { type: string, format: email }
+        rol: { type: string, enum: [superadmin, admin_gestora, operador, limpieza, propietario, contador] }
+        colaboradorNivel: { type: string, enum: [acceso_total, calendario_mensajeria, solo_calendario] }
+        ownerId: { type: string, format: uuid }
+        ttlHoras: { type: integer, minimum: 1, maximum: 720, default: 72 }
