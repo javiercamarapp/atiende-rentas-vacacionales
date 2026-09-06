@@ -1,5 +1,6 @@
 import * as http from "node:http";
 import * as https from "node:https";
+import * as net from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as fs from "node:fs";
@@ -121,7 +122,6 @@ describe("H1 CRÍTICO — bypass SSRF vía direcciones IPv6-mapeadas-a-IPv4 (ssr
   });
 
   it("Node considera estas direcciones IP literales válidas (net.isIP), por lo que fetchIcsSeguro las pineará y conectará DIRECTAMENTE sin nueva resolución DNS", () => {
-    const net = require("node:net") as typeof import("node:net");
     expect(net.isIP("::ffff:127.0.0.1")).toBe(6);
   });
 

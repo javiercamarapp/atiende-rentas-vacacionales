@@ -87,8 +87,8 @@ function parsearIpv6ABytes(ipOriginal: string): number[] | null {
     return [...grupos.slice(0, -1), hexAlto, hexBajo];
   };
 
-  let izquierda = expandirIpv4Embebida(partir(mitades[0]!));
-  let derecha = mitades.length === 2 ? expandirIpv4Embebida(partir(mitades[1]!)) : [];
+  const izquierda = expandirIpv4Embebida(partir(mitades[0]!));
+  const derecha = mitades.length === 2 ? expandirIpv4Embebida(partir(mitades[1]!)) : [];
   if (izquierda === null || derecha === null) return null;
 
   const totalGrupos = izquierda.length + derecha.length;
