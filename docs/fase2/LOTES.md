@@ -222,6 +222,10 @@ autorización, verificado con una suite de pruebas de privilegios).
 
 **Comando de prueba:** `npm run test:integration -- --filter=rls`
 
+> Nota (Lote 11B): `--filter` no es sintaxis real de npm workspaces (corre
+> TODA la suite en vez de aislar el subconjunto); equivalente real: `node
+> scripts/filtrar-tests.mjs --filter=rls`.
+
 **Criterio de aceptación:** ACEPTACION §RV19/21-4 (caso adversarial 18),
 §RV19/21-13 (cifrado), §RV19/21-7 (logs sin PII), §Auditoría-1, §Roles-1.
 
@@ -282,6 +286,9 @@ tarea automáticamente preservando el responsable asignado.
 
 **Comando de prueba:** `npm run test:integration -- --filter=limpieza`
 
+> Nota (Lote 11B): equivalente real (`--filter` no aísla nada en npm
+> workspaces): `node scripts/filtrar-tests.mjs --filter=limpieza`.
+
 **Criterio de aceptación:** ACEPTACION §Limpieza-1, §Limpieza-2.
 
 ---
@@ -307,6 +314,9 @@ envío; un borrador generado no se envía sin que un humano pulse "aprobar".
 
 **Comando de prueba:** `npm run test:integration -- --filter=mensajeria`
 
+> Nota (Lote 11B): equivalente real (`--filter` no aísla nada en npm
+> workspaces): `node scripts/filtrar-tests.mjs --filter=mensajeria`.
+
 **Criterio de aceptación:** ACEPTACION §Mensajería-1, §Mensajería-2,
 §Privacidad-2.
 
@@ -331,6 +341,9 @@ la comisión sobre el bruto original.
 
 **Comando de prueba:** `npm run test:integration -- --filter=finanzas`
 
+> Nota (Lote 11B): equivalente real (`--filter` no aísla nada en npm
+> workspaces): `node scripts/filtrar-tests.mjs --filter=finanzas`.
+
 **Criterio de aceptación:** ACEPTACION §Finanzas-1, §Finanzas-2, §Pricing-1,
 §Pricing-2, §Legal-1 (para las piezas tras el feature flag).
 
@@ -353,6 +366,9 @@ este lote es la superficie de administración).
 datos de un tenant genera una entrada en `audit_log` con motivo explícito.
 
 **Comando de prueba:** `npm run test:integration -- --filter=backoffice`
+
+> Nota (Lote 11B): equivalente real (`--filter` no aísla nada en npm
+> workspaces): `node scripts/filtrar-tests.mjs --filter=backoffice`.
 
 **Criterio de aceptación:** ACEPTACION §Roles-4, §Auditoría-1.
 
@@ -378,6 +394,9 @@ tool de cancelación/envío directo.
 **Comando de prueba:** `npm run test -- --filter=agentes` (unitario, sin
 necesidad de `embedded-postgres`).
 
+> Nota (Lote 11B): equivalente real (`--filter` no aísla nada en npm
+> workspaces): `node scripts/filtrar-tests.mjs --filter=agentes`.
+
 **Criterio de aceptación:** ACEPTACION §RV19/21-14, §Automatización-1,
 §Automatización-2, §Automatización-3.
 
@@ -402,6 +421,9 @@ automáticamente la reconciliación de drift antes de permitir push
 automático.
 
 **Comando de prueba:** `npm run test:integration -- --filter=recuperacion`
+
+> Nota (Lote 11B): equivalente real (`--filter` no aísla nada en npm
+> workspaces): `node scripts/filtrar-tests.mjs --filter=recuperacion`.
 
 **Criterio de aceptación:** ACEPTACION §Operación-1, §Operación-2,
 §Operación-3, §Operación-4.
