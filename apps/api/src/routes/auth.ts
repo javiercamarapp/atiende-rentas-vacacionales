@@ -904,11 +904,16 @@ export function crearRutasAuth(deps: DependenciasAuth): Hono {
   // ---------------------------------------------------------------------
   // Rutas autenticadas: cambiar password, MFA, sesiones, logout global.
   // ---------------------------------------------------------------------
-  const autenticadas = new Hono();
-  autenticadas.use("*", requiereAutenticacion(jwtSecret));
-  autenticadas.use("*", verificarCsrf());
+  // Middleware aplicado explícitamente por ruta (nunca un `use("*", ...)`
+  // montado en un sub-router en "/"): un wildcard así, dependiendo del
+  // orden de registro relativo a otras rutas de este mismo `app`
+  // (/google/inicio, /oidc-simulado/*), puede terminar interceptando
+  // rutas públicas que NO deben exigir autenticación — se prefiere ser
+  // explícito en cada ruta antes que depender de ese orden.
+  const auth1 = requiereAutenticacion(jwtSecret);
+  const auth2 = verificarCsrf();
 
-  autenticadas.post("/cambiar-password", async (c) => {
+  app.post("/cambiar-password", auth1, auth2, async (c) => {
     const auth = c.get("auth");
     const cuerpo = CuerpoCambiarPassword.parse(await c.req.json());
     const politica = await validarPoliticaContrasena(cuerpo.passwordNueva, { hibpHabilitado: politicaContrasenaHibp });
@@ -936,7 +941,7 @@ export function crearRutasAuth(deps: DependenciasAuth): Hono {
     return c.json({ cambiada: true });
   });
 
-  autenticadas.post("/mfa/iniciar", async (c) => {
+  app.post("/mfa/iniciar", auth1, auth2, async (c) => {
     const auth = c.get("auth");
     const secreto = generarSecretoTotp();
     const cifrado = keyring.cifrar(secreto);
@@ -961,7 +966,7 @@ export function crearRutasAuth(deps: DependenciasAuth): Hono {
     });
   });
 
-  autenticadas.post("/mfa/confirmar", async (c) => {
+  app.post("/mfa/confirmar", auth1, auth2, async (c) => {
     const auth = c.get("auth");
     const cuerpo = CuerpoMfaConfirmar.parse(await c.req.json());
     const resultado = await conSesion(pool, sesionDeAuth(auth), async (cliente) => {
@@ -988,7 +993,7 @@ export function crearRutasAuth(deps: DependenciasAuth): Hono {
     return c.json({ habilitado: true, codigosRecuperacion: resultado });
   });
 
-  autenticadas.post("/mfa/deshabilitar", async (c) => {
+  app.post("/mfa/deshabilitar", auth1, auth2, async (c) => {
     const auth = c.get("auth");
     const cuerpo = CuerpoMfaDeshabilitar.parse(await c.req.json());
     const claveValida = await verificarContrasenaActual(auth.usuarioId, cuerpo.password);
@@ -1000,7 +1005,7 @@ export function crearRutasAuth(deps: DependenciasAuth): Hono {
     return c.json({ deshabilitado: true });
   });
 
-  autenticadas.get("/sesiones", async (c) => {
+  app.get("/sesiones", auth1, auth2, async (c) => {
     const auth = c.get("auth");
     const refreshActual = obtenerCookieRefresh(c);
     const hashActual = refreshActual ? hashearRefreshToken(refreshActual) : null;
@@ -1030,7 +1035,7 @@ export function crearRutasAuth(deps: DependenciasAuth): Hono {
     });
   });
 
-  autenticadas.delete("/sesiones/:id", async (c) => {
+  app.delete("/sesiones/:id", auth1, auth2, async (c) => {
     const auth = c.get("auth");
     const id = c.req.param("id");
     const afectadas = await conSesion(pool, sesionDeAuth(auth), async (cliente) =>
@@ -1046,7 +1051,7 @@ export function crearRutasAuth(deps: DependenciasAuth): Hono {
     return c.json({ revocada: true });
   });
 
-  autenticadas.post("/logout-global", async (c) => {
+  app.post("/logout-global", auth1, auth2, async (c) => {
     const auth = c.get("auth");
     await conSesion(pool, sesionDeAuth(auth), async (cliente) =>
       enTransaccion(cliente, async () => {
@@ -1060,8 +1065,6 @@ export function crearRutasAuth(deps: DependenciasAuth): Hono {
     limpiarCookieCsrf(c, { segura: cookieSegura });
     return c.body(null, 204);
   });
-
-  app.route("/", autenticadas);
 
   // ---------------------------------------------------------------------
   // Google Sign-In (OpenID Connect, Authorization Code + PKCE).
