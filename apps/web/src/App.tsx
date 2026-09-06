@@ -1,61 +1,78 @@
 import { Navigate, Route, Routes } from "react-router-dom";
-import { DevShellNav } from "./components/DevShellNav";
 import { SeccionVacia } from "./pages/SeccionVacia";
+import { LoginPage } from "./pages/auth/LoginPage";
+import { CalendarioMaestroPage } from "./pages/calendario/CalendarioMaestroPage";
+import { MatrizConectividadPage } from "./pages/conectividad/MatrizConectividadPage";
+import { MonitorSyncPage } from "./pages/monitor-sync/MonitorSyncPage";
+import { ConflictosPage } from "./pages/monitor-sync/ConflictosPage";
+import { OperacionPage } from "./pages/limpieza/OperacionPage";
+import { AdminLayout } from "./components/admin/AdminLayout";
+import { RutaProtegida } from "./components/admin/RutaProtegida";
+import { SesionProvider } from "./lib/sesion/SesionProvider";
 import {
-  CalendarDays,
   Building2,
-  Radio,
   BookOpenCheck,
-  Wrench,
   MessageSquare,
   Wallet,
   BarChart3,
   ShieldCheck,
 } from "lucide-react";
 
-// Shell de Lote 0: logo + navegación provisional + página vacía por sección,
-// cada una con el banner de entorno de desarrollo. Sin conexión a apps/api
-// (eso llega con el contrato de API de Lote 3) ni a ningún canal real.
+// Router de apps/web — punto de fusión compartido documentado en
+// docs/fase2/LOTES.md (cabecera): cada lote añade sus propias rutas sin
+// reescribir las de los demás. Lote 4 sustituye el `DevShellNav`
+// provisional de Lote 0 por el `AdminLayout`/`AdminSidebar` real y aporta
+// las 3 rutas de este lote (protegidas por sesión real contra la API de
+// Lote 3); las demás secciones siguen como `SeccionVacia` hasta que su
+// lote de origen las construya.
 export default function App() {
   return (
-    <div className="flex min-h-screen bg-background">
-      <DevShellNav />
-      <main className="flex-1 overflow-y-auto">
-        <Routes>
-          <Route path="/" element={<Navigate to="/calendario" replace />} />
-          <Route
-            path="/calendario"
-            element={<SeccionVacia titulo="Calendario" icono={CalendarDays} lote="Lote 4" />}
-          />
-          <Route
-            path="/propiedades"
-            element={<SeccionVacia titulo="Propiedades" icono={Building2} lote="Lote 8" />}
-          />
-          <Route path="/canales" element={<SeccionVacia titulo="Canales" icono={Radio} lote="Lote 4" />} />
-          <Route
-            path="/reservas"
-            element={<SeccionVacia titulo="Reservas" icono={BookOpenCheck} lote="Lote 3" />}
-          />
-          <Route
-            path="/operacion"
-            element={<SeccionVacia titulo="Operación" icono={Wrench} lote="Lote 5" />}
-          />
-          <Route
-            path="/mensajes"
-            element={<SeccionVacia titulo="Mensajes" icono={MessageSquare} lote="Lote 6" />}
-          />
-          <Route path="/finanzas" element={<SeccionVacia titulo="Finanzas" icono={Wallet} lote="Lote 7" />} />
-          <Route
-            path="/reportes"
-            element={<SeccionVacia titulo="Reportes" icono={BarChart3} lote="Lote 7" />}
-          />
-          <Route
-            path="/administracion"
-            element={<SeccionVacia titulo="Administración" icono={ShieldCheck} lote="Lote 8" />}
-          />
-          <Route path="*" element={<Navigate to="/calendario" replace />} />
-        </Routes>
-      </main>
-    </div>
+    <SesionProvider>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route
+          path="/*"
+          element={
+            <RutaProtegida>
+              <AdminLayout>
+                <Routes>
+                  <Route path="/" element={<Navigate to="/calendario" replace />} />
+                  <Route path="/calendario" element={<CalendarioMaestroPage />} />
+                  <Route path="/conectividad" element={<MatrizConectividadPage />} />
+                  <Route path="/monitor-sync" element={<MonitorSyncPage />} />
+                  <Route path="/monitor-sync/conflictos" element={<ConflictosPage />} />
+                  <Route
+                    path="/propiedades"
+                    element={<SeccionVacia titulo="Propiedades" icono={Building2} lote="Lote 8" />}
+                  />
+                  <Route
+                    path="/reservas"
+                    element={<SeccionVacia titulo="Reservas" icono={BookOpenCheck} lote="Lote 3" />}
+                  />
+                  <Route path="/operacion" element={<OperacionPage />} />
+                  <Route
+                    path="/mensajes"
+                    element={<SeccionVacia titulo="Mensajes" icono={MessageSquare} lote="Lote 6" />}
+                  />
+                  <Route
+                    path="/finanzas"
+                    element={<SeccionVacia titulo="Finanzas" icono={Wallet} lote="Lote 7" />}
+                  />
+                  <Route
+                    path="/reportes"
+                    element={<SeccionVacia titulo="Reportes" icono={BarChart3} lote="Lote 7" />}
+                  />
+                  <Route
+                    path="/administracion"
+                    element={<SeccionVacia titulo="Administración" icono={ShieldCheck} lote="Lote 8" />}
+                  />
+                  <Route path="*" element={<Navigate to="/calendario" replace />} />
+                </Routes>
+              </AdminLayout>
+            </RutaProtegida>
+          }
+        />
+      </Routes>
+    </SesionProvider>
   );
 }
