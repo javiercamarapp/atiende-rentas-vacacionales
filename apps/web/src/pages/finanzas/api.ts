@@ -1,0 +1,147 @@
+// Llamadas de API propias de finanzas/owners/statements (Lote 7, BACKLOG
+// E10). Mismo patrón que apps/web/src/pages/limpieza/api.ts: cliente HTTP
+// compartido + tipos locales (los cuerpos de escritura ya viven en
+// @atiende-rv/api/contrato desde apps/api/src/contrato/tipos.ts).
+import type {
+  CuerpoGenerarStatement,
+  CuerpoImportarPayout,
+  CuerpoMovimientoReserva,
+  CuerpoReglaComisionCanal,
+} from "@atiende-rv/api/contrato";
+import { peticion } from "../../lib/api/cliente";
+
+export interface ReglaComisionCanal {
+  id: string;
+  canalCodigo: string;
+  propiedadId: string | null;
+  yaNetoDeComision: boolean;
+  comisionBasisPoints: number;
+  fuente: string;
+  vigenteDesde: string;
+}
+
+export interface MovimientoFinanciero {
+  ocupacionUnidadId: string;
+  moneda: string;
+  montoBrutoCentavos: number;
+  yaNetoDeComision: boolean;
+  comisionCanalCentavos: number;
+  comisionGestorCentavos: number;
+  montoRecibidoCentavos: number;
+  netoCentavos: number;
+  gastos: { id: string; tipo: string; descripcion: string | null; montoCentavos: number }[];
+  impuestos: { id: string; tipo: string; montoCentavos: number; nota: string | null }[];
+  alertaFiscal: { rfcRegistrado: boolean; requiereRevisionFiscal: true; mensaje: string };
+}
+
+export interface StatementResumen {
+  id: string;
+  ownerId: string;
+  periodoInicio: string;
+  periodoFin: string;
+  version: number;
+  moneda: string;
+  netoCentavos: number;
+  generadoEn: string;
+}
+
+export interface LineaStatement {
+  tipo: "ingreso" | "comision_canal" | "comision_gestor" | "gasto" | "impuesto";
+  descripcion: string;
+  montoCentavos: number;
+  moneda: string;
+  ocupacionUnidadId: string | null;
+}
+
+export interface StatementDetalle {
+  id: string;
+  ownerId: string;
+  periodoInicio: string;
+  periodoFin: string;
+  version: number;
+  moneda: string;
+  ingresosBrutosCentavos: number;
+  comisionCanalCentavos: number;
+  comisionGestorCentavos: number;
+  gastosCentavos: number;
+  impuestosCentavos: number;
+  netoCentavos: number;
+  generadoEn: string;
+  lineas: LineaStatement[];
+}
+
+export interface PayoutConciliado {
+  id: string;
+  canalId: string;
+  montoTotalCentavos: number;
+  fechaPayout: string;
+  lineas: {
+    ocupacionUnidadId: string | null;
+    montoCentavos: number;
+    montoEsperadoCentavos: number | null;
+    estadoConciliacion: "conciliado" | "pendiente" | "discrepancia";
+    nota: string | null;
+  }[];
+}
+
+export function listarReglasComision(): Promise<{ reglas: ReglaComisionCanal[] }> {
+  return peticion("/finanzas/reglas-comision");
+}
+
+export function crearReglaComision(cuerpo: CuerpoReglaComisionCanal): Promise<{ id: string }> {
+  return peticion("/finanzas/reglas-comision", { metodo: "POST", cuerpo });
+}
+
+export function registrarMovimiento(
+  ocupacionId: string,
+  cuerpo: CuerpoMovimientoReserva,
+): Promise<MovimientoFinanciero> {
+  return peticion(`/finanzas/reservas/${ocupacionId}/movimiento`, { metodo: "POST", cuerpo });
+}
+
+export function obtenerMovimiento(ocupacionId: string): Promise<MovimientoFinanciero> {
+  return peticion(`/finanzas/reservas/${ocupacionId}`);
+}
+
+export function generarStatement(
+  cuerpo: CuerpoGenerarStatement,
+): Promise<StatementDetalle & { creado?: boolean }> {
+  return peticion("/finanzas/statements/generar", { metodo: "POST", cuerpo });
+}
+
+export function listarStatements(ownerId?: string): Promise<{ statements: StatementResumen[] }> {
+  return peticion("/finanzas/statements", { query: { ownerId } });
+}
+
+export function obtenerStatement(id: string): Promise<StatementDetalle> {
+  return peticion(`/finanzas/statements/${id}`);
+}
+
+export function urlDescargaStatement(id: string): string {
+  return `/finanzas/statements/${id}/descarga`;
+}
+
+export function importarPayout(
+  cuerpo: CuerpoImportarPayout,
+): Promise<{ id: string; lineas: unknown[]; resumen: { conciliadas: number; pendientes: number; discrepancias: number } }> {
+  return peticion("/finanzas/payouts", { metodo: "POST", cuerpo });
+}
+
+export function obtenerPayout(id: string): Promise<PayoutConciliado> {
+  return peticion(`/finanzas/payouts/${id}`);
+}
+
+// Sin endpoint dedicado de "unidades básicas" en este lote (esa lista vive
+// en apps/web/src/pages/limpieza/api.ts, carpeta exclusiva de Lote 5) —
+// se reutiliza GET /unidades directamente (endpoint de Lote 3, compartido).
+export function listarUnidadesBasico(): Promise<{
+  unidades: { id: string; nombre: string; propiedadId: string; ownerId: string | null }[];
+}> {
+  return peticion("/unidades");
+}
+
+export function decimalDesdeCentavos(centavos: number): string {
+  const negativo = centavos < 0;
+  const abs = Math.abs(Math.round(centavos));
+  return `${negativo ? "-" : ""}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, "0")}`;
+}

@@ -6,17 +6,13 @@ import { MatrizConectividadPage } from "./pages/conectividad/MatrizConectividadP
 import { MonitorSyncPage } from "./pages/monitor-sync/MonitorSyncPage";
 import { ConflictosPage } from "./pages/monitor-sync/ConflictosPage";
 import { OperacionPage } from "./pages/limpieza/OperacionPage";
+import { FinanzasPage } from "./pages/finanzas/FinanzasPage";
+import { PricingPage } from "./pages/pricing/PricingPage";
+import { ReportesPage } from "./pages/reportes/ReportesPage";
 import { AdminLayout } from "./components/admin/AdminLayout";
 import { RutaProtegida } from "./components/admin/RutaProtegida";
 import { SesionProvider } from "./lib/sesion/SesionProvider";
-import {
-  Building2,
-  BookOpenCheck,
-  MessageSquare,
-  Wallet,
-  BarChart3,
-  ShieldCheck,
-} from "lucide-react";
+import { Building2, BookOpenCheck, MessageSquare, ShieldCheck } from "lucide-react";
 
 // Router de apps/web — punto de fusión compartido documentado en
 // docs/fase2/LOTES.md (cabecera): cada lote añade sus propias rutas sin
@@ -54,14 +50,9 @@ export default function App() {
                     path="/mensajes"
                     element={<SeccionVacia titulo="Mensajes" icono={MessageSquare} lote="Lote 6" />}
                   />
-                  <Route
-                    path="/finanzas"
-                    element={<SeccionVacia titulo="Finanzas" icono={Wallet} lote="Lote 7" />}
-                  />
-                  <Route
-                    path="/reportes"
-                    element={<SeccionVacia titulo="Reportes" icono={BarChart3} lote="Lote 7" />}
-                  />
+                  <Route path="/finanzas" element={<FinanzasPage />} />
+                  <Route path="/pricing" element={<PricingPage />} />
+                  <Route path="/reportes" element={<ReportesPage />} />
                   <Route
                     path="/administracion"
                     element={<SeccionVacia titulo="Administración" icono={ShieldCheck} lote="Lote 8" />}

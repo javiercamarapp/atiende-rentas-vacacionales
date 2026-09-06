@@ -83,9 +83,9 @@ export const MENU_SECTIONS: GrupoMenu[] = [
   {
     titulo: "NEGOCIO",
     items: [
-      { id: "finanzas", etiqueta: "Finanzas/owners", icono: Wallet, lote: "Lote 7" },
-      { id: "pricing", etiqueta: "Pricing", icono: Tag, lote: "Lote 7" },
-      { id: "reportes", etiqueta: "Reportes", icono: FileBarChart, lote: "Lote 7" },
+      { id: "finanzas", etiqueta: "Finanzas/owners", icono: Wallet, ruta: "/finanzas" },
+      { id: "pricing", etiqueta: "Pricing", icono: Tag, ruta: "/pricing" },
+      { id: "reportes", etiqueta: "Reportes", icono: FileBarChart, ruta: "/reportes" },
     ],
   },
   {
