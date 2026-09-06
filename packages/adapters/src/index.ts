@@ -73,7 +73,13 @@ export {
 export type { ContextoSincronizacion, ResultadoImportarCiclo } from "./sync/motor.js";
 
 // Adaptadores reales por canal (H-023)
-export { AirbnbChannelAdapter, CAPACIDADES_AIRBNB, LATENCIA_AIRBNB_ICAL } from "./airbnb/adapter.js";
+export {
+  AirbnbChannelAdapter,
+  CAPACIDADES_AIRBNB,
+  LATENCIA_AIRBNB_ICAL,
+  VENTANA_IMPORTACION_AIRBNB_ANIOS,
+  fueraDeVentanaImportacionAirbnb,
+} from "./airbnb/adapter.js";
 export { VrboChannelAdapter, CAPACIDADES_VRBO, LATENCIA_VRBO_ICAL } from "./vrbo/adapter.js";
 export {
   BookingChannelAdapter,
@@ -82,3 +88,86 @@ export {
   AVISO_ICAL_BOOKING,
 } from "./booking/adapter.js";
 export type { ChannelManagerCertificadoBridge } from "./booking/adapter.js";
+export {
+  construirOtaHotelAvailNotifRq,
+  construirOtaHotelRateAmountNotifRq,
+  mapearReservaSimuladaAOta,
+  ROOMSTOSELL_MAXIMO,
+  ROOMSTOSELL_ILIMITADO,
+  RoomsToSellInvalidoError,
+} from "./booking/otaXml.js";
+export type {
+  RestriccionDisponibilidadBooking,
+  TarifaBooking,
+  ReservaBookingOta,
+  EstadoReservaBookingOta,
+  ReservaSimuladaComoOta,
+} from "./booking/otaXml.js";
+
+// Lote 3.4 (RV22, Fase 3): canales de distribución usados en México.
+export {
+  AgodaChannelAdapter,
+  CAPACIDADES_AGODA,
+  LATENCIA_AGODA_ICAL,
+} from "./agoda/adapter.js";
+
+export {
+  ExpediaChannelAdapter,
+  CAPACIDADES_EXPEDIA,
+  LATENCIA_EXPEDIA_API,
+  MOTIVO_PARTNER_PENDIENTE_EXPEDIA,
+  ExpediaApiClient,
+  ErrorClienteExpedia,
+  dividirEnLotesDisponibilidad,
+  HOST_SANDBOX_EXPEDIA,
+  LIMITE_ACTUALIZACIONES_POR_MENSAJE_EXPEDIA,
+  LIMITE_REGISTROS_POR_LLAMADA_BOOKING_RETRIEVAL,
+} from "./expedia/adapter.js";
+export type {
+  CredencialesExpedia,
+  ActualizacionDisponibilidadExpedia,
+  LoteActualizacionDisponibilidad,
+  ReservaExpedia,
+  EstadoReservaExpedia,
+  OpcionesClienteExpedia as OpcionesClienteExpediaApi,
+} from "./expedia/adapter.js";
+
+export {
+  SiteMinderPmsXchangeAdapter,
+  CAPACIDADES_SITEMINDER,
+  LATENCIA_SITEMINDER_PMSXCHANGE,
+  MOTIVO_PARTNER_PENDIENTE_SITEMINDER,
+  CANALES_CUBIERTOS_SITEMINDER,
+  SiteMinderPmsXchangeClient,
+  ErrorClientePmsXchange,
+} from "./siteminder/adapter.js";
+export type {
+  ActualizacionInventarioPmsXchange,
+  ReservaPmsXchange,
+  EstadoReservaPmsXchange,
+  OpcionesClientePmsXchange,
+} from "./siteminder/adapter.js";
+
+export {
+  VrboApiChannelAdapter,
+  CAPACIDADES_VRBO_API,
+  LATENCIA_VRBO_API,
+  MOTIVO_PARTNER_PENDIENTE_VRBO_API,
+} from "./vrbo/apiAdapter.js";
+
+export {
+  AirbnbApiChannelAdapter,
+  CAPACIDADES_AIRBNB_API,
+  LATENCIA_AIRBNB_API,
+  MOTIVO_PARTNER_PENDIENTE_AIRBNB_API,
+} from "./airbnb/apiAdapter.js";
+
+export {
+  GoogleVacationRentalsAdapter,
+  CAPACIDADES_GOOGLE_VR,
+  LATENCIA_GOOGLE_VR,
+  MOTIVO_PARTNER_PENDIENTE_GOOGLE_VR,
+} from "./google-vr/adapter.js";
+
+export { REGISTRO_ADAPTADORES, entradasPorCanal } from "./registro.js";
+export type { EntradaRegistroAdaptador, NivelRv22 } from "./registro.js";
