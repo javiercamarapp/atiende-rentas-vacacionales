@@ -1,0 +1,119 @@
+{
+  "generadoEn": "2026-09-06T10:46:16.858Z",
+  "resultados": [
+    {
+      "archivo": "escenarioA-importacion.ts",
+      "resultado": {
+        "escenario": "A-importacion-concurrente",
+        "supuestos": [
+          "Latencia medida es INTERNA (fetch simulado local → COMMIT en ocupacion_unidad), NUNCA latencia por canal externo (RV21 §2.2 exige reportarlas por separado; la latencia por canal real de Airbnb (~3h) / Vrbo (~30min) es un dato de RV03/RV21, no algo que este script pueda medir).",
+          "El servidor iCal es local (127.0.0.1, mismo proceso/máquina) — no incluye latencia de red real de Internet ni la cadencia de refresco real de ningún canal.",
+          "Cada (unidad, canal) usa una conexión pg INDEPENDIENTE (motor.nuevaConexion()) para que la concurrencia sea real, no serializada sobre un único socket.",
+          "Rangos de fechas disjuntos por diseño entre las N×canales tareas — este escenario mide throughput/latencia bajo concurrencia SIN conflicto inyectado; la detección de conflicto bajo doble-reserva real es responsabilidad de tests/adversarial/calendario (caso 2), no de este escenario de carga."
+        ],
+        "parametros": {
+          "unidades": 50,
+          "canalesPorUnidad": 3,
+          "totalCiclos": 150
+        },
+        "hardware": {
+          "plataforma": "darwin",
+          "arquitectura": "arm64",
+          "nodeVersion": "v25.6.1",
+          "cpuModelo": "Apple M4",
+          "nucleosLogicos": 10,
+          "memoriaTotalGiB": 16
+        },
+        "duracionTotalMs": 2102,
+        "throughputCiclosPorSegundo": 71.36,
+        "latenciaInternaMs": {
+          "n": 150,
+          "minMs": 4,
+          "p50Ms": 5,
+          "p95Ms": 10,
+          "p99Ms": 16,
+          "maxMs": 17,
+          "promedioMs": 5.726666666666667
+        },
+        "ciclosFallidos": 0,
+        "overbookingDetectado": false,
+        "conflictosCalendarioRegistrados": 0
+      }
+    },
+    {
+      "archivo": "escenarioB-rafagaReservas.ts",
+      "resultado": {
+        "escenario": "B-rafaga-reservas-directas",
+        "supuestos": [
+          "N conexiones pg INDEPENDIENTES compitiendo por el MISMO rango de la MISMA unidad — el peor caso de contención posible, no una ráfaga de tráfico distribuido entre muchas unidades (eso es más parecido al escenario A).",
+          "Se usa el patrón SQL crudo con pg_advisory_xact_lock + INSERT directo (mismo patrón que packages/db/test/integration/concurrencia.test.ts, H-005) para observar el código SQLSTATE crudo (23P01) — la capa de dominio (crearReservaConfirmada) CONVIERTE ese 23P01 en un resultado 'conflicto_pendiente' sin excepción visible al llamador (ver tests/adversarial/calendario/casos.test.ts, caso 2); este escenario mide el comportamiento de la BASE DE DATOS bajo contención real, no el envoltorio de aplicación."
+        ],
+        "parametros": {
+          "conexionesConcurrentes": 30
+        },
+        "hardware": {
+          "plataforma": "darwin",
+          "arquitectura": "arm64",
+          "nodeVersion": "v25.6.1",
+          "cpuModelo": "Apple M4",
+          "nucleosLogicos": 10,
+          "memoriaTotalGiB": 16
+        },
+        "duracionTotalMs": 40,
+        "latenciaTransaccionMs": {
+          "n": 30,
+          "minMs": 10,
+          "p50Ms": 24,
+          "p95Ms": 38,
+          "p99Ms": 39,
+          "maxMs": 39,
+          "promedioMs": 24.833333333333332
+        },
+        "ganadores": 1,
+        "perdedores": 29,
+        "codigosSqlDeLosPerdedores": [
+          "23P01"
+        ],
+        "deadlocksDetectados": 0,
+        "exclusionViolationsDetectadas": 29,
+        "filasActivasFinales": 1,
+        "exactamenteUnGanador": true,
+        "sinDeadlocks": true
+      }
+    },
+    {
+      "archivo": "escenarioC-reconciliacion.ts",
+      "resultado": {
+        "escenario": "C-reconciliacion-con-drift",
+        "supuestos": [
+          "reconciliarCompleto es una función PURA sin IO — el tiempo medido es CPU pura sobre arrays/Set en memoria, no representa latencia de red ni de base de datos.",
+          "El drift se siembra DETERMINÍSTICAMENTE (cada k-ésimo elemento), no aleatoriamente — el número exacto reportado es reproducible.",
+          "duracionCancelarMs SÍ incluye IO real (una transacción por cancelación, mismo camino que producción) — es la parte relevante para estimar el costo de aplicar un lote de reconciliación real."
+        ],
+        "parametros": {
+          "unidades": 50,
+          "reservasPorUnidad": 10,
+          "totalActivos": 500,
+          "pctDriftSolicitado": 0.1,
+          "numDriftSembrado": 50
+        },
+        "hardware": {
+          "plataforma": "darwin",
+          "arquitectura": "arm64",
+          "nodeVersion": "v25.6.1",
+          "cpuModelo": "Apple M4",
+          "nucleosLogicos": 10,
+          "memoriaTotalGiB": 16
+        },
+        "duracionSeedMs": 184,
+        "duracionReconciliarPuraMs": 1,
+        "duracionCancelarLoteMs": 11,
+        "promedioMsPorCancelacion": 0.22,
+        "driftDetectado": 50,
+        "driftDetectadoCorrecto": true,
+        "violacionesH018": 0,
+        "invarianteH018Ok": true
+      }
+    }
+  ]
+}

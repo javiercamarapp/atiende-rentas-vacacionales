@@ -1,0 +1,589 @@
+{
+  "generadoEn": "2026-09-06T10:47:46.941Z",
+  "resumenVitest": {
+    "numTotalTests": 41,
+    "numPassedTests": 40,
+    "numFailedTests": 1,
+    "success": false
+  },
+  "casos": [
+    {
+      "caso": 1,
+      "nombre": "Doble evento (mismo UID+SEQUENCE, contenido distinto)",
+      "estado": "verde",
+      "totalTests": 1,
+      "pasados": 1,
+      "fallosNoDocumentados": 0,
+      "fallosDocumentadosComoDefecto": 0,
+      "archivos": [
+        "tests/adversarial/sync/casos.test.ts"
+      ],
+      "tests": [
+        {
+          "archivo": "tests/adversarial/sync/casos.test.ts",
+          "describe": "caso 1 — doble evento (mismo UID+SEQUENCE, contenido distinto): DTSTAMP decide",
+          "it": "aplica el evento con DTSTAMP más reciente, sin duplicar la fila",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        }
+      ]
+    },
+    {
+      "caso": 2,
+      "nombre": "Reserva simultánea en dos canales para las mismas noches",
+      "estado": "verde",
+      "totalTests": 1,
+      "pasados": 1,
+      "fallosNoDocumentados": 0,
+      "fallosDocumentadosComoDefecto": 0,
+      "archivos": [
+        "tests/adversarial/calendario/casos.test.ts"
+      ],
+      "tests": [
+        {
+          "archivo": "tests/adversarial/calendario/casos.test.ts",
+          "describe": "caso 2 — reserva simultánea en dos canales para las mismas noches",
+          "it": "una queda confirmada, la otra queda conflicto_pendiente con alerta — ninguna se cancela",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        }
+      ]
+    },
+    {
+      "caso": 3,
+      "nombre": "Eventos desordenados (CANCEL antes que CREATE)",
+      "estado": "verde",
+      "totalTests": 1,
+      "pasados": 1,
+      "fallosNoDocumentados": 0,
+      "fallosDocumentadosComoDefecto": 0,
+      "archivos": [
+        "tests/adversarial/sync/casos.test.ts"
+      ],
+      "tests": [
+        {
+          "archivo": "tests/adversarial/sync/casos.test.ts",
+          "describe": "caso 3 — eventos fuera de orden (CANCEL con SEQUENCE menor que un CREATE ya aplicado)",
+          "it": "el CANCEL prematuro se descarta, la reserva sigue activa",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        }
+      ]
+    },
+    {
+      "caso": 4,
+      "nombre": "Modificación de fechas (mismo UID, rango distinto)",
+      "estado": "verde",
+      "totalTests": 1,
+      "pasados": 1,
+      "fallosNoDocumentados": 0,
+      "fallosDocumentadosComoDefecto": 0,
+      "archivos": [
+        "tests/adversarial/calendario/casos.test.ts"
+      ],
+      "tests": [
+        {
+          "archivo": "tests/adversarial/calendario/casos.test.ts",
+          "describe": "caso 4 — modificación de fechas (mismo UID, rango distinto): el bloqueo se mueve completamente",
+          "it": "noches del rango anterior quedan libres, noches del rango nuevo quedan ocupadas",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        }
+      ]
+    },
+    {
+      "caso": 5,
+      "nombre": "Cancelación que no reabre noches ocupadas por otra causa",
+      "estado": "verde",
+      "totalTests": 1,
+      "pasados": 1,
+      "fallosNoDocumentados": 0,
+      "fallosDocumentadosComoDefecto": 0,
+      "archivos": [
+        "tests/adversarial/calendario/casos.test.ts"
+      ],
+      "tests": [
+        {
+          "archivo": "tests/adversarial/calendario/casos.test.ts",
+          "describe": "caso 5 — cancelación no reabre noches ocupadas por otra causa",
+          "it": "cancelar una reserva que se solapaba con un bloqueo deja la noche ocupada por el bloqueo",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        }
+      ]
+    },
+    {
+      "caso": 6,
+      "nombre": "Timeout tras éxito remoto",
+      "estado": "verde",
+      "totalTests": 1,
+      "pasados": 1,
+      "fallosNoDocumentados": 0,
+      "fallosDocumentadosComoDefecto": 0,
+      "archivos": [
+        "tests/adversarial/sync/casos.test.ts"
+      ],
+      "tests": [
+        {
+          "archivo": "tests/adversarial/sync/casos.test.ts",
+          "describe": "caso 6/7 — timeout tras éxito remoto y reintento de import ya procesado: idempotencia",
+          "it": "reintentar el mismo evento (mismo hash) es un no-op, nunca duplica el efecto",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        }
+      ]
+    },
+    {
+      "caso": 7,
+      "nombre": "Reintento de import ya procesado",
+      "estado": "verde",
+      "totalTests": 1,
+      "pasados": 1,
+      "fallosNoDocumentados": 0,
+      "fallosDocumentadosComoDefecto": 0,
+      "archivos": [
+        "tests/adversarial/sync/casos.test.ts"
+      ],
+      "tests": [
+        {
+          "archivo": "tests/adversarial/sync/casos.test.ts",
+          "describe": "caso 6/7 — timeout tras éxito remoto y reintento de import ya procesado: idempotencia",
+          "it": "reintentar el mismo evento (mismo hash) es un no-op, nunca duplica el efecto",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        }
+      ]
+    },
+    {
+      "caso": 8,
+      "nombre": "ACK perdido",
+      "estado": "verde",
+      "totalTests": 1,
+      "pasados": 1,
+      "fallosNoDocumentados": 0,
+      "fallosDocumentadosComoDefecto": 0,
+      "archivos": [
+        "tests/adversarial/sync/casos.test.ts"
+      ],
+      "tests": [
+        {
+          "archivo": "tests/adversarial/sync/casos.test.ts",
+          "describe": "caso 8 — ACK perdido: reproceso posterior no corrompe el estado",
+          "it": "una reserva re-entregada sin ack (BookingApiSimulator) se procesa una sola vez de forma idempotente",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        }
+      ]
+    },
+    {
+      "caso": 9,
+      "nombre": "Feed malformado",
+      "estado": "verde",
+      "totalTests": 1,
+      "pasados": 1,
+      "fallosNoDocumentados": 0,
+      "fallosDocumentadosComoDefecto": 0,
+      "archivos": [
+        "tests/adversarial/sync/casos.test.ts"
+      ],
+      "tests": [
+        {
+          "archivo": "tests/adversarial/sync/casos.test.ts",
+          "describe": "caso 9 — feed malformado: rechazo explícito, sin estado parcial",
+          "it": "un .ics malformado se rechaza sin crear ni modificar ninguna ocupación",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        }
+      ]
+    },
+    {
+      "caso": 10,
+      "nombre": "Feed vacío",
+      "estado": "verde",
+      "totalTests": 1,
+      "pasados": 1,
+      "fallosNoDocumentados": 0,
+      "fallosDocumentadosComoDefecto": 0,
+      "archivos": [
+        "tests/adversarial/sync/casos.test.ts"
+      ],
+      "tests": [
+        {
+          "archivo": "tests/adversarial/sync/casos.test.ts",
+          "describe": "caso 10 — feed vacío: nunca se interpreta como cancelar todas las reservas",
+          "it": "un feed vacío pero válido no libera noches ya ocupadas",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        }
+      ]
+    },
+    {
+      "caso": 11,
+      "nombre": "Feed inaccesible",
+      "estado": "verde",
+      "totalTests": 1,
+      "pasados": 1,
+      "fallosNoDocumentados": 0,
+      "fallosDocumentadosComoDefecto": 0,
+      "archivos": [
+        "tests/adversarial/sync/casos.test.ts"
+      ],
+      "tests": [
+        {
+          "archivo": "tests/adversarial/sync/casos.test.ts",
+          "describe": "caso 11 — feed inaccesible: backoff, cuarentena tras N intentos, último estado preservado",
+          "it": "tras 3 fallos consecutivos entra en cuarentena sin tocar los bloqueos existentes",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        }
+      ]
+    },
+    {
+      "caso": 12,
+      "nombre": "Bloqueo manual superpuesto con import",
+      "estado": "verde",
+      "totalTests": 1,
+      "pasados": 1,
+      "fallosNoDocumentados": 0,
+      "fallosDocumentadosComoDefecto": 0,
+      "archivos": [
+        "tests/adversarial/calendario/casos.test.ts"
+      ],
+      "tests": [
+        {
+          "archivo": "tests/adversarial/calendario/casos.test.ts",
+          "describe": "caso 12 — bloqueo manual superpuesto con import: nunca sobrescritura silenciosa",
+          "it": "un import que crea una reserva sobre el mismo rango de un bloqueo manual deja el bloqueo intacto",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        }
+      ]
+    },
+    {
+      "caso": 13,
+      "nombre": "UID reciclado",
+      "estado": "verde",
+      "totalTests": 1,
+      "pasados": 1,
+      "fallosNoDocumentados": 0,
+      "fallosDocumentadosComoDefecto": 0,
+      "archivos": [
+        "tests/adversarial/sync/casos.test.ts"
+      ],
+      "tests": [
+        {
+          "archivo": "tests/adversarial/sync/casos.test.ts",
+          "describe": "caso 13 — UID reciclado: revisión humana, nunca fusión silenciosa",
+          "it": "SEQUENCE mayor pero DTSTAMP anterior con contenido distinto se marca para revisión, sin tocar la reserva original",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        }
+      ]
+    },
+    {
+      "caso": 14,
+      "nombre": "DST en cálculo de noches/duración",
+      "estado": "verde",
+      "totalTests": 3,
+      "pasados": 3,
+      "fallosNoDocumentados": 0,
+      "fallosDocumentadosComoDefecto": 0,
+      "archivos": [
+        "tests/adversarial/calendario/casos.test.ts"
+      ],
+      "tests": [
+        {
+          "archivo": "tests/adversarial/calendario/casos.test.ts",
+          "describe": "caso 14 — DST en cálculo de noches/duración (RFC 5545 §3.3.5)",
+          "it": "calcularNoches es DST-safe en Europe/Madrid (cambio de horario de primavera, 2027-03-28) y en América/Ciudad de México",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        },
+        {
+          "archivo": "tests/adversarial/calendario/casos.test.ts",
+          "describe": "caso 14 — DST en cálculo de noches/duración (RFC 5545 §3.3.5)",
+          "it": "fechaLocalDesdeInstante coincide con la fecha de calendario real (Intl) a ambos lados de la transición de Madrid",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        },
+        {
+          "archivo": "tests/adversarial/calendario/casos.test.ts",
+          "describe": "caso 14 — DST en cálculo de noches/duración (RFC 5545 §3.3.5)",
+          "it": "una reserva importada que cruza la transición de Madrid conserva exactamente el número de noches del rango",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        }
+      ]
+    },
+    {
+      "caso": 15,
+      "nombre": "Estancias contiguas (checkout=check-in mismo día)",
+      "estado": "verde",
+      "totalTests": 1,
+      "pasados": 1,
+      "fallosNoDocumentados": 0,
+      "fallosDocumentadosComoDefecto": 0,
+      "archivos": [
+        "tests/adversarial/calendario/casos.test.ts"
+      ],
+      "tests": [
+        {
+          "archivo": "tests/adversarial/calendario/casos.test.ts",
+          "describe": "caso 15 — estancias contiguas (checkout=check-in mismo día): nunca error de solapamiento",
+          "it": "dos reservas CONCURRENTES con checkout de A = check-in de B insertan ambas sin conflicto",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        }
+      ]
+    },
+    {
+      "caso": 16,
+      "nombre": "Crash/replay a mitad de batch",
+      "estado": "verde",
+      "totalTests": 3,
+      "pasados": 3,
+      "fallosNoDocumentados": 0,
+      "fallosDocumentadosComoDefecto": 0,
+      "archivos": [
+        "tests/adversarial/outbox/casos.test.ts",
+        "tests/adversarial/sync/casos.test.ts"
+      ],
+      "tests": [
+        {
+          "archivo": "tests/adversarial/outbox/casos.test.ts",
+          "describe": "caso 16 (worker) — crash/replay a mitad de lote contra embedded-postgres real",
+          "it": "matar el worker real tras confirmar K eventos y reanudar procesa EXACTAMENTE los restantes, sin duplicar",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        },
+        {
+          "archivo": "tests/adversarial/outbox/casos.test.ts",
+          "describe": "caso 16 (worker) — crash/replay a mitad de lote contra embedded-postgres real",
+          "it": "reanudar un lote ya completamente consumido no vuelve a invocar aplicarEfecto (idempotencia del worker)",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        },
+        {
+          "archivo": "tests/adversarial/sync/casos.test.ts",
+          "describe": "caso 16 — crash/replay a mitad de batch: reprocesar el batch completo equivale a procesarlo una vez",
+          "it": "repetir el mismo ciclo con 2 eventos no duplica ninguno de los dos",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        }
+      ]
+    },
+    {
+      "caso": 17,
+      "nombre": "Límites de API / HTTP 429",
+      "estado": "verde",
+      "totalTests": 1,
+      "pasados": 1,
+      "fallosNoDocumentados": 0,
+      "fallosDocumentadosComoDefecto": 0,
+      "archivos": [
+        "tests/adversarial/sync/casos.test.ts"
+      ],
+      "tests": [
+        {
+          "archivo": "tests/adversarial/sync/casos.test.ts",
+          "describe": "caso 17 — límites de API / HTTP 429: sin bucle de reintento agresivo",
+          "it": "un 429 se trata como fallo de red (nunca como éxito), acumulando el contador de fallos sin efecto en los datos",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        }
+      ]
+    },
+    {
+      "caso": 18,
+      "nombre": "Aislamiento multitenant (cross-tenant)",
+      "estado": "verde",
+      "totalTests": 5,
+      "pasados": 4,
+      "fallosNoDocumentados": 0,
+      "fallosDocumentadosComoDefecto": 1,
+      "archivos": [
+        "tests/adversarial/multitenant/casos.test.ts"
+      ],
+      "tests": [
+        {
+          "archivo": "tests/adversarial/multitenant/casos.test.ts",
+          "describe": "caso 18 — aislamiento multitenant (HTTP, además del SQL directo de packages/db/test/integration/rls.test.ts)",
+          "it": "adminA no puede LEER el calendario de la unidad del tenant B (200 con noches vacías, RLS filtra las filas de ocupación — mismo contrato que apps/api/test/integration/api.test.ts)",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        },
+        {
+          "archivo": "tests/adversarial/multitenant/casos.test.ts",
+          "describe": "caso 18 — aislamiento multitenant (HTTP, además del SQL directo de packages/db/test/integration/rls.test.ts)",
+          "it": "adminA no puede ESCRIBIR (POST /bloqueos) referenciando la unidad del tenant B — invariante de datos (nunca hay fuga/escritura)",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        },
+        {
+          "archivo": "tests/adversarial/multitenant/casos.test.ts",
+          "describe": "caso 18 — aislamiento multitenant (HTTP, además del SQL directo de packages/db/test/integration/rls.test.ts)",
+          "it": "[DEFECTO] POST /bloqueos cross-tenant debería responder con un error de autorización clasificado (403/404), no 500 genérico",
+          "status": "failed",
+          "esDefectoDocumentado": true
+        },
+        {
+          "archivo": "tests/adversarial/multitenant/casos.test.ts",
+          "describe": "caso 18 — aislamiento multitenant (HTTP, además del SQL directo de packages/db/test/integration/rls.test.ts)",
+          "it": "adminA no puede ESCRIBIR (POST /reservas) referenciando la unidad del tenant B",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        },
+        {
+          "archivo": "tests/adversarial/multitenant/casos.test.ts",
+          "describe": "caso 18 — aislamiento multitenant (HTTP, además del SQL directo de packages/db/test/integration/rls.test.ts)",
+          "it": "adminB no ve la lista de usuarios del tenant A (GET /usuarios)",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        }
+      ]
+    },
+    {
+      "caso": 19,
+      "nombre": "Escalada de privilegios",
+      "estado": "verde",
+      "totalTests": 3,
+      "pasados": 3,
+      "fallosNoDocumentados": 0,
+      "fallosDocumentadosComoDefecto": 0,
+      "archivos": [
+        "tests/adversarial/multitenant/casos.test.ts"
+      ],
+      "tests": [
+        {
+          "archivo": "tests/adversarial/multitenant/casos.test.ts",
+          "describe": "caso 19 — escalada de privilegios rechazada en la capa de servicio (no solo UI)",
+          "it": "un operador 'solo_calendario' no puede crear un bloqueo vía HTTP (403 rol_forbidden)",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        },
+        {
+          "archivo": "tests/adversarial/multitenant/casos.test.ts",
+          "describe": "caso 19 — escalada de privilegios rechazada en la capa de servicio (no solo UI)",
+          "it": "un operador 'solo_calendario' no puede cancelar una reserva (exige acceso_total) vía HTTP",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        },
+        {
+          "archivo": "tests/adversarial/multitenant/casos.test.ts",
+          "describe": "caso 19 — escalada de privilegios rechazada en la capa de servicio (no solo UI)",
+          "it": "intento auditado: no hay ninguna auditoría de éxito para la escritura rechazada del operador",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        }
+      ]
+    },
+    {
+      "caso": 20,
+      "nombre": "SSRF (URL de feed apuntando a rango privado/metadata)",
+      "estado": "verde",
+      "totalTests": 8,
+      "pasados": 8,
+      "fallosNoDocumentados": 0,
+      "fallosDocumentadosComoDefecto": 0,
+      "archivos": [
+        "tests/adversarial/ssrf/casos.test.ts",
+        "tests/adversarial/sync/casos.test.ts"
+      ],
+      "tests": [
+        {
+          "archivo": "tests/adversarial/ssrf/casos.test.ts",
+          "describe": "caso 20 — SSRF: vectores adicionales sobre la lista completa de RV19-R-01/02",
+          "it": "rechaza un rango RFC1918 (10.0.0.0/8) antes de cualquier conexión saliente",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        },
+        {
+          "archivo": "tests/adversarial/ssrf/casos.test.ts",
+          "describe": "caso 20 — SSRF: vectores adicionales sobre la lista completa de RV19-R-01/02",
+          "it": "rechaza un rango RFC1918 (192.168.0.0/16)",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        },
+        {
+          "archivo": "tests/adversarial/ssrf/casos.test.ts",
+          "describe": "caso 20 — SSRF: vectores adicionales sobre la lista completa de RV19-R-01/02",
+          "it": "rechaza loopback (127.0.0.1) cuando NO es el simulador de desarrollo (permitirHttpSimuladorLocal ausente)",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        },
+        {
+          "archivo": "tests/adversarial/ssrf/casos.test.ts",
+          "describe": "caso 20 — SSRF: vectores adicionales sobre la lista completa de RV19-R-01/02",
+          "it": "rechaza metadata cloud (169.254.169.254) — repetido aquí como parte del catálogo consolidado del caso 20",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        },
+        {
+          "archivo": "tests/adversarial/ssrf/casos.test.ts",
+          "describe": "caso 20 — SSRF: vectores adicionales sobre la lista completa de RV19-R-01/02",
+          "it": "rechaza el esquema file: sin intentar resolver DNS ni abrir ninguna conexión",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        },
+        {
+          "archivo": "tests/adversarial/ssrf/casos.test.ts",
+          "describe": "caso 20 — SSRF: vectores adicionales sobre la lista completa de RV19-R-01/02",
+          "it": "rechaza credenciales embebidas en la URL (user:pass@host) antes de resolver DNS",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        },
+        {
+          "archivo": "tests/adversarial/ssrf/casos.test.ts",
+          "describe": "caso 20 — SSRF: vectores adicionales sobre la lista completa de RV19-R-01/02",
+          "it": "redirección hacia destino interno usando el host de simulador local autorizado: el segundo salto SÍ se revalida y se rechaza",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        },
+        {
+          "archivo": "tests/adversarial/sync/casos.test.ts",
+          "describe": "caso 20 — SSRF: URL de feed apuntando a metadata/rango privado",
+          "it": "se rechaza antes de cualquier conexión de red saliente y no crea ninguna ocupación",
+          "status": "passed",
+          "esDefectoDocumentado": false
+        }
+      ]
+    }
+  ],
+  "sinClasificar": [
+    {
+      "archivo": "tests/adversarial/ssrf/casos.test.ts",
+      "describe": "H-094 (bonus, fuera del catálogo de 20 casos numerados) — ICS bomba/tamaño excesivo",
+      "it": "rechaza un feed que excede maxBytes antes de tokenizar",
+      "status": "passed",
+      "esDefectoDocumentado": false
+    },
+    {
+      "archivo": "tests/adversarial/ssrf/casos.test.ts",
+      "describe": "H-094 (bonus, fuera del catálogo de 20 casos numerados) — ICS bomba/tamaño excesivo",
+      "it": "rechaza un feed con más eventos que maxEventos (bomba de miles de VEVENT)",
+      "status": "passed",
+      "esDefectoDocumentado": false
+    },
+    {
+      "archivo": "tests/adversarial/ssrf/casos.test.ts",
+      "describe": "H-094 (bonus, fuera del catálogo de 20 casos numerados) — ICS bomba/tamaño excesivo",
+      "it": "rechaza una línea des-plegada que excede maxLongitudLineaDesplegada (línea infinita)",
+      "status": "passed",
+      "esDefectoDocumentado": false
+    },
+    {
+      "archivo": "tests/adversarial/ssrf/casos.test.ts",
+      "describe": "H-094 (bonus, fuera del catálogo de 20 casos numerados) — ICS bomba/tamaño excesivo",
+      "it": "un feed dentro de los límites SÍ se acepta (control: los límites no rechazan feeds legítimos)",
+      "status": "passed",
+      "esDefectoDocumentado": false
+    },
+    {
+      "archivo": "tests/adversarial/sync/casos.test.ts",
+      "describe": "ENTREGABLE VERIFICABLE — anti-eco de exportación (§Calendario-4)",
+      "it": "un bloqueo exportado y reexportado por el simulador en su import NO crea un segundo bloqueo",
+      "status": "passed",
+      "esDefectoDocumentado": false
+    }
+  ]
+}
