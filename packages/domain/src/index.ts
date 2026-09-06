@@ -12,6 +12,7 @@ export { PRECEDENCIA_RAZON } from "./tipos.js";
 export {
   validarZonaHorariaIana,
   fechaLocalDesdeInstante,
+  fechaLocalDesdeFechaHoraConZona,
   esRangoValido,
   calcularNoches,
   nochesDelRango,

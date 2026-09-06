@@ -44,6 +44,34 @@ export function fechaLocalDesdeInstante(instanteUtcIso: string, zonaHoraria: str
   return zonado.toPlainDate().toString();
 }
 
+/**
+ * D-DSD-01: convierte una hora de pared SIN offset (`YYYY-MM-DDTHH:mm:ss`,
+ * tal cual llega en un `DATE-TIME;TZID=...` de un `.ics`, RV06 §10) a la
+ * fecha de calendario de la PROPIEDAD, pasando primero por el instante UTC
+ * real que esa hora de pared representa en `zonaOrigen` (la zona del
+ * evento, `TZID`) — nunca tratando la hora de pared como si ya fuera un
+ * instante UTC. Necesaria porque `zonaOrigen` y `zonaDestino` (la
+ * propiedad) pueden ser la misma zona y, aun así, la conversión NO es una
+ * operación identidad: una hora local temprana (antes de las 4am en
+ * `America/New_York`, EDT UTC-4) cae en el día de calendario anterior al
+ * convertirla ingenuamente como si fuera UTC.
+ */
+export function fechaLocalDesdeFechaHoraConZona(
+  fechaHoraLocalSinOffset: string,
+  zonaOrigen: string,
+  zonaDestino: string,
+): FechaLocal {
+  if (!validarZonaHorariaIana(zonaOrigen)) {
+    throw new Error(`Zona horaria IANA inválida: "${zonaOrigen}"`);
+  }
+  if (!validarZonaHorariaIana(zonaDestino)) {
+    throw new Error(`Zona horaria IANA inválida: "${zonaDestino}"`);
+  }
+  const horaLocal = Temporal.PlainDateTime.from(fechaHoraLocalSinOffset);
+  const instante = horaLocal.toZonedDateTime(zonaOrigen).toInstant();
+  return instante.toZonedDateTimeISO(zonaDestino).toPlainDate().toString();
+}
+
 function comoPlainDate(fecha: FechaLocal): Temporal.PlainDate {
   return Temporal.PlainDate.from(fecha);
 }

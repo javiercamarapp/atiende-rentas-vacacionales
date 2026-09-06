@@ -1,4 +1,4 @@
-import { fechaLocalDesdeInstante, type FechaLocal } from "@atiende-rv/domain";
+import { fechaLocalDesdeInstante, fechaLocalDesdeFechaHoraConZona, type FechaLocal } from "@atiende-rv/domain";
 import type { ValorFechaIcs } from "./tipos.js";
 
 /**
@@ -20,7 +20,15 @@ export function resolverFechaLocal(valor: ValorFechaIcs, zonaHorariaPropiedad: s
     case "DATE-TIME-UTC":
       return fechaLocalDesdeInstante(valor.instanteIso, zonaHorariaPropiedad);
     case "DATE-TIME-TZID":
-      return fechaLocalDesdeInstante(`${valor.fechaHoraLocal}Z`, valor.tzid);
+      // D-DSD-01: `fechaHoraLocal` es la hora de pared del evento tal cual
+      // viene en el `.ics`, SIN offset — nunca se etiqueta como si fuera
+      // un instante UTC. Se resuelve primero contra `valor.tzid` (la zona
+      // del propio evento) para obtener el instante UTC real, y SOLO
+      // entonces se convierte a `zonaHorariaPropiedad` (nunca se reusa
+      // `valor.tzid` como zona destino, aunque coincida con la de la
+      // propiedad: la conversión hora-de-pared→instante no es una
+      // operación identidad).
+      return fechaLocalDesdeFechaHoraConZona(valor.fechaHoraLocal, valor.tzid, zonaHorariaPropiedad);
     case "DATE-TIME-FLOTANTE":
       return valor.fechaHoraLocal.slice(0, 10);
   }
