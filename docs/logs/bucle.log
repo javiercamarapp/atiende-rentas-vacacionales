@@ -110,3 +110,12 @@
 2026-09-06 15:30:43 | VERCEL | preview desplegada (SSO); prod pendiente de usuario
 2026-09-06 15:32:17 | DESPERTAR | reanudando #48 3.3 (producto); #47 después
 2026-09-06 15:37:56 | FASE3 | 3.4 completo; reanudando 3.2 con defectos críticos (node:crypto, text[])
+2026-09-06 15:49:53 | 429 | #46 3.2 cortado tras eliminar node:crypto del bundle; reanudado
+2026-09-06 15:50:00 | 429 | #48 3.3 cortado al ir a commit; sin agentes activos; reanudación única en el despertar 15:53
+2026-09-06 15:53:19 | DESPERTAR | reanudando #48 3.3; #46 después
+2026-09-06 16:14:42 | DESPERTAR | #46 #48 vivos 20 min; #45 en espera hasta que uno cierre (política 2 agentes)
+2026-09-06 16:28:59 | 429 | #48 3.3 cortado en pruebas; reanudado; #46 vivo
+2026-09-06 16:32:50 | 429 | #48 3.3 cae de inmediato al reanudar; política 1 agente: solo #46 3.2 activo; #48 se reanuda al cerrar 3.2 o en el despertar 16:40
+2026-09-06 16:33:18 | 429 | #46 3.2 también cae con un solo agente; espera hasta el despertar 16:40 sin reintentos
+2026-09-06 16:40:15 | DESPERTAR | reanudando solo #46 3.2
+2026-09-06 16:48:29 | FASE3 | 3.2 completo; reanudando #48 3.3
