@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import type pg from "pg";
 import { calcularMetricasPeriodo } from "@atiende-rv/domain/finanzas";
 import { ErrorDominio, QueryReportePeriodo } from "../contrato/tipos.js";
@@ -153,7 +153,10 @@ function diasEntre(desde: string, hasta: string): number {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function respuestaCsv(c: any, nombreArchivo: string, columnas: string[], filas: Record<string, unknown>[]) {
+// Auditoría 2, corrección Q-08 (calidad-codigo.md): último `any` del
+// repo fuera de finanzas.ts (ya tipado en la corrección Q-01) — `Context`
+// de Hono es fácilmente tipable, no había motivo real para `any` aquí.
+function respuestaCsv(c: Context, nombreArchivo: string, columnas: string[], filas: Record<string, unknown>[]) {
   const encabezado = columnas.join(",");
   const cuerpo = filas
     .map((fila) => columnas.map((col) => csvEscapar(String(fila[col] ?? ""))).join(","))
