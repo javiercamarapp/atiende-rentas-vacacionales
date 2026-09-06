@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resolverFechaLocal } from "../src/ical/resolverFecha.js";
+import { IcsParseError } from "../src/ical/tipos.js";
 
 /**
  * D-DSD-01 (regresión permanente): `resolverFechaLocal` para
@@ -59,5 +60,33 @@ describe("resolverFechaLocal", () => {
       "America/Cancun",
     );
     expect(resultado).toBe("2026-09-06");
+  });
+
+  // Regresión permanente S-17 (docs/auditoria-2/seguridad.md): un TZID
+  // inválido debe romper el contrato de errores del parser (siempre
+  // IcsParseError con `codigo` reconocible), no un `Error` plano.
+  it("[S-17] TZID inválido en DATE-TIME-TZID lanza IcsParseError('zona_horaria_invalida'), no un Error genérico", () => {
+    let lanzo: unknown;
+    try {
+      resolverFechaLocal(
+        { tipo: "DATE-TIME-TZID", tzid: "Zona/Que/No/Existe", fechaHoraLocal: "2026-09-07T10:00:00" },
+        "America/Mexico_City",
+      );
+    } catch (e) {
+      lanzo = e;
+    }
+    expect(lanzo).toBeInstanceOf(IcsParseError);
+    expect((lanzo as IcsParseError).codigo).toBe("zona_horaria_invalida");
+  });
+
+  it("[S-17] zonaHorariaPropiedad inválida en DATE-TIME-UTC también lanza IcsParseError('zona_horaria_invalida')", () => {
+    let lanzo: unknown;
+    try {
+      resolverFechaLocal({ tipo: "DATE-TIME-UTC", instanteIso: "2026-09-07T02:00:00Z" }, "Zona/Que/No/Existe");
+    } catch (e) {
+      lanzo = e;
+    }
+    expect(lanzo).toBeInstanceOf(IcsParseError);
+    expect((lanzo as IcsParseError).codigo).toBe("zona_horaria_invalida");
   });
 });

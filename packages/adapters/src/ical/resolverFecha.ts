@@ -1,5 +1,26 @@
 import { fechaLocalDesdeInstante, fechaLocalDesdeFechaHoraConZona, type FechaLocal } from "@atiende-rv/domain";
+import { IcsParseError } from "./tipos.js";
 import type { ValorFechaIcs } from "./tipos.js";
+
+/** S-17 (docs/auditoria-2/seguridad.md): `fechaLocalDesdeInstante`/
+ * `fechaLocalDesdeFechaHoraConZona` (packages/domain) lanzan un `Error`
+ * plano genérico cuando el TZID no es una zona horaria IANA válida —
+ * rompe el contrato de errores del parser (`parsearIcs` SIEMPRE lanza
+ * `IcsParseError` con un `codigo` reconocible) justo en el punto donde un
+ * llamador que solo maneja `IcsParseError` (p. ej. distinguiendo "feed
+ * malformado, cuarentena" de "error interno inesperado") vería un error
+ * de un tipo que no reconoce. Se traduce aquí, en el límite entre
+ * packages/adapters y packages/domain, a `IcsParseError("zona_horaria_invalida", ...)`. */
+function conContratoDeErrorIcs<T>(fn: () => T): T {
+  try {
+    return fn();
+  } catch (error) {
+    if (error instanceof Error && /[Zz]ona horaria IANA inválida/.test(error.message)) {
+      throw new IcsParseError("zona_horaria_invalida", error.message);
+    }
+    throw error;
+  }
+}
 
 /**
  * Resuelve un `ValorFechaIcs` a la fecha de calendario local de la
@@ -18,7 +39,7 @@ export function resolverFechaLocal(valor: ValorFechaIcs, zonaHorariaPropiedad: s
     case "DATE":
       return valor.fecha;
     case "DATE-TIME-UTC":
-      return fechaLocalDesdeInstante(valor.instanteIso, zonaHorariaPropiedad);
+      return conContratoDeErrorIcs(() => fechaLocalDesdeInstante(valor.instanteIso, zonaHorariaPropiedad));
     case "DATE-TIME-TZID":
       // D-DSD-01: `fechaHoraLocal` es la hora de pared del evento tal cual
       // viene en el `.ics`, SIN offset — nunca se etiqueta como si fuera
@@ -28,7 +49,9 @@ export function resolverFechaLocal(valor: ValorFechaIcs, zonaHorariaPropiedad: s
       // `valor.tzid` como zona destino, aunque coincida con la de la
       // propiedad: la conversión hora-de-pared→instante no es una
       // operación identidad).
-      return fechaLocalDesdeFechaHoraConZona(valor.fechaHoraLocal, valor.tzid, zonaHorariaPropiedad);
+      return conContratoDeErrorIcs(() =>
+        fechaLocalDesdeFechaHoraConZona(valor.fechaHoraLocal, valor.tzid, zonaHorariaPropiedad),
+      );
     case "DATE-TIME-FLOTANTE":
       return valor.fechaHoraLocal.slice(0, 10);
   }

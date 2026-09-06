@@ -12,7 +12,8 @@ export type CodigoErrorIcs =
   | "estructura_desbalanceada"
   | "campo_requerido_ausente"
   | "valor_fecha_invalido"
-  | "duration_invalida";
+  | "duration_invalida"
+  | "zona_horaria_invalida";
 
 export class IcsParseError extends Error {
   readonly codigo: CodigoErrorIcs;

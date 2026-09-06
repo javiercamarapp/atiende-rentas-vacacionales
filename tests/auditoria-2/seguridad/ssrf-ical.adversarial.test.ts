@@ -11,6 +11,7 @@ import {
   validarIpPermitida,
   parsearIcs,
   resolverFechaLocal,
+  IcsParseError,
 } from "@atiende-rv/adapters";
 
 /**
@@ -532,19 +533,24 @@ describe("H6 [CORREGIDO S-07] — parser ICS: DTSTART/DTEND con rangos de calend
     expect(() => parsearIcs(feedNoBisiesto)).toThrow(/día fuera de rango/);
   });
 
-  it("en cambio, DATE-TIME-TZID con zona horaria inválida SÍ lanza -- pero un Error genérico, NO un IcsParseError/tipo reconocible por el contrato del parser", () => {
+  it("[CORREGIDO S-17] DATE-TIME-TZID con zona horaria inválida ahora lanza IcsParseError('zona_horaria_invalida'), no un Error genérico", () => {
     const feed = feedConEvento("DTEND:20270101T120000\r\nDTSTART;TZID=Zona/Que/No/Existe:20270101T100000\r\n", "DTSTART;TZID=Zona/Que/No/Existe:20270101T100000");
     const resultado = parsearIcs(feed);
-    expect(() => resolverFechaLocal(resultado.eventos[0]!.dtstart, "America/Mexico_City")).toThrowError(
-      /Zona horaria IANA inválida/,
-    );
-    // Nota: parsearIcs() en sí NO valida el TZID (lo acepta como string
-    // arbitrario, ver resolverFecha.ts línea 23 vía `fechaLocalDesdeInstante`
-    // en @atiende-rv/domain). El error solo aparece más tarde, al resolver,
-    // como `Error` plano -- no `IcsParseError` -- lo que puede romper
-    // manejo de errores de un llamador que solo espera `IcsParseError` del
-    // parser (fuera del alcance exacto de parser.ts, documentado aquí por
-    // ser parte de resolverFecha.ts, en alcance explícito de esta auditoría).
+    let lanzo: unknown;
+    try {
+      resolverFechaLocal(resultado.eventos[0]!.dtstart, "America/Mexico_City");
+    } catch (e) {
+      lanzo = e;
+    }
+    // Antes de la corrección: `resolverFechaLocal` (resolverFecha.ts)
+    // dejaba pasar sin traducir el `Error` plano lanzado por
+    // `fechaLocalDesdeFechaHoraConZona` (@atiende-rv/domain) — rompía el
+    // contrato de errores del parser (siempre `IcsParseError` con
+    // `codigo` reconocible) justo en el límite entre packages/adapters y
+    // packages/domain. Ahora `conContratoDeErrorIcs` lo traduce.
+    expect(lanzo).toBeInstanceOf(IcsParseError);
+    expect((lanzo as IcsParseError).codigo).toBe("zona_horaria_invalida");
+    expect((lanzo as Error).message).toMatch(/Zona horaria IANA inválida/);
   });
 });
 
