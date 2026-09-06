@@ -22,10 +22,12 @@ import {
   crearMinStay,
   crearReglaCanal,
   crearTemporada,
+  detectarParidad,
   evaluarPublicacion,
   fijarTarifaBase,
   listarUnidadesBasico,
   obtenerContextoPricing,
+  type ViolacionParidad,
 } from "./api";
 
 function decimal(centavos: number): string {
@@ -140,6 +142,7 @@ function PanelUnidad({ unidadId }: { unidadId: string }) {
       <FormularioMinStay unidadId={unidadId} onGuardado={() => contextoQuery.recargar()} />
       <FormularioReglaCanal unidadId={unidadId} />
       <PanelCotizar unidadId={unidadId} />
+      <PanelParidad unidadId={unidadId} />
     </div>
   );
 }
@@ -391,5 +394,147 @@ function PanelCotizar({ unidadId }: { unidadId: string }) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+interface FilaCanalParidad {
+  canalCodigo: (typeof CANALES_CONOCIDOS)[number];
+  precio: string;
+}
+
+/**
+ * H-071 (RV13-R-04/R-06): comparador de paridad de precios. Ningún canal
+ * real declara `ratesPush` todavía (H-069) — el precio "publicado hoy" en
+ * cada canal es dato de entrada manual de quien revisa la paridad, nunca
+ * importado automáticamente. El comparador SOLO detecta y propone: no hay
+ * ningún botón "publicar" en este panel — ver `paridad.ts` (dominio).
+ */
+function PanelParidad({ unidadId }: { unidadId: string }) {
+  const [precioReferencia, setPrecioReferencia] = useState("");
+  const [toleranciaPct, setToleranciaPct] = useState("2");
+  const [filas, setFilas] = useState<FilaCanalParidad[]>([{ canalCodigo: "airbnb", precio: "" }]);
+  const comparar = useMutacionLigera(() =>
+    detectarParidad(unidadId, {
+      precioReferenciaNocheCentavos: Math.round(parseFloat(precioReferencia || "0") * 100),
+      toleranciaBasisPoints: Math.round(parseFloat(toleranciaPct || "0") * 100),
+      precios: filas
+        .filter((f) => f.precio.trim() !== "")
+        .map((f) => ({ canalCodigo: f.canalCodigo, precioNocheCentavos: Math.round(parseFloat(f.precio) * 100) })),
+    }),
+  );
+
+  function actualizarFila(i: number, cambio: Partial<FilaCanalParidad>) {
+    setFilas((actual) => actual.map((f, idx) => (idx === i ? { ...f, ...cambio } : f)));
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Paridad de precios entre canales (H-071)</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex flex-wrap gap-2 items-end">
+          <label className="text-xs text-muted-foreground flex flex-col gap-1">
+            Precio directo de referencia
+            <input
+              value={precioReferencia}
+              onChange={(e) => setPrecioReferencia(e.target.value)}
+              placeholder="1000.00"
+              className="border rounded-md px-2 py-1 text-sm bg-background w-32"
+            />
+          </label>
+          <label className="text-xs text-muted-foreground flex flex-col gap-1">
+            Tolerancia %
+            <input
+              value={toleranciaPct}
+              onChange={(e) => setToleranciaPct(e.target.value)}
+              className="border rounded-md px-2 py-1 text-sm bg-background w-20"
+            />
+          </label>
+        </div>
+
+        <div className="space-y-2">
+          {filas.map((fila, i) => (
+            <div key={i} className="flex flex-wrap gap-2 items-end">
+              <select
+                value={fila.canalCodigo}
+                onChange={(e) => actualizarFila(i, { canalCodigo: e.target.value as FilaCanalParidad["canalCodigo"] })}
+                className="border rounded-md px-2 py-1 text-sm bg-background"
+              >
+                {CANALES_CONOCIDOS.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+              <input
+                value={fila.precio}
+                onChange={(e) => actualizarFila(i, { precio: e.target.value })}
+                placeholder="Precio publicado hoy"
+                className="border rounded-md px-2 py-1 text-sm bg-background w-40"
+              />
+            </div>
+          ))}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setFilas((actual) => [...actual, { canalCodigo: "airbnb", precio: "" }])}
+          >
+            + Canal
+          </Button>
+        </div>
+
+        <Button size="sm" disabled={!precioReferencia || comparar.enCurso} onClick={() => comparar.ejecutar()}>
+          Detectar violaciones de paridad
+        </Button>
+
+        <AlertaError error={comparar.error} />
+
+        {comparar.datos && comparar.datos.violaciones.length === 0 && (
+          <p className="text-xs text-muted-foreground">Sin violaciones de paridad fuera de la tolerancia configurada.</p>
+        )}
+
+        {comparar.datos && comparar.datos.violaciones.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs text-amber-700">
+              {comparar.datos.violaciones.length} violación(es) detectada(s) — {comparar.datos.alertasGeneradas} alerta(s)
+              registrada(s) en el monitor de alertas. Ningún precio se publicó automáticamente.
+            </p>
+            <TablaViolacionesParidad violaciones={comparar.datos.violaciones} />
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function TablaViolacionesParidad({ violaciones }: { violaciones: ViolacionParidad[] }) {
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Canal</TableHead>
+          <TableHead>Esperado</TableHead>
+          <TableHead>Publicado</TableHead>
+          <TableHead>Diferencia</TableHead>
+          <TableHead>Propuesta</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {violaciones.map((v, i) => (
+          <TableRow key={i}>
+            <TableCell>{v.canalCodigo}</TableCell>
+            <TableCell>{decimal(v.precioEsperadoNocheCentavos)}</TableCell>
+            <TableCell>{decimal(v.precioPublicadoNocheCentavos)}</TableCell>
+            <TableCell>
+              <Badge variant={v.diferenciaBasisPoints > 0 ? "destructive" : "secondary"}>
+                {(v.diferenciaBasisPoints / 100).toFixed(2)}%
+              </Badge>
+            </TableCell>
+            <TableCell className="text-xs">{decimal(v.propuesta.precioPropuestoNocheCentavos)}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
 }

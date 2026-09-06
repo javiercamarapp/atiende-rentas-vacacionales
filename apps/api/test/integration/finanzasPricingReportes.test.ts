@@ -422,6 +422,62 @@ describe("Pricing — H-068/H-069: cotización determinista y publicación deneg
     expect(body.puedePublicar).toBe(false);
     expect(body.mensaje).toMatch(/no sincronizables por iCal/i);
   });
+
+  it("H-071: POST /paridad detecta una violación fuera de tolerancia, propone un ajuste y registra una alerta 'paridad_precio' (nunca publica nada)", async () => {
+    const token = await login(fx.emailAdmin, fx.passwordAdmin);
+
+    const regla = await app.request(
+      `/pricing/unidades/${fx.unidadId}/reglas-canal`,
+      autenticado(token, { method: "POST", body: JSON.stringify({ canalCodigo: "airbnb", markupBasisPoints: 1500, activo: true }) }),
+    );
+    expect(regla.status).toBe(201);
+
+    const paridad = await app.request(
+      `/pricing/unidades/${fx.unidadId}/paridad`,
+      autenticado(token, {
+        method: "POST",
+        body: JSON.stringify({
+          precioReferenciaNocheCentavos: 100000,
+          toleranciaBasisPoints: 100,
+          precios: [{ canalCodigo: "airbnb", precioNocheCentavos: 140000 }], // esperado 115000, muy por encima
+        }),
+      }),
+    );
+    expect(paridad.status).toBe(200);
+    const body = (await paridad.json()) as {
+      violaciones: Array<{ canalCodigo: string; precioEsperadoNocheCentavos: number; propuesta: { precioPropuestoNocheCentavos: number } }>;
+      alertasGeneradas: number;
+    };
+    expect(body.violaciones).toHaveLength(1);
+    expect(body.violaciones[0]!.canalCodigo).toBe("airbnb");
+    expect(body.violaciones[0]!.precioEsperadoNocheCentavos).toBe(115000);
+    expect(body.violaciones[0]!.propuesta.precioPropuestoNocheCentavos).toBe(115000);
+    expect(body.alertasGeneradas).toBe(1);
+
+    const alertas = await app.request("/alertas?estado=activa", autenticado(token));
+    const alertasBody = (await alertas.json()) as { alertas: Array<{ tipo: string; unidad_id: string }> };
+    const alertaParidad = alertasBody.alertas.find((a) => a.tipo === "paridad_precio" && a.unidad_id === fx.unidadId);
+    expect(alertaParidad).toBeDefined();
+  });
+
+  it("H-071: dentro de tolerancia no genera violaciones ni alertas", async () => {
+    const token = await login(fx.emailAdmin, fx.passwordAdmin);
+    const paridad = await app.request(
+      `/pricing/unidades/${fx.unidadId}/paridad`,
+      autenticado(token, {
+        method: "POST",
+        body: JSON.stringify({
+          precioReferenciaNocheCentavos: 100000,
+          toleranciaBasisPoints: 5000,
+          precios: [{ canalCodigo: "booking", precioNocheCentavos: 100000 }],
+        }),
+      }),
+    );
+    expect(paridad.status).toBe(200);
+    const body = (await paridad.json()) as { violaciones: unknown[]; alertasGeneradas: number };
+    expect(body.violaciones).toHaveLength(0);
+    expect(body.alertasGeneradas).toBe(0);
+  });
 });
 
 describe("Reportes — H-072/H-073: ocupación/ingresos derivados, exportación CSV", () => {

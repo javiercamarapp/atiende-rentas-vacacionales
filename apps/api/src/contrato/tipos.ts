@@ -364,6 +364,24 @@ export const CuerpoCotizar = z.object({
 });
 export type CuerpoCotizar = z.infer<typeof CuerpoCotizar>;
 
+// H-071 (RV13-R-04/R-06): comparador de paridad de precios entre canales.
+// `precios` es SIEMPRE dato de entrada del usuario/UI — hoy (Lote 7/RV13
+// §3) ningún canal real declara `ratesPush`, así que no hay ninguna
+// integración que "importe" el precio publicado automáticamente.
+export const CuerpoParidad = z.object({
+  precioReferenciaNocheCentavos: z.number().int().min(0),
+  toleranciaBasisPoints: BasisPoints,
+  precios: z
+    .array(
+      z.object({
+        canalCodigo: CanalCodigoContrato,
+        precioNocheCentavos: z.number().int().min(0),
+      }),
+    )
+    .min(1, "Se requiere al menos un canal para comparar paridad"),
+});
+export type CuerpoParidad = z.infer<typeof CuerpoParidad>;
+
 // ---------------------------------------------------------------------------
 // Reporting (Lote 7, BACKLOG E12)
 // ---------------------------------------------------------------------------

@@ -1,12 +1,18 @@
 import { Hono } from "hono";
 import type pg from "pg";
 import { esRangoValido } from "@atiende-rv/domain";
-import { calcularCotizacion, evaluarPublicacionTarifa, requiereDesactivarPricingNativo } from "@atiende-rv/domain/pricing";
-import type { ContextoPricingUnidad, ReglaCanal } from "@atiende-rv/domain/pricing";
+import {
+  calcularCotizacion,
+  detectarViolacionesParidad,
+  evaluarPublicacionTarifa,
+  requiereDesactivarPricingNativo,
+} from "@atiende-rv/domain/pricing";
+import type { ContextoPricingUnidad, PrecioPublicadoCanal, ReglaCanal } from "@atiende-rv/domain/pricing";
 import {
   CuerpoCotizar,
   CuerpoDescuentoDuracion,
   CuerpoMinStay,
+  CuerpoParidad,
   CuerpoReglaCanalPricing,
   CuerpoTarifaBase,
   CuerpoTarifaTemporada,
@@ -159,6 +165,76 @@ export function crearRutasPricing(pool: pg.Pool, jwtSecret: string): Hono {
         : null,
     );
     return c.json(evaluacion);
+  });
+
+  // H-071 (RV13-R-04/R-06): comparador de paridad de precios entre
+  // canales. `precios` es SIEMPRE dato de entrada del usuario (ningún
+  // canal real de Fase 2 declara `ratesPush`, así que no hay integración
+  // que "importe" el precio publicado — ver CAPACIDADES_CANAL_CONOCIDAS
+  // arriba). Solo detecta y, si hay violaciones, las registra como
+  // `alerta` (tipo 'paridad_precio', migración 0111) para que aparezcan
+  // en el monitor de alertas — NUNCA publica ni modifica ninguna tarifa.
+  app.post("/unidades/:unidadId/paridad", async (c) => {
+    const auth = c.get("auth");
+    exigirRol(auth, ...ROLES_ADMIN);
+    const unidadId = c.req.param("unidadId");
+    const cuerpo = CuerpoParidad.parse(await c.req.json());
+
+    const entradas: PrecioPublicadoCanal[] = await conSesion(pool, sesionDeAuth(auth), async (cliente) => {
+      const resultado: PrecioPublicadoCanal[] = [];
+      for (const precio of cuerpo.precios) {
+        const { rows } = await cliente.query<{ markup_basis_points: number; activo: boolean }>(
+          `SELECT trc.markup_basis_points, trc.activo FROM tarifa_regla_canal trc
+           JOIN canal ca ON ca.id = trc.canal_id
+           WHERE trc.unidad_id = $1 AND ca.codigo = $2`,
+          [unidadId, precio.canalCodigo],
+        );
+        resultado.push({
+          canalCodigo: precio.canalCodigo,
+          precioNocheCentavos: precio.precioNocheCentavos,
+          reglaCanal: rows[0]
+            ? { canalCodigo: precio.canalCodigo, markupBasisPoints: rows[0].markup_basis_points, activo: rows[0].activo }
+            : null,
+        });
+      }
+      return resultado;
+    });
+
+    const violaciones = detectarViolacionesParidad(entradas, {
+      precioReferenciaNocheCentavos: cuerpo.precioReferenciaNocheCentavos,
+      toleranciaBasisPoints: cuerpo.toleranciaBasisPoints,
+    });
+
+    if (violaciones.length > 0) {
+      await conSesion(pool, sesionDeAuth(auth), (cliente) =>
+        enTransaccion(cliente, async () => {
+          for (const violacion of violaciones) {
+            const magnitud = Math.abs(violacion.diferenciaBasisPoints);
+            const severidad = magnitud >= 500 ? "alta" : magnitud >= 200 ? "media" : "baja";
+            const canal = await cliente.query<{ id: string }>("SELECT id FROM canal WHERE codigo = $1", [violacion.canalCodigo]);
+            await cliente.query(
+              `INSERT INTO alerta (tipo, severidad, canal_id, unidad_id, mensaje, metadata)
+               VALUES ('paridad_precio', $1, $2, $3, $4, $5)`,
+              [
+                severidad,
+                canal.rows[0]?.id ?? null,
+                unidadId,
+                violacion.propuesta.mensaje,
+                JSON.stringify({
+                  diferenciaBasisPoints: violacion.diferenciaBasisPoints,
+                  precioReferenciaNocheCentavos: violacion.precioReferenciaNocheCentavos,
+                  precioEsperadoNocheCentavos: violacion.precioEsperadoNocheCentavos,
+                  precioPublicadoNocheCentavos: violacion.precioPublicadoNocheCentavos,
+                  precioPropuestoNocheCentavos: violacion.propuesta.precioPropuestoNocheCentavos,
+                }),
+              ],
+            );
+          }
+        }),
+      );
+    }
+
+    return c.json({ violaciones, alertasGeneradas: violaciones.length });
   });
 
   // H-068: cotización determinista para reserva directa.

@@ -3,6 +3,7 @@ import type {
   CuerpoCotizar,
   CuerpoDescuentoDuracion,
   CuerpoMinStay,
+  CuerpoParidad,
   CuerpoReglaCanalPricing,
   CuerpoTarifaBase,
   CuerpoTarifaTemporada,
@@ -69,6 +70,25 @@ export function evaluarPublicacion(unidadId: string, canalCodigo: string): Promi
 
 export function cotizar(cuerpo: CuerpoCotizar): Promise<ResultadoCotizacion> {
   return peticion("/pricing/cotizar", { metodo: "POST", cuerpo });
+}
+
+// H-071 (RV13-R-04/R-06): comparador de paridad de precios entre canales.
+export interface ViolacionParidad {
+  canalCodigo: string;
+  precioReferenciaNocheCentavos: number;
+  precioEsperadoNocheCentavos: number;
+  precioPublicadoNocheCentavos: number;
+  diferenciaBasisPoints: number;
+  propuesta: { precioPropuestoNocheCentavos: number; mensaje: string };
+}
+
+export interface ResultadoParidad {
+  violaciones: ViolacionParidad[];
+  alertasGeneradas: number;
+}
+
+export function detectarParidad(unidadId: string, cuerpo: CuerpoParidad): Promise<ResultadoParidad> {
+  return peticion(`/pricing/unidades/${unidadId}/paridad`, { metodo: "POST", cuerpo });
 }
 
 // Reutiliza GET /unidades (endpoint compartido de Lote 3) — sin duplicar el

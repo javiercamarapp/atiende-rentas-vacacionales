@@ -63,6 +63,7 @@ import { migracion0108RefreshTokenFamiliaFuncion } from "./0108_refresh_token_fa
 // distribución usados en México (niveles A/B/C, estado honesto). Ver
 // comentario de cabecera en 0110_catalogo_canales_mexico.ts.
 import { migracion0110CatalogoCanalesMexico } from "./0110_catalogo_canales_mexico.js";
+import { migracion0111AlertaParidadPrecio } from "./0111_alerta_paridad_precio.js";
 
 // Orden fijo, nunca reordenar migraciones ya aplicadas en algún entorno
 // (patrón expand/contract real llega en Lote 10 — H-088). Cada lote
@@ -162,4 +163,8 @@ export const migraciones: Migracion[] = [
   migracion0107AuthInvitacionYPoliticaTenant,
   migracion0108RefreshTokenFamiliaFuncion,
   migracion0110CatalogoCanalesMexico,
+  // 0111: Lote 3.0 (Fase 3) — comparador de paridad de precios (H-071)
+  // puede persistir una violación como alerta; agrega el tipo al CHECK
+  // existente sin tocar el resto de la tabla.
+  migracion0111AlertaParidadPrecio,
 ];

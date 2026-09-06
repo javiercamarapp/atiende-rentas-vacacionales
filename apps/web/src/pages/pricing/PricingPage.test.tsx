@@ -38,6 +38,19 @@ vi.mock("./api", () => ({
     totalCentavos: 630000,
     violacionesMinStay: [],
   })),
+  detectarParidad: vi.fn(async () => ({
+    violaciones: [
+      {
+        canalCodigo: "airbnb",
+        precioReferenciaNocheCentavos: 100000,
+        precioEsperadoNocheCentavos: 115000,
+        precioPublicadoNocheCentavos: 140000,
+        diferenciaBasisPoints: 2174,
+        propuesta: { precioPropuestoNocheCentavos: 115000, mensaje: "nunca publica automáticamente" },
+      },
+    ],
+    alertasGeneradas: 1,
+  })),
 }));
 
 async function seleccionarUnidad() {
@@ -71,5 +84,22 @@ describe("PricingPage — H-068/H-069 (cotización determinista, publicación de
     fireEvent.change(fin!, { target: { value: "2026-11-08" } });
     fireEvent.click(screen.getByRole("button", { name: /^cotizar$/i }));
     await waitFor(() => expect(screen.getByText(/Total: MXN 6300\.00/)).toBeInTheDocument());
+  });
+
+  it("H-071: detecta violaciones de paridad, las muestra en tabla y nunca ofrece publicar automáticamente", async () => {
+    render(<PricingPage />);
+    await seleccionarUnidad();
+    await waitFor(() => expect(screen.getByText(/Paridad de precios entre canales/i)).toBeInTheDocument());
+
+    const inputReferencia = screen.getByPlaceholderText("1000.00");
+    fireEvent.change(inputReferencia, { target: { value: "1000" } });
+    const inputPrecioCanal = screen.getByPlaceholderText("Precio publicado hoy");
+    fireEvent.change(inputPrecioCanal, { target: { value: "1400" } });
+    fireEvent.click(screen.getByRole("button", { name: /Detectar violaciones de paridad/i }));
+
+    await waitFor(() => expect(screen.getByText(/1 violación\(es\) detectada\(s\)/)).toBeInTheDocument());
+    expect(screen.getByText(/1 alerta\(s\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Ningún precio se publicó automáticamente/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /publicar/i })).not.toBeInTheDocument();
   });
 });
