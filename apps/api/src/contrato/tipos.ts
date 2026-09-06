@@ -945,5 +945,135 @@ export type TrazaAgenteContrato = z.infer<typeof TrazaAgenteContrato>;
 export const QueryTrazasAgente = QueryPaginacion.extend({});
 export type QueryTrazasAgente = z.infer<typeof QueryTrazasAgente>;
 
+// ---------------------------------------------------------------------------
+// Auth extendido (Lote 3.2, H-096+): Google OIDC, cuenta local completa
+// (verificación de correo, restablecimiento de contraseña, MFA TOTP,
+// sesiones/dispositivos), sin romper el contrato de Lote 3
+// (CuerpoLogin/CuerpoRefresh/RespuestaTokens de arriba siguen intactos).
+// ---------------------------------------------------------------------------
+
+// `cliente` decide el transporte del refresh token (H-096): 'api' (por
+// defecto, compatibilidad con Lote 3/Lote 9/etc.) lo devuelve en el cuerpo
+// JSON de la respuesta; 'web' lo entrega SOLO como cookie httpOnly+Secure+
+// SameSite (nunca en el cuerpo) y añade una cookie CSRF de doble envío.
+export const ClienteAuth = z.enum(["api", "web"]);
+export type ClienteAuth = z.infer<typeof ClienteAuth>;
+
+export const CuerpoLoginExtendido = CuerpoLogin.extend({
+  cliente: ClienteAuth.default("api"),
+});
+export type CuerpoLoginExtendido = z.infer<typeof CuerpoLoginExtendido>;
+
+/** Respuesta de /auth/login cuando el usuario tiene MFA TOTP habilitado:
+ * la contraseña ya se verificó, pero NO se emite ningún token de acceso
+ * todavía — solo un `mfaToken` de un solo propósito (exp. corta, claim
+ * `tipo: 'mfa_pendiente'`) que debe canjearse en POST /auth/mfa/verificar
+ * junto con el código TOTP o un código de recuperación. */
+export const RespuestaMfaPendiente = z.object({
+  mfaRequerido: z.literal(true),
+  mfaToken: z.string(),
+  expiraEn: z.number().int().positive(),
+});
+export type RespuestaMfaPendiente = z.infer<typeof RespuestaMfaPendiente>;
+
+export const CuerpoMfaVerificar = z.object({
+  mfaToken: z.string().min(1),
+  codigo: z.string().min(6).max(64),
+  cliente: ClienteAuth.default("api"),
+});
+export type CuerpoMfaVerificar = z.infer<typeof CuerpoMfaVerificar>;
+
+export const CuerpoRefreshExtendido = z.object({
+  // Opcional en 'web': el refresh token viaja en la cookie httpOnly, no en
+  // el cuerpo — ver middleware/cookiesAuth.ts.
+  refreshToken: z.string().min(1).optional(),
+});
+export type CuerpoRefreshExtendido = z.infer<typeof CuerpoRefreshExtendido>;
+
+// --- Registro / verificación de correo / restablecimiento de contraseña ---
+
+export const CuerpoRegistro = z.object({
+  email: z.string().email(),
+  password: z.string().min(10),
+  nombre: z.string().min(1).optional(),
+  // Presente solo al aceptar una invitación (Lote 8, invitacion_usuario) —
+  // en ese caso el tenant/rol/colaboradorNivel vienen de la invitación,
+  // nunca del cuerpo de la petición.
+  invitacionToken: z.string().min(1).optional(),
+  // Alternativa sin invitación: solo válida si ese tenant tiene
+  // `permite_registro = true` (política 'abierto', docs/REQUISITOS.md);
+  // el usuario nace con el rol mínimo ('operador'/'solo_calendario').
+  // Mutuamente excluyente con `invitacionToken` (uno u otro, nunca ambos).
+  tenantId: z.string().uuid().optional(),
+});
+export type CuerpoRegistro = z.infer<typeof CuerpoRegistro>;
+
+export const CuerpoVerificarCorreo = z.object({
+  token: z.string().min(1),
+});
+export type CuerpoVerificarCorreo = z.infer<typeof CuerpoVerificarCorreo>;
+
+export const CuerpoOlvidePassword = z.object({
+  email: z.string().email(),
+});
+export type CuerpoOlvidePassword = z.infer<typeof CuerpoOlvidePassword>;
+
+export const CuerpoRestablecerPassword = z.object({
+  token: z.string().min(1),
+  password: z.string().min(10),
+});
+export type CuerpoRestablecerPassword = z.infer<typeof CuerpoRestablecerPassword>;
+
+export const CuerpoCambiarPassword = z.object({
+  passwordActual: z.string().min(1),
+  passwordNueva: z.string().min(10),
+});
+export type CuerpoCambiarPassword = z.infer<typeof CuerpoCambiarPassword>;
+
+// --- MFA TOTP (RFC 6238) ---
+
+export const RespuestaMfaIniciar = z.object({
+  secretBase32: z.string(),
+  otpauthUrl: z.string(),
+});
+export type RespuestaMfaIniciar = z.infer<typeof RespuestaMfaIniciar>;
+
+export const CuerpoMfaConfirmar = z.object({
+  codigo: z.string().min(6).max(8),
+});
+export type CuerpoMfaConfirmar = z.infer<typeof CuerpoMfaConfirmar>;
+
+export const RespuestaMfaConfirmar = z.object({
+  habilitado: z.literal(true),
+  codigosRecuperacion: z.array(z.string()),
+});
+export type RespuestaMfaConfirmar = z.infer<typeof RespuestaMfaConfirmar>;
+
+export const CuerpoMfaDeshabilitar = z.object({
+  password: z.string().min(1),
+});
+export type CuerpoMfaDeshabilitar = z.infer<typeof CuerpoMfaDeshabilitar>;
+
+// --- Sesiones / dispositivos ---
+
+export const SesionActivaContrato = z.object({
+  id: z.string().uuid(),
+  creadoEn: z.string(),
+  expiraEn: z.string(),
+  actual: z.boolean(),
+  dispositivoEtiqueta: z.string().nullable(),
+  aud: z.string(),
+});
+export type SesionActivaContrato = z.infer<typeof SesionActivaContrato>;
+
+// --- Google OIDC ---
+
+export const RespuestaConfigAuth = z.object({
+  googleHabilitado: z.boolean(),
+  googleMotivoDeshabilitado: z.string().nullable(),
+  registroAbierto: z.boolean(),
+});
+export type RespuestaConfigAuth = z.infer<typeof RespuestaConfigAuth>;
+
 export { CODIGOS_ERROR, ErrorDominio } from "./errores.js";
 export type { CodigoError, CuerpoErrorHttp } from "./errores.js";

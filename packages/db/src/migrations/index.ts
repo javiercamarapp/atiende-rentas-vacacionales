@@ -51,6 +51,12 @@ import { migracion0091AuditoriaTriggerCuentaCanal } from "./0091_auditoria_trigg
 import { migracion0092RlsTablasCanalLote2 } from "./0092_rls_tablas_canal_lote2.js";
 import { migracion0093HuespedMinimoTenantRls } from "./0093_huesped_minimo_tenant_rls.js";
 import { migracion0100FeedIcalToken } from "./0100_feed_ical_token.js";
+import { migracion0101UsuarioAuthExtendida } from "./0101_usuario_auth_extendida.js";
+import { migracion0102IdentidadOidc } from "./0102_identidad_oidc.js";
+import { migracion0103TokenUnUso } from "./0103_token_un_uso.js";
+import { migracion0104AuditoriaAuthEvento } from "./0104_auditoria_auth_evento.js";
+import { migracion0105OidcFlow } from "./0105_oidc_flow.js";
+import { migracion0106AuthFuncionesExtendidas } from "./0106_auth_funciones_extendidas.js";
 
 // Orden fijo, nunca reordenar migraciones ya aplicadas en algún entorno
 // (patrón expand/contract real llega en Lote 10 — H-088). Cada lote
@@ -136,4 +142,15 @@ export const migraciones: Migracion[] = [
   // cerrar Fase 2) — ver comentario de cabecera en
   // 0100_feed_ical_token.ts.
   migracion0100FeedIcalToken,
+  // Rango 0101-0106: Lote 3.2 (Fase 3, H-096+) — auth extendida: Google
+  // OIDC + cuenta local completa (verificación de correo, restablecer
+  // password, MFA TOTP, bloqueo temporal, rotación de refresh con
+  // detección de reutilización). Ver comentario de cabecera en
+  // 0101_usuario_auth_extendida.ts.
+  migracion0101UsuarioAuthExtendida,
+  migracion0102IdentidadOidc,
+  migracion0103TokenUnUso,
+  migracion0104AuditoriaAuthEvento,
+  migracion0105OidcFlow,
+  migracion0106AuthFuncionesExtendidas,
 ];

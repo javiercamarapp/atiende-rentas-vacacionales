@@ -29,6 +29,16 @@ export const CODIGOS_ERROR = [
   "cuota_ia_agotada",
   "tool_no_autorizada",
   "tool_bloqueada",
+  // Lote 3.2 (H-096+, auth extendida: Google OIDC + cuenta local completa):
+  "mfa_requerido",
+  "mfa_invalido",
+  "cuenta_bloqueada_temporalmente",
+  "registro_no_permitido",
+  "correo_no_verificado",
+  "google_deshabilitado",
+  "google_vinculacion_no_permitida",
+  "oidc_invalido",
+  "csrf_invalido",
 ] as const;
 
 export type CodigoError = (typeof CODIGOS_ERROR)[number];
@@ -54,6 +64,15 @@ const HTTP_POR_CODIGO: Record<CodigoError, number> = {
   cuota_ia_agotada: 429,
   tool_no_autorizada: 403,
   tool_bloqueada: 422,
+  mfa_requerido: 401,
+  mfa_invalido: 401,
+  cuenta_bloqueada_temporalmente: 423,
+  registro_no_permitido: 403,
+  correo_no_verificado: 403,
+  google_deshabilitado: 503,
+  google_vinculacion_no_permitida: 403,
+  oidc_invalido: 401,
+  csrf_invalido: 403,
 };
 
 export class ErrorDominio extends Error {
