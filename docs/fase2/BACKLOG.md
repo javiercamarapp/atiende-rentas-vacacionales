@@ -111,12 +111,12 @@ externa").
 
 | ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
 |---|---|---|---|---|---|---|
-| H-056 | Motor de plantillas/respuestas rápidas programadas por evento | REQ-099, REQ-101 | §Mensajería-1 | MUST | M | por hacer |
-| H-057 | Validación de límites por canal (4000 caracteres Airbnb; sin contacto directo pre-reserva Vrbo) | REQ-100, REQ-103 | §Mensajería-1, §Mensajería-2 | MUST | S | por hacer |
-| H-058 | Filtro de contenido (sin pago fuera de plataforma, sin lenguaje discriminatorio) | REQ-105, REQ-108 | §Mensajería-1 | MUST | M | por hacer |
-| H-059 | Cola de aprobación humana obligatoria para todo borrador de IA antes de enviar | REQ-104 | §RV19/21-6 | MUST | L | por hacer |
-| H-060 | Triggers de escalamiento a humano (queja, emergencia, reembolso, VIP) | REQ-110, REQ-146 | §RV19/21-6 | MUST | M | por hacer |
-| H-061 | Aviso a operadores de que Airbnb puede escanear/analizar mensajes | REQ-109 | §Privacidad-2 | SHOULD | S | por hacer |
+| H-056 | Motor de plantillas/respuestas rápidas programadas por evento | REQ-099, REQ-101 | §Mensajería-1 | MUST | M | hecho (Lote 6) |
+| H-057 | Validación de límites por canal (4000 caracteres Airbnb; sin contacto directo pre-reserva Vrbo) | REQ-100, REQ-103 | §Mensajería-1, §Mensajería-2 | MUST | S | hecho (Lote 6) |
+| H-058 | Filtro de contenido (sin pago fuera de plataforma, sin lenguaje discriminatorio) | REQ-105, REQ-108 | §Mensajería-1 | MUST | M | hecho (Lote 6) |
+| H-059 | Cola de aprobación humana obligatoria para todo borrador de IA antes de enviar | REQ-104 | §RV19/21-6 | MUST | L | hecho (Lote 6) |
+| H-060 | Triggers de escalamiento a humano (queja, emergencia, reembolso, VIP) | REQ-110, REQ-146 | §RV19/21-6 | MUST | M | hecho (Lote 6, heurística por palabra clave — puramente informativa) |
+| H-061 | Aviso a operadores de que Airbnb puede escanear/analizar mensajes | REQ-109 | §Privacidad-2 | SHOULD | S | hecho (Lote 6) |
 
 ## E10 — Finanzas, owners y statements
 
