@@ -30,6 +30,41 @@ export interface ConfiguracionApi {
    * `.ics` que se le muestra al usuario; la ruta pública en sí
    * (`GET /feed/ical/:token`) no depende de este valor para funcionar. */
   urlPublicaApi: string;
+  /** Lote 3.2 (H-096+): Google Sign-In (OpenID Connect). Sin las tres
+   * variables (`GOOGLE_OAUTH_CLIENT_ID/SECRET/REDIRECT_URI`) el botón de
+   * Google aparece deshabilitado con motivo en la UI (`GET /auth/config`)
+   * — NUNCA un 500, y NUNCA se monta ninguna ruta `/auth/google/*` real.
+   * Ver docs/despliegue/google-oauth.md. */
+  google: {
+    clientId: string | null;
+    clientSecret: string | null;
+    redirectUri: string | null;
+  };
+  /** Proveedor OIDC simulado (dev/pruebas/E2E, H-096) — SOLO se monta si
+   * `entorno` es 'development'/'test' explícito (fail-closed, D-019). */
+  oidcSimuladoHabilitado: boolean;
+  /** SMTP configurable por entorno; sin `SMTP_HOST` se usa el adaptador
+   * de correo simulado (apps/api/src/seguridad/correo.ts) — nunca se
+   * intenta un envío real con configuración incompleta. */
+  smtp: {
+    host: string | null;
+    puerto: number;
+    seguro: boolean;
+    usuario: string | null;
+    password: string | null;
+    remitente: string;
+  };
+  /** Política de contraseñas: verificación opcional (desactivada por
+   * defecto) contra HIBP k-anonymity — ver seguridad/passwordPolicy.ts. */
+  politicaContrasenaHibp: boolean;
+  /** Bloqueo temporal de cuenta tras N intentos fallidos consecutivos
+   * (además del rate limit por IP+email, S-06) — persistente en
+   * `usuario.intentos_fallidos`/`bloqueado_hasta` (migración 0101). */
+  bloqueoCuenta: { maxIntentos: number; duracionMs: number };
+  /** URL base de apps/web — usada para componer los links de verificación
+   * de correo/restablecer contraseña y el redirect final tras el login
+   * con Google (nunca se redirige a una URL fuera de este origen). */
+  urlPublicaWeb: string;
 }
 
 /** Quita diacríticos y normaliza mayúsculas/espacios — mismo criterio que
@@ -182,5 +217,28 @@ export function cargarConfiguracion(env: NodeJS.ProcessEnv = process.env): Confi
       maximo: Number.parseInt(env.RATE_LIMIT_LOGIN_EMAIL_MAXIMO ?? "20", 10),
     },
     urlPublicaApi: env.API_PUBLIC_URL ?? `http://localhost:${Number.parseInt(env.PORT ?? "8787", 10)}`,
+    google: {
+      clientId: env.GOOGLE_OAUTH_CLIENT_ID?.trim() || null,
+      clientSecret: env.GOOGLE_OAUTH_CLIENT_SECRET?.trim() || null,
+      redirectUri: env.GOOGLE_OAUTH_REDIRECT_URI?.trim() || null,
+    },
+    // D-019: nunca en producción, sin importar el valor de esta variable —
+    // mismo criterio fail-closed que ATIENDE_ENTORNO para los demás
+    // simuladores de canal.
+    oidcSimuladoHabilitado: !entornoEsProductivo && (env.ATIENDE_OIDC_SIMULADO ?? "true") !== "false",
+    smtp: {
+      host: env.SMTP_HOST?.trim() || null,
+      puerto: Number.parseInt(env.SMTP_PORT ?? "587", 10),
+      seguro: env.SMTP_SECURE === "true",
+      usuario: env.SMTP_USER?.trim() || null,
+      password: env.SMTP_PASSWORD ?? null,
+      remitente: env.SMTP_FROM?.trim() || "no-responder@atiende.example",
+    },
+    politicaContrasenaHibp: env.POLITICA_CONTRASENA_HIBP === "true",
+    bloqueoCuenta: {
+      maxIntentos: Number.parseInt(env.BLOQUEO_CUENTA_MAX_INTENTOS ?? "8", 10),
+      duracionMs: Number.parseInt(env.BLOQUEO_CUENTA_DURACION_MS ?? "900000", 10), // 15 minutos
+    },
+    urlPublicaWeb: env.WEB_ORIGIN ?? "http://localhost:5173",
   };
 }
