@@ -1,0 +1,613 @@
+openapi: 3.1.0
+info:
+  title: Atiende Rentas Vacacionales — API
+  version: 0.3.0
+  description: |
+    Contrato de API de `apps/api` (Lote 3: auth/roles/RLS/auditoría sobre el
+    dominio de calendario de Lote 1). Fuente de verdad ejecutable: los
+    esquemas `zod` de `apps/api/src/contrato/tipos.ts` (importables como
+    `@atiende-rv/api/contrato`) — este archivo es la descripción
+    human-readable del mismo contrato, publicada en el primer commit de
+    este lote para que Lote 4 (frontend) pueda empezar contra tipos
+    estables antes de que todos los endpoints tengan implementación
+    completa.
+
+    Reglas de dominio no negociables reflejadas en este contrato (D-006,
+    D-011, BLUEPRINT): la API NUNCA expone cancelación ni modificación de
+    una reserva cuyo origen sea un canal externo (Airbnb/Vrbo/Booking) —
+    solo reservas DIRECTAS (creadas por esta misma API). Tampoco expone
+    envío de mensajes a huéspedes (eso es Lote 6, con aprobación humana
+    obligatoria). `POST /canales/:id/sync` solo ENCOLA una solicitud de
+    sincronización manual en `outbox_evento`; la ejecución real la hace el
+    worker de Lote 2.
+servers:
+  - url: http://localhost:8787
+    description: Desarrollo local
+security:
+  - bearerAuth: []
+tags:
+  - name: auth
+  - name: tenants
+  - name: usuarios
+  - name: propiedades
+  - name: unidades
+  - name: calendario
+  - name: reservas
+  - name: bloqueos
+  - name: canales
+  - name: conflictos
+  - name: auditoria
+
+paths:
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Iniciar sesión
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoLogin" }
+      responses:
+        "200":
+          description: Sesión iniciada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RespuestaTokens" }
+        "401":
+          description: Credenciales inválidas (mismo error exista o no el email)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorHttp" }
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Rotar el refresh token y emitir un nuevo access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoRefresh" }
+      responses:
+        "200":
+          description: Nuevo par de tokens
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RespuestaTokens" }
+        "401":
+          description: Refresh token inválido, revocado o expirado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorHttp" }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Revocar un refresh token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoRefresh" }
+      responses:
+        "204": { description: Sesión cerrada (no-op si el token ya era inválido) }
+
+  /tenants:
+    post:
+      tags: [tenants]
+      summary: Alta de un tenant (empresa gestora) — exclusivo de superadmin
+      responses:
+        "201": { description: Tenant creado }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+
+  /tenants/me:
+    get:
+      tags: [tenants]
+      summary: Tenant del usuario autenticado
+      responses:
+        "200": { description: Datos del tenant }
+        "403": { $ref: "#/components/responses/TenantForbidden" }
+
+  /usuarios:
+    get:
+      tags: [usuarios]
+      summary: Listar usuarios del tenant — admin_gestora/superadmin
+      responses:
+        "200": { description: Lista de usuarios }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+    post:
+      tags: [usuarios]
+      summary: Alta de un colaborador/rol interno dentro del tenant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoCrearUsuario" }
+      responses:
+        "201": { description: Usuario creado }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+        "422": { $ref: "#/components/responses/Validacion" }
+
+  /propiedades:
+    get:
+      tags: [propiedades]
+      summary: Listar propiedades visibles para el usuario autenticado (RLS)
+      responses:
+        "200": { description: Lista de propiedades }
+    post:
+      tags: [propiedades]
+      summary: Crear propiedad — admin_gestora/superadmin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoCrearPropiedad" }
+      responses:
+        "201": { description: Propiedad creada }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+        "422": { $ref: "#/components/responses/Validacion" }
+
+  /propiedades/{id}:
+    get:
+      tags: [propiedades]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200": { description: Propiedad }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+
+  /unidades:
+    get:
+      tags: [unidades]
+      responses:
+        "200": { description: Lista de unidades }
+    post:
+      tags: [unidades]
+      summary: Crear unidad — admin_gestora/superadmin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoCrearUnidad" }
+      responses:
+        "201": { description: Unidad creada }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+
+  /unidades/{id}/calendario:
+    get:
+      tags: [calendario]
+      summary: Calendario de una unidad resuelto noche a noche (capa/razón/estado/origen)
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - name: desde
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: hasta
+          in: query
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Calendario resuelto
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RespuestaCalendario" }
+        "422": { $ref: "#/components/responses/RangoInvalido" }
+
+  /reservas:
+    post:
+      tags: [reservas]
+      summary: Crear una reserva DIRECTA (nunca una reserva "de canal")
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoCrearReserva" }
+      responses:
+        "201": { description: Reserva creada }
+        "409": { $ref: "#/components/responses/UnidadNoDisponible" }
+        "422": { $ref: "#/components/responses/RangoInvalido" }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+
+  /reservas/{id}:
+    patch:
+      tags: [reservas]
+      summary: Modificar fechas de una reserva DIRECTA propia
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoModificarReserva" }
+      responses:
+        "200": { description: Reserva modificada }
+        "403":
+          description: Rol sin permiso, o la reserva no es directa (viene de un canal)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorHttp" }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+        "409": { $ref: "#/components/responses/UnidadNoDisponible" }
+        "422": { $ref: "#/components/responses/RangoInvalido" }
+
+  /reservas/{id}/cancelar:
+    post:
+      tags: [reservas]
+      summary: Cancelar una reserva DIRECTA propia — solo colaborador "acceso_total"
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200": { description: Reserva cancelada }
+        "403":
+          description: Rol/nivel sin permiso para cancelar, o la reserva no es directa
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorHttp" }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+        "409": { $ref: "#/components/responses/ConflictoPendiente" }
+
+  /bloqueos:
+    post:
+      tags: [bloqueos]
+      summary: Crear bloqueo de propietario/mantenimiento/buffer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoCrearBloqueo" }
+      responses:
+        "201": { description: Bloqueo creado (nunca rechazado por solape — se registra conflicto_calendario) }
+        "422": { $ref: "#/components/responses/RangoInvalido" }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+
+  /bloqueos/{id}:
+    delete:
+      tags: [bloqueos]
+      summary: Cancelar un bloqueo (nunca reabre noches ocupadas por otra capa)
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204": { description: Bloqueo cancelado }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+
+  /conflictos:
+    get:
+      tags: [conflictos]
+      parameters:
+        - name: resuelto
+          in: query
+          schema: { type: string, enum: ["true", "false"] }
+          description: "'true' incluye ya resueltos; por defecto solo pendientes"
+      responses:
+        "200": { description: Lista de conflictos }
+
+  /canales:
+    get:
+      tags: [canales]
+      summary: Cuentas de canal del tenant con estado de conexión honesto (D-017/D-019)
+      responses:
+        "200":
+          description: Lista de cuentas de canal
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cuentas:
+                    type: array
+                    items: { $ref: "#/components/schemas/CuentaCanal" }
+
+  /canales/cuentas:
+    post:
+      tags: [canales]
+      summary: Registrar una cuenta de canal — admin_gestora/superadmin (credenciales cifradas AES-256-GCM)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoCrearCuentaCanal" }
+      responses:
+        "201": { description: Cuenta creada }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+
+  /canales/{id}/sync:
+    post:
+      tags: [canales]
+      summary: Encolar una sincronización manual (la ejecuta el worker de Lote 2)
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "202": { description: Solicitud encolada en outbox_evento }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+
+  /auditoria:
+    get:
+      tags: [auditoria]
+      summary: Consulta paginada del log de auditoría — admin_gestora/superadmin
+      parameters:
+        - name: pagina
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: tamano
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          description: Página de entradas de auditoría
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RespuestaAuditoriaPaginada" }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    Validacion:
+      description: Error de validación de entrada (zod)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorHttp" }
+    RangoInvalido:
+      description: "rango_invalido: el rango de fechas no cumple inicio < fin (u otra regla de negocio de fechas)"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorHttp" }
+    UnidadNoDisponible:
+      description: "unidad_no_disponible: la unidad ya tiene una reserva confirmada en ese rango"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorHttp" }
+    ConflictoPendiente:
+      description: "conflicto_pendiente: la operación no puede completarse por un conflicto sin resolver"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorHttp" }
+    TenantForbidden:
+      description: "tenant_forbidden: el usuario no pertenece al tenant solicitado"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorHttp" }
+    RolForbidden:
+      description: "rol_forbidden: el rol/nivel de colaborador no tiene permiso para esta acción"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorHttp" }
+    NoEncontrado:
+      description: "recurso_no_encontrado (incluye recursos de otro tenant, ocultos por RLS — nunca confirma su existencia)"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorHttp" }
+
+  schemas:
+    ErrorHttp:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [codigo, mensaje]
+          properties:
+            codigo:
+              type: string
+              enum:
+                - credenciales_invalidas
+                - token_invalido
+                - token_expirado
+                - tenant_forbidden
+                - rol_forbidden
+                - rango_invalido
+                - unidad_no_disponible
+                - conflicto_pendiente
+                - reserva_no_directa
+                - recurso_no_encontrado
+                - validacion
+                - rate_limited
+                - error_interno
+            mensaje: { type: string }
+            detalles: {}
+
+    CuerpoLogin:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+
+    CuerpoRefresh:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken: { type: string }
+
+    UsuarioSesion:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tenantId: { type: string, format: uuid, nullable: true }
+        rol: { $ref: "#/components/schemas/RolUsuario" }
+        colaboradorNivel: { $ref: "#/components/schemas/ColaboradorNivel" }
+
+    RolUsuario:
+      type: string
+      enum: [superadmin, admin_gestora, operador, limpieza, propietario, contador]
+
+    ColaboradorNivel:
+      type: string
+      nullable: true
+      enum: [acceso_total, calendario_mensajeria, solo_calendario]
+
+    RespuestaTokens:
+      type: object
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        expiraEn: { type: integer }
+        usuario: { $ref: "#/components/schemas/UsuarioSesion" }
+
+    CuerpoCrearUsuario:
+      type: object
+      required: [email, password, rol]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+        rol: { $ref: "#/components/schemas/RolUsuario" }
+        colaboradorNivel: { $ref: "#/components/schemas/ColaboradorNivel" }
+        ownerId: { type: string, format: uuid }
+
+    CuerpoCrearPropiedad:
+      type: object
+      required: [nombre, zonaHoraria]
+      properties:
+        nombre: { type: string }
+        zonaHoraria: { type: string, description: "Zona horaria IANA, p. ej. America/Cancun" }
+
+    CuerpoCrearUnidad:
+      type: object
+      required: [propiedadId, nombre]
+      properties:
+        propiedadId: { type: string, format: uuid }
+        nombre: { type: string }
+        ownerId: { type: string, format: uuid }
+        duracionMinimaNoches: { type: integer, minimum: 1 }
+
+    RangoFechas:
+      type: object
+      required: [inicio, fin]
+      properties:
+        inicio: { type: string, format: date, description: "Inclusivo (check-in)" }
+        fin: { type: string, format: date, description: "Exclusivo (check-out)" }
+
+    NocheCalendario:
+      type: object
+      properties:
+        fecha: { type: string, format: date }
+        ocupada: { type: boolean }
+        capa: { type: string, enum: [reserva, bloqueo], nullable: true }
+        razon:
+          type: string
+          nullable: true
+          enum: [RESERVA_CANAL, BLOQUEO_PROPIETARIO, MANTENIMIENTO, BUFFER_LIMPIEZA]
+        estado:
+          type: string
+          nullable: true
+          enum: [confirmado, provisional, cancelado, conflicto_pendiente]
+        origenCanal: { type: string, nullable: true }
+        esDirecta: { type: boolean }
+
+    RespuestaCalendario:
+      type: object
+      properties:
+        unidadId: { type: string, format: uuid }
+        desde: { type: string, format: date }
+        hasta: { type: string, format: date }
+        noches:
+          type: array
+          items: { $ref: "#/components/schemas/NocheCalendario" }
+
+    CuerpoCrearReserva:
+      type: object
+      required: [unidadId, rango]
+      properties:
+        unidadId: { type: string, format: uuid }
+        rango: { $ref: "#/components/schemas/RangoFechas" }
+        huespedNombre: { type: string }
+        huespedContacto: { type: string }
+
+    CuerpoModificarReserva:
+      type: object
+      required: [rango]
+      properties:
+        rango: { $ref: "#/components/schemas/RangoFechas" }
+
+    CuerpoCrearBloqueo:
+      type: object
+      required: [unidadId, rango, razon]
+      properties:
+        unidadId: { type: string, format: uuid }
+        rango: { $ref: "#/components/schemas/RangoFechas" }
+        razon:
+          type: string
+          enum: [BLOQUEO_PROPIETARIO, MANTENIMIENTO, BUFFER_LIMPIEZA]
+
+    EstadoConexionCanal:
+      type: string
+      enum: [no_conectado, simulador, ical, partner_pendiente, sandbox, produccion]
+      description: >-
+        Estado honesto (D-017/D-019): "simulador" nunca se confunde con
+        "produccion"; "produccion" exige evidencia verificable de sync
+        exitoso reciente.
+
+    CuentaCanal:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        canalCodigo: { type: string }
+        nombre: { type: string }
+        estadoConexion: { $ref: "#/components/schemas/EstadoConexionCanal" }
+        esSimulador: { type: boolean }
+        ultimaSincronizacionExitosaEn: { type: string, format: date-time, nullable: true }
+
+    CuerpoCrearCuentaCanal:
+      type: object
+      required: [canalCodigo, nombre]
+      properties:
+        tenantId: { type: string, format: uuid }
+        propiedadId: { type: string, format: uuid }
+        canalCodigo: { type: string, enum: [airbnb, vrbo, booking, manual] }
+        nombre: { type: string }
+        credenciales:
+          type: object
+          additionalProperties: { type: string }
+          description: Se cifra con AES-256-GCM antes de persistir (H-046) — nunca se guarda en claro.
+        esSimulador: { type: boolean }
+
+    ConflictoCalendario:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        unidadId: { type: string, format: uuid }
+        tipo: { type: string, enum: [capa_cruzada, overbooking_confirmado] }
+        detectadoEn: { type: string, format: date-time }
+        resueltoEn: { type: string, format: date-time, nullable: true }
+
+    EntradaAuditoria:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tabla: { type: string }
+        filaId: { type: string, format: uuid }
+        operacion: { type: string, enum: [INSERT, UPDATE, DELETE, ACCESO_ROMPER_CRISTAL] }
+        actorId: { type: string, format: uuid, nullable: true }
+        creadoEn: { type: string, format: date-time }
+        valoresPrevios: { nullable: true }
+        valoresNuevos: { nullable: true }
+
+    RespuestaAuditoriaPaginada:
+      type: object
+      properties:
+        pagina: { type: integer }
+        tamano: { type: integer }
+        total: { type: integer }
+        entradas:
+          type: array
+          items: { $ref: "#/components/schemas/EntradaAuditoria" }
