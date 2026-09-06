@@ -15,3 +15,8 @@ export { VrboIcalChannelSimulator } from "./vrbo-ical/index.js";
 export { BookingIcalChannelSimulator } from "./booking-ical/index.js";
 export { BookingApiSimulator } from "./booking-api/index.js";
 export type { ReservaSimuladaBooking } from "./booking-api/index.js";
+
+// Lote 6 (E09, mensajería con aprobación humana): `SimuladorMensajeria`,
+// único `CanalMensajeria` disponible hoy (ningún adaptador real declara
+// `messaging`) — carpeta exclusiva de ese lote.
+export { SimuladorMensajeria } from "./mensajeria/index.js";
