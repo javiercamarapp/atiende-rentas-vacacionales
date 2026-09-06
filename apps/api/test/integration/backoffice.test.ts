@@ -237,6 +237,67 @@ describe("§Roles-4: admin de tenant A no administra tenant B", () => {
     expect(status).toBe(201);
     expect((body as { direccion: { ciudad: string } }).direccion.ciudad).toBe("Mérida");
   });
+
+  it("Auditoría 2, D-DSD-07: PATCH zona_horaria se permite sin ocupaciones activas, pero se rechaza (409) si ya hay reservas/bloqueos activos", async () => {
+    const { accessToken } = await login(fx.emailAdminA, fx.passwordAdminA);
+
+    // Caso permitido: propiedad recién creada, sin ninguna unidad/ocupación.
+    const creada = await jsonPost("/backoffice/propiedades", accessToken, {
+      nombre: "Casa Zona Horaria D-DSD-07",
+      zonaHoraria: "America/Mexico_City",
+      moneda: "MXN",
+      direccion: { linea1: "Calle 2 #45", ciudad: "Mérida", pais: "MX" },
+    });
+    expect(creada.status).toBe(201);
+    const propiedadId = (creada.body as { id: string }).id;
+
+    const cambioSinOcupaciones = await app.request(
+      `/backoffice/propiedades/${propiedadId}`,
+      autenticado(accessToken, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ zonaHoraria: "America/Cancun" }),
+      }),
+    );
+    expect(cambioSinOcupaciones.status).toBe(200);
+
+    // Caso rechazado: se crea una unidad y una reserva confirmada activa
+    // bajo la zona ya cambiada (America/Cancun) — un segundo cambio de
+    // zona debe rechazarse en la capa HTTP, no solo depender de que nadie
+    // lo intente.
+    const unidad = await superusuario.query<{ id: string }>(
+      "INSERT INTO unidad (propiedad_id, nombre) VALUES ($1, 'Unidad D-DSD-07') RETURNING id",
+      [propiedadId],
+    );
+    await superusuario.query(
+      `INSERT INTO ocupacion_unidad (unidad_id, rango, capa, razon, estado, bloqueante)
+       VALUES ($1, daterange('2027-06-01','2027-06-05','[)'), 'reserva', 'RESERVA_CANAL', 'confirmado', true)`,
+      [unidad.rows[0]!.id],
+    );
+
+    const cambioConOcupacionActiva = await app.request(
+      `/backoffice/propiedades/${propiedadId}`,
+      autenticado(accessToken, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ zonaHoraria: "Pacific/Auckland" }),
+      }),
+    );
+    expect(cambioConOcupacionActiva.status).toBe(409);
+    const cuerpoRechazo = (await cambioConOcupacionActiva.json()) as { error: { codigo: string } };
+    expect(cuerpoRechazo.error.codigo).toBe("conflicto_pendiente");
+
+    // El nombre/otros campos SÍ pueden seguir editándose sin tocar la zona.
+    const cambioSoloNombre = await app.request(
+      `/backoffice/propiedades/${propiedadId}`,
+      autenticado(accessToken, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ nombre: "Casa Zona Horaria D-DSD-07 (renombrada)" }),
+      }),
+    );
+    expect(cambioSoloNombre.status).toBe(200);
+  });
 });
 
 describe("H-012: multi-unidad con cantidad + cuentas de canal sin credenciales en respuesta", () => {

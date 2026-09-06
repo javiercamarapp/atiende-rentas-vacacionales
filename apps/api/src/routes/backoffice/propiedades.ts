@@ -120,6 +120,41 @@ export function crearRutasBackofficePropiedades(pool: pg.Pool, jwtSecret: string
     const fila = await relanzarSiRlsRechazo(() =>
       conSesion(pool, sesionDeAuth(auth), async (cliente) =>
         enTransaccion(cliente, async () => {
+          // Auditoría 2, corrección D-DSD-07 (docs/auditoria-2/
+          // dominio-sync-datos.md): cambiar zona_horaria de una propiedad
+          // con `ocupacion_unidad` activas desplaza la interpretación de
+          // cualquier instante UTC de canal futuro respecto a las fechas
+          // de calendario ya persistidas (packages/domain/src/fechas.ts,
+          // resolverFechaLocal usa la zona ACTUAL de la propiedad) — un
+          // check-in/check-out puede correrse un día completo de forma
+          // silenciosa. Se rechaza el cambio (409) mientras existan
+          // reservas/bloqueos activos en cualquier unidad de la
+          // propiedad, en vez de aceptarlo sin advertencia.
+          if (cuerpo.zonaHoraria) {
+            const actual = await cliente.query<{ zona_horaria: string }>(
+              "SELECT zona_horaria FROM propiedad WHERE id = $1",
+              [id],
+            );
+            if (actual.rows[0] && actual.rows[0].zona_horaria !== cuerpo.zonaHoraria) {
+              const activas = await cliente.query<{ n: string }>(
+                `SELECT count(*)::text AS n
+                 FROM ocupacion_unidad ou
+                 JOIN unidad u ON u.id = ou.unidad_id
+                 WHERE u.propiedad_id = $1 AND ou.estado <> 'cancelado'`,
+                [id],
+              );
+              const activasCount = Number(activas.rows[0]!.n);
+              if (activasCount > 0) {
+                throw new ErrorDominio(
+                  "conflicto_pendiente",
+                  `No se puede cambiar la zona horaria: hay ${activasCount} ocupación(es) activa(s) ` +
+                    `(reservas/bloqueos) en unidades de esta propiedad, calculadas bajo la zona horaria ` +
+                    `actual. Cancela o reprograma esas ocupaciones antes de cambiar la zona horaria.`,
+                );
+              }
+            }
+          }
+
           const { rows } = await cliente.query<FilaPropiedad>(
             `UPDATE propiedad SET
                nombre = COALESCE($2, nombre),
