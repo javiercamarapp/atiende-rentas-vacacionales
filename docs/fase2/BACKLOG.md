@@ -157,15 +157,15 @@ externa").
 
 | ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
 |---|---|---|---|---|---|---|
-| H-077 | Catálogo de tools con `input_schema.properties: {}` — cero identificadores de negocio como parámetro | REQ-004, REQ-143 | §RV19/21-14 | MUST | L | por hacer |
-| H-078 | Matriz rol×tool resuelta en servidor antes de construir la lista de tools para el modelo | REQ-143 | §RV19/21-14 | MUST | M | por hacer |
-| H-079 | Presupuesto duro de IA por tenant, reservado antes de cada llamada | REQ-144 | §Automatización-1 | MUST | M | por hacer |
-| H-080 | Trazabilidad de tool-call (actor, rol, canal, timestamp, costo por modelo real) | REQ-145 | §Automatización-2 | MUST | M | por hacer |
-| H-081 | Escalamiento obligatorio (ambigüedad, escalada emocional, monto alto, acción irreversible) | REQ-146 | §RV19/21-6 | MUST | M | por hacer |
-| H-082 | Verificación en CI de ausencia estructural de `cancelar_reserva`/`contactar_huesped_directo` | REQ-002, REQ-146 | §RV19/21-6 | MUST | M | por hacer |
-| H-083 | Loop-guard: tope de rondas de tool-calling verificado antes de ejecutar la siguiente | REQ-149 | §Automatización-2 | MUST | S | por hacer |
-| H-084 | Catálogo de evals sintéticos y umbrales de promoción de fase de autonomía | REQ-147 | §Automatización-3 | SHOULD | L | por hacer |
-| H-085 | Fallback entre proveedores LLM limitado a generación de texto, nunca re-ejecuta mutaciones | REQ-148 | §Automatización-2 | MUST | M | por hacer |
+| H-077 | Catálogo de tools con `input_schema.properties: {}` — cero identificadores de negocio como parámetro | REQ-004, REQ-143 | §RV19/21-14 | MUST | L | hecho |
+| H-078 | Matriz rol×tool resuelta en servidor antes de construir la lista de tools para el modelo | REQ-143 | §RV19/21-14 | MUST | M | hecho |
+| H-079 | Presupuesto duro de IA por tenant, reservado antes de cada llamada | REQ-144 | §Automatización-1 | MUST | M | hecho |
+| H-080 | Trazabilidad de tool-call (actor, rol, canal, timestamp, costo por modelo real) | REQ-145 | §Automatización-2 | MUST | M | hecho |
+| H-081 | Escalamiento obligatorio (ambigüedad, escalada emocional, monto alto, acción irreversible) | REQ-146 | §RV19/21-6 | MUST | M | hecho |
+| H-082 | Verificación en CI de ausencia estructural de `cancelar_reserva`/`contactar_huesped_directo` | REQ-002, REQ-146 | §RV19/21-6 | MUST | M | hecho |
+| H-083 | Loop-guard: tope de rondas de tool-calling verificado antes de ejecutar la siguiente | REQ-149 | §Automatización-2 | MUST | S | hecho |
+| H-084 | Catálogo de evals sintéticos y umbrales de promoción de fase de autonomía | REQ-147 | §Automatización-3 | SHOULD | L | hecho |
+| H-085 | Fallback entre proveedores LLM limitado a generación de texto, nunca re-ejecuta mutaciones | REQ-148 | §Automatización-2 | MUST | M | hecho |
 
 ## E15 — Observabilidad y recuperación
 
