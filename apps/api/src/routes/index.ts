@@ -7,11 +7,13 @@ import { crearRutasAuth, type DependenciasAuth } from "./auth.js";
 import { crearRutasBackoffice } from "./backoffice/index.js";
 import { crearRutasBloqueos } from "./bloqueos.js";
 import { crearRutasCanales } from "./canales.js";
+import { crearRutasCanalesCatalogo } from "./canalesCatalogo.js";
 import { crearRutasConflictos } from "./conflictos.js";
 import { crearRutasExportIcal } from "./exportIcal.js";
 import { crearRutasFinanzas } from "./finanzas.js";
 import { crearRutasLimpieza } from "./limpieza/index.js";
 import { crearRutasMensajeria } from "./mensajeria/index.js";
+import { crearRutasNotificaciones } from "./notificaciones.js";
 import { crearRutasPricing } from "./pricing.js";
 import { crearRutasPropiedades } from "./propiedades.js";
 import { crearRutasReportes } from "./reportes.js";
@@ -57,6 +59,10 @@ export function registrarRutas(app: Hono, deps: DependenciasRutas): Hono {
   app.route("/bloqueos", crearRutasBloqueos(pool, jwtSecret));
   app.route("/conflictos", crearRutasConflictos(pool, jwtSecret));
   app.route("/canales", crearRutasCanales(pool, jwtSecret, keyring));
+  // Lote 3.4 (RV22, Fase 3): catálogo de canales de distribución usados en
+  // México + asistente de conexión — solo lectura, ver comentario de
+  // cabecera en ./canalesCatalogo.ts (RV22-R-06: nunca "marcar conectado").
+  app.route("/canales-mexico", crearRutasCanalesCatalogo(pool, jwtSecret));
   app.route("/auditoria", crearRutasAuditoria(pool, jwtSecret));
   app.route("/operacion", crearRutasLimpieza(pool, jwtSecret));
   app.route("/mensajeria", crearRutasMensajeria(pool, jwtSecret));
@@ -66,6 +72,7 @@ export function registrarRutas(app: Hono, deps: DependenciasRutas): Hono {
   app.route("/backoffice", crearRutasBackoffice(pool, jwtSecret, keyring));
   app.route("/agentes", crearRutasAgentes(pool, jwtSecret));
   app.route("/export-ical", crearRutasExportIcal(pool, jwtSecret, urlPublicaApi));
+  app.route("/notificaciones", crearRutasNotificaciones(pool, jwtSecret));
 
   return app;
 }
