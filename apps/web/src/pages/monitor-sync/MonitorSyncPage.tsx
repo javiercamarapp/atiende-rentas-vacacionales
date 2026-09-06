@@ -5,6 +5,7 @@ import { useQueryLigero } from "../../lib/api/queryLigero";
 import { listarAlertas, listarConflictos, listarCuentasCanal } from "./api";
 import { ErrorApiAlerta } from "../calendario/components/ErrorApiAlerta";
 import { CuentaSyncCard } from "./CuentaSyncCard";
+import { LatenciaInternaVsExterna } from "./LatenciaInternaVsExterna";
 
 export function MonitorSyncPage() {
   const cuentasQuery = useQueryLigero(() => listarCuentasCanal(), []);
@@ -52,6 +53,8 @@ export function MonitorSyncPage() {
       )}
 
       <ErrorApiAlerta error={cuentasQuery.error} />
+
+      <LatenciaInternaVsExterna />
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {cuentas.map((cuenta) => (

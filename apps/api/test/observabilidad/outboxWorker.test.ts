@@ -153,6 +153,44 @@ describe("procesarPendientesOutbox — replay idempotente tras crash a mitad de 
     expect(resumen!.min).toBeGreaterThanOrEqual(4000);
   });
 
+  it("H-073: cuando el evento SÍ tiene ocupacion_unidad_id resoluble, la latencia interna queda etiquetada con canal y cuenta_canal_id (no solo tipo_evento)", async () => {
+    const tenant = await motor.ejecutor.query<{ id: string }>("INSERT INTO tenant (nombre) VALUES ('T') RETURNING id");
+    const propiedad = await motor.ejecutor.query<{ id: string }>(
+      "INSERT INTO propiedad (tenant_id, nombre, zona_horaria) VALUES ($1, 'P', 'America/Cancun') RETURNING id",
+      [tenant.rows[0]!.id],
+    );
+    const unidad = await motor.ejecutor.query<{ id: string }>(
+      "INSERT INTO unidad (propiedad_id, nombre) VALUES ($1, 'U1') RETURNING id",
+      [propiedad.rows[0]!.id],
+    );
+    const canal = await motor.ejecutor.query<{ id: string }>("SELECT id FROM canal WHERE codigo = 'airbnb'");
+    const canalId = canal.rows[0]!.id;
+    const cuenta = await motor.ejecutor.query<{ id: string }>(
+      "INSERT INTO cuenta_canal (tenant_id, canal_id, nombre) VALUES ($1, $2, 'Cuenta 1') RETURNING id",
+      [tenant.rows[0]!.id, canalId],
+    );
+    await motor.ejecutor.query("INSERT INTO unidad_canal_feed (unidad_id, canal_id, cuenta_canal_id) VALUES ($1, $2, $3)", [
+      unidad.rows[0]!.id,
+      canalId,
+      cuenta.rows[0]!.id,
+    ]);
+    const ocupacion = await motor.ejecutor.query<{ id: string }>(
+      `INSERT INTO ocupacion_unidad (unidad_id, rango, capa, razon, canal_origen_id)
+       VALUES ($1, daterange('2026-02-01', '2026-02-05', '[)'), 'reserva', 'RESERVA_CANAL', $2) RETURNING id`,
+      [unidad.rows[0]!.id, canalId],
+    );
+    await motor.ejecutor.query(
+      `INSERT INTO outbox_evento (ocupacion_unidad_id, tipo_evento, payload, creado_en) VALUES ($1, 'cerrar_disponibilidad', '{}', now())`,
+      [ocupacion.rows[0]!.id],
+    );
+
+    const metricas = new RegistroMetricas();
+    await procesarPendientesOutbox({ ejecutor: motor.ejecutor, aplicarEfecto: async () => undefined, metricas });
+
+    const [resumen] = metricas.latenciaInternaMs.snapshot();
+    expect(resumen!.labels).toMatchObject({ tipo_evento: "cerrar_disponibilidad", canal: "airbnb", cuenta_canal_id: cuenta.rows[0]!.id });
+  });
+
   it("actualiza el gauge de tamaño de cola a partir de un COUNT(*) real, no de un contador acumulado", async () => {
     await encolarEventos(4);
     const metricas = new RegistroMetricas();

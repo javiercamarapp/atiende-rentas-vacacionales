@@ -31,6 +31,19 @@ describe("sanitizarAtributos (sin PII en métricas/trazas)", () => {
     expect(limpio.password).toBe(MARCADOR_ATRIBUTO_REDACTADO);
   });
 
+  it("H-073: NO redacta un uuid v4 aunque contenga un tramo largo de solo dígitos y guiones (falso positivo real de PATRON_TELEFONO, hallado etiquetando latencia interna por cuenta_canal_id)", () => {
+    // "8817-8120" (9 caracteres, todos dígitos/guion, sin letra hexadecimal)
+    // es justo el tipo de tramo que `PATRON_TELEFONO` confundía con un
+    // teléfono pegado antes de esta corrección.
+    const limpio = sanitizarAtributos({ cuenta_canal_id: "c4cb4484-5e7b-43e5-8817-8120b14e7fbc" });
+    expect(limpio.cuenta_canal_id).toBe("c4cb4484-5e7b-43e5-8817-8120b14e7fbc");
+  });
+
+  it("un uuid sigue redactado si además su CLAVE es sensible (el nombre de clave manda primero)", () => {
+    const limpio = sanitizarAtributos({ token: "c4cb4484-5e7b-43e5-8817-8120b14e7fbc" });
+    expect(limpio.token).toBe(MARCADOR_ATRIBUTO_REDACTADO);
+  });
+
   it("conserva atributos operativos normales sin tocarlos", () => {
     const limpio = sanitizarAtributos({ canal: "airbnb", status: 200, ok: true });
     expect(limpio).toEqual({ canal: "airbnb", status: 200, ok: true });

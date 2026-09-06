@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { Counter, Gauge, Histogram, RegistroMetricas, exponerFormatoPrometheus } from "../../src/workers/observabilidad/metricas.js";
+import {
+  Counter,
+  Gauge,
+  Histogram,
+  RegistroMetricas,
+  exponerFormatoPrometheus,
+  resumenLatenciaEtiquetada,
+} from "../../src/workers/observabilidad/metricas.js";
 import { MARCADOR_ATRIBUTO_REDACTADO } from "../../src/workers/observabilidad/otel.js";
 
 describe("Gauge / Counter / Histogram", () => {
@@ -66,6 +73,33 @@ describe("RegistroMetricas / exponerFormatoPrometheus", () => {
     // Nunca deben aparecer en la misma línea (series independientes).
     const lineaInterna = texto.split("\n").find((l) => l.includes("atiende_rv_outbox_latencia_interna_ms_sum"));
     expect(lineaInterna).not.toContain("latencia_externa");
+  });
+
+  it("H-073: resumenLatenciaEtiquetada separa interna medida (con canal/cuenta/p50-95-99) de externa declarada (confianza)", () => {
+    const registro = new RegistroMetricas();
+    registro.latenciaInternaMs.observar(100, { tipo_evento: "cerrar_disponibilidad", canal: "airbnb", cuenta_canal_id: "cc-1" });
+    registro.latenciaInternaMs.observar(200, { tipo_evento: "cerrar_disponibilidad", canal: "airbnb", cuenta_canal_id: "cc-1" });
+    registro.latenciaInternaMs.observar(50, { tipo_evento: "liberar_disponibilidad" }); // sin canal resuelto.
+    registro.latenciaExternaDeclaradaSegundos.set(10800, { canal: "vrbo", confianza: "media" });
+
+    const resumen = resumenLatenciaEtiquetada(registro);
+
+    const entradaAirbnb = resumen.internaMedidaMs.find((e) => e.canal === "airbnb");
+    expect(entradaAirbnb).toBeDefined();
+    expect(entradaAirbnb!.cuentaCanalId).toBe("cc-1");
+    expect(entradaAirbnb!.cuenta).toBe(2);
+    expect(entradaAirbnb!.p50).toBeGreaterThan(0);
+    expect(entradaAirbnb!.p99).toBeGreaterThanOrEqual(entradaAirbnb!.p50);
+
+    const entradaSinCanal = resumen.internaMedidaMs.find((e) => e.tipoEvento === "liberar_disponibilidad");
+    expect(entradaSinCanal?.canal).toBeNull();
+    expect(entradaSinCanal?.cuentaCanalId).toBeNull();
+
+    expect(resumen.externaDeclaradaConfianzaSegundos).toEqual([
+      { labels: { canal: "vrbo", confianza: "media" }, valor: 10800 },
+    ]);
+    // Nunca deben mezclarse numéricamente: la lista declarada no lleva p50/p95/p99.
+    expect(resumen.externaDeclaradaConfianzaSegundos[0]).not.toHaveProperty("p50");
   });
 
   it("snapshot() incluye todos los instrumentos declarados", () => {

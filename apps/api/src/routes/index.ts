@@ -3,7 +3,7 @@ import type pg from "pg";
 import type { KeyringCifradoCanal } from "../seguridad/cifrado.js";
 import { crearRutasAgentes } from "./agentes/index.js";
 import { crearRutasAuditoria } from "./auditoria.js";
-import { crearRutasAuth } from "./auth.js";
+import { crearRutasAuth, type DependenciasAuth } from "./auth.js";
 import { crearRutasBackoffice } from "./backoffice/index.js";
 import { crearRutasBloqueos } from "./bloqueos.js";
 import { crearRutasCanales } from "./canales.js";
@@ -32,6 +32,12 @@ export interface DependenciasRutas {
   /** S-06: límite adicional de intentos de /auth/login por email,
    * independiente del rate limit genérico por IP. */
   rateLimitLoginPorEmail: OpcionesRateLimit;
+  /** Lote 3.2 (H-096+, auth extendida): resto de dependencias de
+   * apps/api/src/routes/auth.ts (Google OIDC, correo, política de
+   * contraseñas/bloqueo, proveedor OIDC simulado) — agrupadas aparte para
+   * no inflar más esta interfaz compartida entre lotes; ver
+   * `DependenciasAuth` en ./auth.ts. */
+  auth: Omit<DependenciasAuth, "pool" | "jwtSecret" | "keyring" | "rateLimitLoginPorEmail">;
 }
 
 // Registro de rutas de apps/api (Lote 3: primera carga real, sobre el
@@ -40,9 +46,9 @@ export interface DependenciasRutas {
 // propio `app.route(...)` aquí, en un commit pequeño y separado — nunca
 // reescriben este archivo completo.
 export function registrarRutas(app: Hono, deps: DependenciasRutas): Hono {
-  const { pool, jwtSecret, keyring, urlPublicaApi, rateLimitLoginPorEmail } = deps;
+  const { pool, jwtSecret, keyring, urlPublicaApi, rateLimitLoginPorEmail, auth } = deps;
 
-  app.route("/auth", crearRutasAuth(pool, jwtSecret, rateLimitLoginPorEmail));
+  app.route("/auth", crearRutasAuth({ pool, jwtSecret, keyring, rateLimitLoginPorEmail, ...auth }));
   app.route("/tenants", crearRutasTenants(pool, jwtSecret));
   app.route("/usuarios", crearRutasUsuarios(pool, jwtSecret));
   app.route("/propiedades", crearRutasPropiedades(pool, jwtSecret));

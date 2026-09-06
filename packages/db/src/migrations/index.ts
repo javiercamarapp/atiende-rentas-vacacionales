@@ -58,6 +58,7 @@ import { migracion0104AuditoriaAuthEvento } from "./0104_auditoria_auth_evento.j
 import { migracion0105OidcFlow } from "./0105_oidc_flow.js";
 import { migracion0106AuthFuncionesExtendidas } from "./0106_auth_funciones_extendidas.js";
 import { migracion0107AuthInvitacionYPoliticaTenant } from "./0107_auth_invitacion_y_politica_tenant.js";
+import { migracion0108RefreshTokenFamiliaFuncion } from "./0108_refresh_token_familia_funcion.js";
 
 // Orden fijo, nunca reordenar migraciones ya aplicadas en algún entorno
 // (patrón expand/contract real llega en Lote 10 — H-088). Cada lote
@@ -155,4 +156,5 @@ export const migraciones: Migracion[] = [
   migracion0105OidcFlow,
   migracion0106AuthFuncionesExtendidas,
   migracion0107AuthInvitacionYPoliticaTenant,
+  migracion0108RefreshTokenFamiliaFuncion,
 ];

@@ -174,6 +174,54 @@ export class RegistroMetricas {
   }
 }
 
+export interface EntradaLatenciaEtiquetada {
+  canal: string | null;
+  cuentaCanalId: string | null;
+  tipoEvento: string | null;
+  cuenta: number;
+  p50: number;
+  p95: number;
+  p99: number;
+}
+
+export interface ResumenLatenciaEtiquetada {
+  /** H-073: latencia INTERNA MEDIDA — outbox_evento.creado_en → efecto
+   * aplicado, cronometrada por este proceso (`outboxWorker.ts`), NUNCA
+   * declarada. Desglosada por canal y cuenta de canal cuando el evento
+   * pudo resolverlos (`latenciaCanalCuenta.ts`); eventos sin
+   * `ocupacion_unidad_id` (p. ej. reintentos genéricos) solo llevan
+   * `tipoEvento`. */
+  internaMedidaMs: EntradaLatenciaEtiquetada[];
+  /** Latencia EXTERNA DECLARADA (CONFIANZA) — nunca medida por este
+   * sistema, viene de constantes documentadas por canal
+   * (`packages/adapters`, p. ej. `LATENCIA_AIRBNB_ICAL`). Se listan tal
+   * cual las etiquetas con las que se haya poblado el gauge (típicamente
+   * `canal` y, si se pasó, `confianza`) — nunca se combina numéricamente
+   * con `internaMedidaMs`. */
+  externaDeclaradaConfianzaSegundos: SerieMetrica[];
+}
+
+/**
+ * H-073 (REQ-039/REQ-171, §RV19/21-8): vista explícita y ya separada de
+ * `RegistroMetricas.snapshot()`, pensada para consumo directo por UI
+ * (monitor de sync) o por un humano leyendo `/health/detallado` sin tener
+ * que saber de antemano qué campo es medido y cuál es declarado.
+ */
+export function resumenLatenciaEtiquetada(registro: RegistroMetricas): ResumenLatenciaEtiquetada {
+  return {
+    internaMedidaMs: registro.latenciaInternaMs.snapshot().map((s) => ({
+      canal: (s.labels.canal as string | undefined) ?? null,
+      cuentaCanalId: (s.labels.cuenta_canal_id as string | undefined) ?? null,
+      tipoEvento: (s.labels.tipo_evento as string | undefined) ?? null,
+      cuenta: s.cuenta,
+      p50: s.p50,
+      p95: s.p95,
+      p99: s.p99,
+    })),
+    externaDeclaradaConfianzaSegundos: registro.latenciaExternaDeclaradaSegundos.snapshot(),
+  };
+}
+
 function formatearLabels(labels: AtributosSpan): string {
   const entradas = Object.entries(labels);
   if (entradas.length === 0) return "";

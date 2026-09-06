@@ -14,6 +14,39 @@ export function listarConflictos(resuelto: boolean): Promise<{ conflictos: Confl
 }
 
 // ---------------------------------------------------------------------------
+// H-073 (REQ-039/REQ-171, §RV19/21-8): `/health/detallado` expone
+// `latenciaResumen` con las dos series SIEMPRE separadas — nunca se
+// combinan en la UI, ver `apps/api/src/workers/observabilidad/
+// metricas.ts:resumenLatenciaEtiquetada`.
+// ---------------------------------------------------------------------------
+export interface EntradaLatenciaInternaMedida {
+  canal: string | null;
+  cuentaCanalId: string | null;
+  tipoEvento: string | null;
+  cuenta: number;
+  p50: number;
+  p95: number;
+  p99: number;
+}
+
+export interface EntradaLatenciaExternaDeclarada {
+  labels: Record<string, string | number | boolean>;
+  valor: number;
+}
+
+export interface RespuestaSaludDetallada {
+  status: string;
+  latenciaResumen: {
+    internaMedidaMs: EntradaLatenciaInternaMedida[];
+    externaDeclaradaConfianzaSegundos: EntradaLatenciaExternaDeclarada[];
+  };
+}
+
+export function obtenerSaludDetallada(): Promise<RespuestaSaludDetallada> {
+  return peticion("/health/detallado");
+}
+
+// ---------------------------------------------------------------------------
 // Alertas (Auditoría 2, P-02): la API expone las filas de la tabla `alerta`
 // (packages/db/src/migrations/0081_alerta.ts) tal cual — snake_case, sin
 // transformar a camelCase como el resto del contrato — porque

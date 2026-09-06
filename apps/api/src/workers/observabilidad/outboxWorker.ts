@@ -1,6 +1,7 @@
 import type { EjecutorSql, FilaSql } from "@atiende-rv/db";
 import type { RegistroMetricas } from "./metricas.js";
 import type { Trazador } from "./otel.js";
+import { resolverEtiquetasCanalCuentaPorOcupacion, type EtiquetasCanalCuenta } from "./latenciaCanalCuenta.js";
 
 /**
  * Worker de replay idempotente del outbox (Lote 10, H-035/H-036). Lee
@@ -133,7 +134,24 @@ export async function procesarPendientesOutbox(
 
       await ejecutor.exec("COMMIT");
 
-      metricas?.latenciaInternaMs.observar(latenciaInternaMs, { tipo_evento: evento.tipoEvento });
+      if (metricas) {
+        // H-073: además de `tipo_evento`, se intenta etiquetar por canal/
+        // cuenta de canal (fuera de la transacción ya confirmada — un
+        // fallo aquí nunca debe deshacer el efecto ya aplicado, así que
+        // se degrada a "sin etiqueta extra" en vez de propagar el error).
+        let etiquetasCanalCuenta: EtiquetasCanalCuenta = {};
+        if (evento.ocupacionUnidadId) {
+          try {
+            etiquetasCanalCuenta = await resolverEtiquetasCanalCuentaPorOcupacion(ejecutor, evento.ocupacionUnidadId);
+          } catch {
+            etiquetasCanalCuenta = {};
+          }
+        }
+        metricas.latenciaInternaMs.observar(latenciaInternaMs, {
+          tipo_evento: evento.tipoEvento,
+          ...etiquetasCanalCuenta,
+        });
+      }
       procesados.push(evento.id);
       span?.terminar();
     } catch (error) {

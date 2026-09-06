@@ -8,6 +8,7 @@ import { crearRutasFeedIcal } from "./routes/feedIcal.js";
 import { registrarRutas } from "./routes/index.js";
 import { cabecerasSeguridad } from "./seguridad/cabeceras.js";
 import { KeyringCifradoCanal } from "./seguridad/cifrado.js";
+import { construirAdaptadorCorreo } from "./seguridad/correo.js";
 import { crearRateLimit } from "./seguridad/rateLimit.js";
 import { ZodError, type ZodIssue } from "zod";
 import {
@@ -92,6 +93,19 @@ export function crearApp(opciones: OpcionesCrearApp = {}) {
     keyring,
     urlPublicaApi: config.urlPublicaApi,
     rateLimitLoginPorEmail: config.rateLimitLoginPorEmail,
+    // Lote 3.2 (H-096+): auth extendida (Google OIDC, correo, política de
+    // contraseñas/bloqueo, proveedor OIDC simulado) — ver DependenciasAuth
+    // en routes/auth.ts.
+    auth: {
+      correo: construirAdaptadorCorreo(process.env),
+      urlPublicaApi: config.urlPublicaApi,
+      urlPublicaWeb: config.urlPublicaWeb,
+      google: config.google,
+      oidcSimuladoHabilitado: config.oidcSimuladoHabilitado,
+      politicaContrasenaHibp: config.politicaContrasenaHibp,
+      bloqueoCuenta: config.bloqueoCuenta,
+      entorno: config.entorno,
+    },
   });
 
   // Manejador central de errores: todo `ErrorDominio` mapea a su

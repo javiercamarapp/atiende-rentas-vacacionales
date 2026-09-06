@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type pg from "pg";
 import type { EjecutorSql, FilaSql } from "@atiende-rv/db";
 import { requiereAutenticacion } from "../../middleware/autenticacion.js";
-import { exponerFormatoPrometheus, RegistroMetricas } from "./metricas.js";
+import { exponerFormatoPrometheus, resumenLatenciaEtiquetada, RegistroMetricas } from "./metricas.js";
 import { contarPendientesOutbox, edadPendienteMasViejoMs } from "./outboxWorker.js";
 import { reconocerAlerta, resolverAlerta } from "./alertas.js";
 
@@ -77,6 +77,11 @@ export function rutasObservabilidad(deps: DependenciasRutasObservabilidad): Hono
       db: { conectada: dbOk },
       outbox: { tamanoCola: tamanoColaOutbox, edadPendienteMasViejoMs: edadPendienteMasViejo },
       metricas: deps.metricas.snapshot(),
+      // H-073: misma información que `metricas.latenciaInternaMs`/
+      // `latenciaExternaDeclaradaSegundos`, ya separada y etiquetada
+      // explícitamente para que ningún consumidor (UI o humano) confunda
+      // "medido" con "declarado" — ver `metricas.ts:resumenLatenciaEtiquetada`.
+      latenciaResumen: resumenLatenciaEtiquetada(deps.metricas),
     });
   });
 

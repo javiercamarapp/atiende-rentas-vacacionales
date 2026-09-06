@@ -57,6 +57,19 @@ const PATRON_TELEFONO = /(\+?\d[\d\s().-]{6,}\d)/;
 const PATRON_EMAIL_GLOBAL = new RegExp(PATRON_EMAIL.source, "g");
 const PATRON_TELEFONO_GLOBAL = new RegExp(PATRON_TELEFONO.source, "g");
 const CLAVES_BLOQUEADAS = /email|correo|telefono|phone|nombre|apellido|huesped|password|contrasena|token|secreto/i;
+/**
+ * H-073: un uuid v4 (`id`/`canal_origen_id`/`cuenta_canal_id`, etc.) puede
+ * contener por azar un tramo largo de solo dígitos y guiones (p. ej.
+ * "...8817-8120b14e7fbc" trae "8817-8120", 9 caracteres sin ninguna letra
+ * hexadecimal) que `PATRON_TELEFONO` interpreta como número de teléfono
+ * pegado — un falso positivo real y no determinista, no hipotético
+ * (descubierto por `latenciaCanalCuenta.test.ts` al etiquetar percentiles
+ * de latencia interna con `cuenta_canal_id`). Un uuid válido nunca es en
+ * sí mismo un teléfono/email real, así que se exime del escaneo de VALOR
+ * — el escaneo por NOMBRE de clave (`CLAVES_BLOQUEADAS`) sigue aplicando
+ * igual antes de llegar aquí.
+ */
+const PATRON_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const MARCADOR_ATRIBUTO_REDACTADO = "[redactado-pii]";
 
@@ -90,7 +103,7 @@ export function sanitizarAtributos(atributos: AtributosSpan): AtributosSpan {
       limpio[clave] = MARCADOR_ATRIBUTO_REDACTADO;
       continue;
     }
-    if (typeof valor === "string" && (PATRON_EMAIL.test(valor) || PATRON_TELEFONO.test(valor))) {
+    if (typeof valor === "string" && !PATRON_UUID.test(valor) && (PATRON_EMAIL.test(valor) || PATRON_TELEFONO.test(valor))) {
       limpio[clave] = MARCADOR_ATRIBUTO_REDACTADO;
       continue;
     }

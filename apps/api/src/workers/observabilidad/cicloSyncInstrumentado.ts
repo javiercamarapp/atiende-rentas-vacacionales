@@ -18,12 +18,19 @@ export interface OpcionesCicloSyncInstrumentado {
   canalNombre: string;
   trazador: Trazador;
   metricas: RegistroMetricas;
+  /** H-073: latencia DECLARADA por el canal (nunca medida), típicamente
+   * `AirbnbChannelAdapter.latenciaDeclarada`/`VrboChannelAdapter.
+   * latenciaDeclarada` de `@atiende-rv/adapters` — opcional para no
+   * romper llamadas existentes que no la pasen; sin ella, el gauge
+   * `latenciaExternaDeclaradaSegundos` simplemente no se actualiza en
+   * este ciclo. */
+  latenciaDeclarada?: { minutosEstimados: number; confianza: string };
 }
 
 export async function ejecutarCicloSyncInstrumentado(
   opciones: OpcionesCicloSyncInstrumentado,
 ): Promise<ResultadoImportarCiclo> {
-  const { ctx, opcionesFetch, canalNombre, trazador, metricas } = opciones;
+  const { ctx, opcionesFetch, canalNombre, trazador, metricas, latenciaDeclarada } = opciones;
   const span = trazador.iniciarSpan("sync.ciclo.import", {
     kind: "PRODUCER",
     atributos: { canal: canalNombre, canal_id: ctx.canalId, unidad_id: ctx.unidadId },
@@ -52,6 +59,13 @@ export async function ejecutarCicloSyncInstrumentado(
       metricas.reintentosSync.incrementar({ canal: canalNombre });
     } else {
       metricas.edadUltimaSyncSegundos.set(0, { canal: canalNombre, unidad_id: ctx.unidadId });
+    }
+
+    if (latenciaDeclarada) {
+      metricas.latenciaExternaDeclaradaSegundos.set(latenciaDeclarada.minutosEstimados * 60, {
+        canal: canalNombre,
+        confianza: latenciaDeclarada.confianza,
+      });
     }
 
     span.terminar();
