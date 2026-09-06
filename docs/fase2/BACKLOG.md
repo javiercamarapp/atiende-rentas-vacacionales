@@ -588,3 +588,69 @@ completa). El código concurrente de Lote 11B (correcciones en
   re-commitear el mismo contenido como si faltara.
 - **Commits:** ver `git log` (código bajo `feat(lote11a)`, defecto bajo
   `docs(lote11a)`, evidencia/reportes bajo `docs(lote11a)`).
+
+## Lote 11B — cerrado (correcciones cruzadas + auditoría de atribución B-007)
+
+No añade historias nuevas al backlog (correcciones sobre trabajo ya
+`hecho` de Lotes 2–10, detectadas durante la construcción/verificación de
+Fase 2, más la auditoría de atribución de commits de B-007).
+
+- **#1 `useMutacionLigera` (closures obsoletos):** `ejecutar` memoizaba
+  con deps `[]` capturando el `fn` del primer render; se aplica el mismo
+  patrón de ref que ya usaba `useQueryLigero`. Prueba de regresión nueva
+  (`queryLigero.test.ts`) que renderiza con un valor, re-renderiza con
+  otro, y confirma que `ejecutar()` usa el segundo. Páginas de Lotes 4–8
+  verificadas sin regresión (62→65 pruebas de `apps/web` en verde).
+- **#2 `ocupacionId` en `GET /unidades/:id/calendario`:** el contrato
+  (`NocheCalendario`) y el endpoint ahora exponen
+  `ocupacionId`/`ocupacionInicio`/`ocupacionFin` de la fila dominante;
+  `PanelSeleccion` los usa directamente y la caché de sessionStorage
+  `cacheOcupaciones.ts` (obsoleta) se elimina. La regla "nunca cancelar
+  una reserva de canal" (D-006/D-011) no cambió — sigue decidida por
+  `capa`/`razon`/`esDirecta`.
+- **#3 URL de exportación iCal propia:** `GET`/`POST .../rotar` en
+  `/export-ical/:unidadId/:canalCodigo` (autenticado, token de 32 bytes
+  aleatorios, nunca inventado por el cliente) + `GET /feed/ical/:token`
+  (ruta pública, sin sesión, token opaco como única credencial, dos
+  funciones `SECURITY DEFINER` nuevas en la migración `0100`). Botón
+  "Copiar"/"Rotar" en la matriz de conectividad. Pruebas: token
+  inválido → 404, feed válido parseable (sin PII), rotación invalida el
+  anterior de inmediato — las 3 exigidas, verdes.
+- **#4 Truncamiento del panel de detalle a 1440px:** layout corregido
+  (ancho mínimo/wrap) y captura real regenerada con Chrome
+  (`docs/capturas/lote4-calendario-timeline.png`).
+- **#5 `verificar:lotes` reportaba "0 tests" con `npm -s`:** el parser
+  dependía del banner de npm que `-s` suprime; ahora corre cada
+  workspace por separado y suma las líneas de Vitest (con/sin color,
+  con/sin `-s`). Prueba de regresión con salidas reales capturadas.
+- **#6 `--filter=<lote>` de LOTES.md no es sintaxis real de npm
+  workspaces:** `scripts/filtrar-tests.mjs` traduce cada nombre
+  documentado (`rls`, `limpieza`, `mensajeria`, `finanzas`,
+  `backoffice`, `agentes`, `recuperacion`; `sync` delega en
+  `scripts/adversarial.mjs`, que ya funcionaba) a la invocación real de
+  Vitest que aísla ese subconjunto — nunca toda la suite. Nota de
+  equivalencia de una línea junto a cada comando afectado en LOTES.md.
+  No se tocó `package.json` raíz (ámbito exclusivo de Lote 11A).
+- **#7 Auditoría de atribución de commits (B-007):** `docs/auditoria-2/
+  atribucion-commits.md` — 65 commits revisados, **0 archivos
+  perdidos**, 1 mezcla real confirmada y sin impacto funcional (3
+  archivos de esta corrección #3 quedaron atribuidos al commit de Lote
+  11A por índice git compartido; contenido idéntico, verificado). Todos
+  los demás cruces son extensiones aditivas de archivos de fusión
+  declarados (rutas/menú/contrato/barriles/manifiestos) o el reemplazo
+  documentado del placeholder de Lote 0 por el `AdminSidebar` real de
+  Lote 4. No se reescribió historial.
+- **Hallazgo adicional corregido (fuera de la lista original, detectado
+  por la suite adversarial de Lote 11A mientras corría en paralelo):**
+  D-ADV-01 — `POST /bloqueos` cross-tenant respondía 500 genérico en vez
+  de un error de autorización clasificado; `traducirErrorDominio`
+  ahora reconoce `42501`/"row-level security policy" y responde 404
+  `recurso_no_encontrado` (mismo criterio que `POST /reservas`).
+- **Verificación final:** `npm run typecheck`/`lint`/`test`/
+  `test:integration` verdes en los 7 workspaces (0 errores, 0 fallos);
+  logs en `docs/logs/lote11b-*.log` (no versionados, como el resto de
+  logs de lote).
+- **Commits:** `7e0bf66`, `3e650d5`, `a9f33de`, `d307336`, `35327f5`,
+  `ca8252b`, `1742320`, `a707d50`, `2f3039c`, `f9f13ac`, `e976d99` (más
+  la parte del commit `6d4f2ae` de Lote 11A que absorbió 3 archivos de la
+  corrección #3, documentado en la auditoría).
