@@ -1,0 +1,77 @@
+# Alternativa de despliegue a Vercel para un VPS propio (Lote 3.3). Uso:
+#
+#   cp deploy/.env.docker.example deploy/.env.docker   # rellenar secretos
+#   docker compose -f deploy/docker-compose.yml --env-file deploy/.env.docker up -d --build
+#
+# Corre las migraciones automáticamente al levantar `api` (ver
+# `command` del servicio) — idempotente, mismo runner que usa Vercel
+# (`npm run db:migrar:desplegar`, ver scripts/migrar-desplegar.ts).
+name: atiende-rv
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-atiende_rv}
+      POSTGRES_USER: ${POSTGRES_USER:-atiende_rv_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?define POSTGRES_PASSWORD en deploy/.env.docker}
+    volumes:
+      - atiende-rv-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 8787
+      APP_ENV_LABEL: ${APP_ENV_LABEL:-produccion}
+      DATABASE_URL: postgres://${POSTGRES_USER:-atiende_rv_admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-atiende_rv}
+      JWT_SECRET: ${JWT_SECRET:?define JWT_SECRET en deploy/.env.docker (32+ caracteres)}
+      CANAL_CIFRADO_CLAVES: ${CANAL_CIFRADO_CLAVES:?define CANAL_CIFRADO_CLAVES en deploy/.env.docker ('v1:'+32 bytes en base64)}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:8080}
+      API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:8080/api}
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      GOOGLE_OAUTH_REDIRECT_URI: ${GOOGLE_OAUTH_REDIRECT_URI:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-no-responder@atiende.example}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+    # Migra (idempotente) y luego arranca el servidor — un solo proceso,
+    # apropiado para un VPS de un solo nodo; en un despliegue con más de
+    # una réplica de `api`, correr la migración como un paso `docker
+    # compose run --rm api npm run db:migrar:desplegar` SEPARADO antes de
+    # escalar, para no correr el runner de migraciones N veces en
+    # paralelo contra el mismo Postgres.
+    command: sh -c "npm run db:migrar:desplegar && npx tsx apps/api/src/index.ts"
+    ports:
+      - "8787:8787"
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
+
+volumes:
+  atiende-rv-postgres-data:

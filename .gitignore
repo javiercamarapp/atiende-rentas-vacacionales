@@ -40,3 +40,6 @@ apps/web/blob-report/
 /api/
 .vercel
 .env*
+# Plantilla sin secretos reales (deploy/docker-compose.yml) — igual trato
+# que `.env.example` de arriba.
+!deploy/.env.docker.example

@@ -1,0 +1,71 @@
+name: Deploy (Vercel)
+
+# Lote 3.3 (Fase 3, despliegue). Complementa `.github/workflows/ci.yml`
+# (que sigue siendo el gate de calidad en cada push/PR) con el despliegue
+# real a Vercel en cada push a `main` — PERO solo si el repositorio tiene
+# los tres secrets de Vercel configurados. Sin ellos, el job entero se
+# SALTA con un aviso explícito en el resumen del run — nunca falla en rojo
+# solo porque el equipo todavía no conectó Vercel (ver docs/despliegue/
+# README.md, paso "Conectar GitHub Actions con Vercel").
+#
+# Este workflow NO corre `vercel build` en el runner de GitHub Actions
+# porque el orquestador de Vercel espera que el build ocurra en SU propia
+# infraestructura (para variables de entorno inyectadas, caché de build,
+# etc.) — usa `vercel deploy --prebuilt` solo cuando el build ya se generó
+# ahí; aquí, en cambio, delegamos el build completo a Vercel con
+# `vercel deploy` a secas (sin `--prebuilt`), que sube el código fuente y
+# construye del lado de Vercel usando exactamente lo que `vercel.json`
+# describe (mismo comportamiento que probar con `npx vercel build` local,
+# verificado manualmente en este Lote).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  verificar-secretos:
+    runs-on: ubuntu-latest
+    outputs:
+      listo: ${{ steps.check.outputs.listo }}
+    steps:
+      - id: check
+        run: |
+          if [ -n "${{ secrets.VERCEL_TOKEN }}" ] && [ -n "${{ secrets.VERCEL_ORG_ID }}" ] && [ -n "${{ secrets.VERCEL_PROJECT_ID }}" ]; then
+            echo "listo=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "listo=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Despliegue a Vercel OMITIDO — faltan uno o más secrets del repo (VERCEL_TOKEN/VERCEL_ORG_ID/VERCEL_PROJECT_ID). Ver docs/despliegue/README.md § 'Conectar GitHub Actions con Vercel'."
+          fi
+
+  deploy:
+    needs: verificar-secretos
+    if: needs.verificar-secretos.outputs.listo == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "25.6.1"
+
+      - name: Vincular proyecto de Vercel
+        run: npx vercel@latest pull --yes --environment=production --token="${{ secrets.VERCEL_TOKEN }}"
+
+      - name: Migraciones (idempotente — se salta si DATABASE_URL no está entre los secrets)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npm ci && npm run db:migrar:desplegar
+
+      - name: Deploy a producción
+        id: deploy
+        run: |
+          url=$(npx vercel@latest deploy --prod --yes --token="${{ secrets.VERCEL_TOKEN }}")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Desplegado en: $url"
