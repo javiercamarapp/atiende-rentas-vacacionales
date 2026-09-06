@@ -18,15 +18,25 @@ import type { ChannelAdapter, ChannelCapabilities, EstadoConexionCanal } from "@
  *     del feed son DESCONOCIDOS, nunca se presenta una cifra de latencia
  *     para este canal.
  *
- * Por diseño, `availabilityPush` es `false` para la vía directa (D-011):
- * este adaptador SOLO expone el punto de extensión para delegar a un
- * channel manager certificado de terceros (Guesty/Hostaway/Smoobu/
- * OwnerRez, RV08 §2) — sin implementación real en Fase 2.
+ * Actualización Lote 3.4 (RV22-R-03, Fase 3): el adaptador ahora está
+ * COMPLETO contra la spec pública OTA/B.XML (RV04) — construcción de
+ * `OTA_HotelAvailNotifRQ` para disponibilidad/restricciones/roomstosell,
+ * `OTA_HotelRateAmountNotifRQ` opcional para tarifas, y pull de reservas
+ * con `ack` (`./otaXml.ts`), funcional contra `BookingApiSimulator`
+ * (`@atiende-rv/sim`) — pero `availabilityPush`/`ratesPush`/
+ * `reservationsPull` se declaran `true` porque así lo documenta la SPEC
+ * del canal (RV04 F09), no porque haya una conexión real: el
+ * Connectivity Partner Program de Booking.com sigue PAUSADO a nuevos
+ * proveedores (D-011, reconfirmado 2026-09-06, F03) y las propiedades
+ * individuales nunca conectan directo bajo ninguna circunstancia — el
+ * estado honesto (`obtenerEstadoConexion`) sigue siendo SIEMPRE
+ * `partner_pendiente`, nunca `sandbox`/`producción`, independientemente
+ * de que el código exista y esté probado contra el simulador (D-017).
  */
 export const CAPACIDADES_BOOKING_DIRECTO: ChannelCapabilities = {
-  availabilityPush: false,
-  ratesPush: false,
-  reservationsPull: false,
+  availabilityPush: true,
+  ratesPush: true,
+  reservationsPull: true,
   icalImportExport: true,
   messaging: false,
 };
@@ -72,3 +82,19 @@ export class BookingChannelAdapter implements ChannelAdapter {
     return "partner_pendiente";
   }
 }
+
+export {
+  construirOtaHotelAvailNotifRq,
+  construirOtaHotelRateAmountNotifRq,
+  mapearReservaSimuladaAOta,
+  ROOMSTOSELL_MAXIMO,
+  ROOMSTOSELL_ILIMITADO,
+  RoomsToSellInvalidoError,
+} from "./otaXml.js";
+export type {
+  RestriccionDisponibilidadBooking,
+  TarifaBooking,
+  ReservaBookingOta,
+  EstadoReservaBookingOta,
+  ReservaSimuladaComoOta,
+} from "./otaXml.js";

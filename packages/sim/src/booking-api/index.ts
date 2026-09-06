@@ -19,6 +19,16 @@ import { assertNoParecerProduccion, logSimulador, type OpcionesArranqueSimulador
  *                                cada llamada hasta que se confirmen.
  *   `POST /reservas/ack`      — `{ ids: string[] }`, marca esas reservas
  *                                como confirmadas; dejan de reenviarse.
+ *   `POST /ota/HotelAvailNotif` — Lote 3.4 (RV22-R-03): recibe el cuerpo
+ *                                `OTA_HotelAvailNotifRQ` construido por
+ *                                `@atiende-rv/adapters`
+ *                                (`construirOtaHotelAvailNotifRq`,
+ *                                RV04 F09) como texto XML crudo; lo
+ *                                guarda para inspección en pruebas de
+ *                                contrato — nunca lo interpreta como
+ *                                cambio real de inventario (D-019, este
+ *                                simulador no representa disponibilidad
+ *                                real de ninguna propiedad).
  */
 
 export interface ReservaSimuladaBooking {
@@ -38,6 +48,7 @@ interface EntradaCola {
 export class BookingApiSimulator {
   private readonly nombreCanal = "booking-api";
   private readonly cola = new Map<string, EntradaCola>();
+  private readonly xmlAvailNotifRecibidos: string[] = [];
   private servidor: http.Server;
 
   constructor(opciones: OpcionesArranqueSimulador = {}) {
@@ -72,6 +83,13 @@ export class BookingApiSimulator {
         this.ack(body.ids);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true }));
+        return;
+      }
+      if (req.method === "POST" && req.url === "/ota/HotelAvailNotif") {
+        const xml = await this.leerCuerpo(req);
+        this.xmlAvailNotifRecibidos.push(xml);
+        res.writeHead(200, { "Content-Type": "application/xml" });
+        res.end("<OTA_HotelAvailNotifRS><Success/></OTA_HotelAvailNotifRS>");
         return;
       }
       res.writeHead(404, { "Content-Type": "application/json" });
@@ -112,6 +130,13 @@ export class BookingApiSimulator {
 
   vecesReenviada(id: string): number {
     return this.cola.get(id)?.vecesReenviada ?? 0;
+  }
+
+  /** Lote 3.4: cuerpos `OTA_HotelAvailNotifRQ` recibidos por
+   * `/ota/HotelAvailNotif`, en orden — para pruebas de contrato que
+   * verifiquen que el adaptador construyó/envió el XML esperado. */
+  get xmlAvailNotifRecibidosTotal(): readonly string[] {
+    return this.xmlAvailNotifRecibidos;
   }
 
   async iniciar(): Promise<{ puerto: number; urlBase: string }> {

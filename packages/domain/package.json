@@ -9,7 +9,8 @@
     ".": "./src/index.ts",
     "./finanzas": "./src/finanzas/index.ts",
     "./pricing": "./src/pricing/index.ts",
-    "./agentes": "./src/agentes/index.ts"
+    "./agentes": "./src/agentes/index.ts",
+    "./notificaciones": "./src/notificaciones/index.ts"
   },
   "scripts": {
     "test": "vitest run",
