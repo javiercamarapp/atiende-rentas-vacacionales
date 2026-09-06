@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   MARCADOR_ATRIBUTO_REDACTADO,
   crearTrazador,
+  redactarPiiEnTexto,
   sanitizarAtributos,
   type SpanFinalizado,
 } from "../../src/workers/observabilidad/otel.js";
@@ -33,6 +34,51 @@ describe("sanitizarAtributos (sin PII en métricas/trazas)", () => {
   it("conserva atributos operativos normales sin tocarlos", () => {
     const limpio = sanitizarAtributos({ canal: "airbnb", status: 200, ok: true });
     expect(limpio).toEqual({ canal: "airbnb", status: 200, ok: true });
+  });
+});
+
+/**
+ * Regresión permanente S-09 (docs/auditoria-2/seguridad.md):
+ * `sanitizarAtributos` solo saneaba el VALOR de un atributo — el `nombre`
+ * de un span (una cadena libre como "HTTP GET /ruta") nunca pasaba por
+ * ningún filtro. `redactarPiiEnTexto` cierra ese hueco y es reutilizada
+ * también por `middleware/logger.ts`.
+ */
+describe("redactarPiiEnTexto (S-09: PII dentro de un texto libre, no solo el valor completo de un atributo)", () => {
+  it("redacta un email incrustado dentro de una ruta HTTP (el patrón es codicioso: sin espacios en un path, redacta el segmento completo — sobre-redactar es el error seguro)", () => {
+    const resultado = redactarPiiEnTexto("HTTP GET /ruta/javiercamara10porte@gmail.com");
+    expect(resultado).not.toContain("javiercamara10porte@gmail.com");
+    expect(resultado).toContain(MARCADOR_ATRIBUTO_REDACTADO);
+    expect(resultado).toBe(`HTTP GET ${MARCADOR_ATRIBUTO_REDACTADO}`);
+  });
+
+  it("con un separador de espacio SÍ preserva el resto del texto alrededor del email", () => {
+    expect(redactarPiiEnTexto("contacto javiercamara10porte@gmail.com confirmado")).toBe(
+      `contacto ${MARCADOR_ATRIBUTO_REDACTADO} confirmado`,
+    );
+  });
+
+  it("redacta un teléfono incrustado en un texto libre", () => {
+    expect(redactarPiiEnTexto("contacto +52 55 1234 5678 confirmado")).toBe(
+      `contacto ${MARCADOR_ATRIBUTO_REDACTADO} confirmado`,
+    );
+  });
+
+  it("deja intacto un texto sin PII", () => {
+    expect(redactarPiiEnTexto("HTTP GET /health")).toBe("HTTP GET /health");
+  });
+});
+
+describe("crearTrazador — el NOMBRE del span también se sanea (S-09)", () => {
+  it("un span con email en el nombre lo redacta antes de finalizar", () => {
+    const spans: SpanFinalizado[] = [];
+    const trazador = crearTrazador("svc", [(s) => spans.push(s)]);
+    const span = trazador.iniciarSpan("HTTP GET /ruta-que-no-existe/javiercamara10porte@gmail.com", {
+      kind: "SERVER",
+    });
+    span.terminar();
+    expect(spans[0]!.nombre).not.toContain("javiercamara10porte@gmail.com");
+    expect(spans[0]!.nombre).toContain(MARCADOR_ATRIBUTO_REDACTADO);
   });
 });
 

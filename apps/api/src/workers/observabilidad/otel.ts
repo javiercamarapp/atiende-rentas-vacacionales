@@ -54,9 +54,27 @@ export interface Span {
  */
 const PATRON_EMAIL = /[^\s@]+@[^\s@]+\.[^\s@]+/;
 const PATRON_TELEFONO = /(\+?\d[\d\s().-]{6,}\d)/;
+const PATRON_EMAIL_GLOBAL = new RegExp(PATRON_EMAIL.source, "g");
+const PATRON_TELEFONO_GLOBAL = new RegExp(PATRON_TELEFONO.source, "g");
 const CLAVES_BLOQUEADAS = /email|correo|telefono|phone|nombre|apellido|huesped|password|contrasena|token|secreto/i;
 
 export const MARCADOR_ATRIBUTO_REDACTADO = "[redactado-pii]";
+
+/**
+ * S-09 (docs/auditoria-2/seguridad.md): a diferencia de `sanitizarAtributos`
+ * (que sustituye el VALOR COMPLETO de un atributo sospechoso), esto
+ * redacta solo la SUBCADENA que parece email/teléfono dentro de un texto
+ * libre más grande — necesario para el `nombre` de un span (p. ej.
+ * `"HTTP GET /ruta-con-un-email-pegado@ejemplo.com"`) o una línea de log
+ * de texto, donde el email/teléfono es solo una parte de la cadena, nunca
+ * el valor completo. Reutilizado por `middleware/logger.ts` (Lote 3) —
+ * antes de esta corrección, ni el `nombre` del span ni la `ruta` del
+ * logger pasaban por NINGÚN filtro de PII, a diferencia de los atributos
+ * del span (que sí pasaban por `sanitizarAtributos`).
+ */
+export function redactarPiiEnTexto(texto: string): string {
+  return texto.replace(PATRON_EMAIL_GLOBAL, MARCADOR_ATRIBUTO_REDACTADO).replace(PATRON_TELEFONO_GLOBAL, MARCADOR_ATRIBUTO_REDACTADO);
+}
 
 /**
  * Filtra atributos antes de que entren a un span o a una métrica
@@ -111,7 +129,10 @@ export interface Trazador {
 export function crearTrazador(nombreServicio: string, exportadores: ExportadorSpans[] = []): Trazador {
   return {
     nombreServicio,
-    iniciarSpan(nombre, opciones = {}) {
+    iniciarSpan(nombreCrudo, opciones = {}) {
+      // S-09: el nombre del span (p. ej. "HTTP GET /ruta") nunca pasaba
+      // por ningún filtro de PII, a diferencia de sus atributos.
+      const nombre = redactarPiiEnTexto(nombreCrudo);
       const traceId = opciones.traceId ?? idHex(16);
       const spanId = idHex(8);
       const parentSpanId = opciones.parentSpanId ?? null;

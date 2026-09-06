@@ -187,9 +187,14 @@ describe("Bloque A — LOGS/PII sobre flujo real de mensajería (embedded-postgr
 
   it("A1 — un huésped ficticio con email/teléfono/nombre reconocibles, insertado y usado en todo el flujo de mensajería (mensaje entrante -> borrador -> aprobar), NUNCA aparece en texto plano en las líneas de consola capturadas", async () => {
     // Huésped ficticio con PII reconocible, ligado a la conversación.
-    const huesped = await pool.query<{ id: string }>(
-      `INSERT INTO huesped_minimo (nombre, contacto) VALUES ($1, $2) RETURNING id`,
-      [PII_NOMBRE, `${PII_EMAIL} / ${PII_TELEFONO}`],
+    // [CORREGIDO S-05] huesped_minimo ahora exige tenant_id NOT NULL y
+    // tiene RLS FORCE (migración 0093) — se inserta vía `superusuario`
+    // (bypassa RLS) con el tenant_id real de esta suite, igual que
+    // apps/api/src/routes/reservas.ts hace en producción vía
+    // unidad_tenant_id().
+    const huesped = await superusuario.query<{ id: string }>(
+      `INSERT INTO huesped_minimo (nombre, contacto, tenant_id) VALUES ($1, $2, $3) RETURNING id`,
+      [PII_NOMBRE, `${PII_EMAIL} / ${PII_TELEFONO}`, tenantId],
     );
     const huespedId = huesped.rows[0]!.id;
 
@@ -281,18 +286,20 @@ describe("Bloque A — LOGS/PII sobre flujo real de mensajería (embedded-postgr
     expect(crudo).toContain(PII_TELEFONO);
   });
 
-  it("A2b — CONFIRMADO/CRÍTICO: ni `middleware/logger.ts` NI el propio `nombre` del span OTel pasan por `sanitizarAtributos` — el email queda en texto plano en AMBAS superficies de logging (stdout), y el span además lo reenviaría a un colector OTLP externo si `OTEL_EXPORTER_OTLP_ENDPOINT` estuviera configurado", async () => {
-    // `sanitizarAtributos` (otel.ts) SÍ detecta patrones de email/teléfono
-    // en el VALOR de un ATRIBUTO (`atributos["http.route"]`) y lo reemplaza
-    // por "[redactado-pii]" — pero (1) `crearLogger` (middleware/logger.ts)
-    // nunca la invoca, arma su línea de log a mano con
-    // `new URL(c.req.url).pathname` sin pasar por ningún filtro, y (2) el
-    // propio NOMBRE del span (`iniciarSpan(\`HTTP ${method} ${ruta}\`, ...)`,
-    // middlewareHttp.ts) también incrusta la ruta cruda y NUNCA pasa por
-    // `sanitizarAtributos` (que solo sanea el mapa `atributos`, no el string
-    // `nombre` — ver otel.ts `terminar()`: `nombre` se copia tal cual a
-    // `spanFinalizado.nombre`). Resultado: el filtro de PII existe en el
-    // código pero dos superficies distintas la evaden por completo.
+  it("[CORREGIDO S-09] A2b — ni `middleware/logger.ts` NI el `nombre` del span OTel dejan ya el email en texto plano — ambos pasan por `redactarPiiEnTexto` (otel.ts)", async () => {
+    // Antes de la corrección: `sanitizarAtributos` (otel.ts) SÍ detectaba
+    // patrones de email/teléfono en el VALOR de un ATRIBUTO
+    // (`atributos["http.route"]`) y lo reemplazaba por "[redactado-pii]" —
+    // pero (1) `crearLogger` (middleware/logger.ts) nunca la invocaba,
+    // armaba su línea de log a mano con `new URL(c.req.url).pathname` sin
+    // pasar por ningún filtro, y (2) el propio NOMBRE del span
+    // (`iniciarSpan(\`HTTP ${method} ${ruta}\`, ...)`, middlewareHttp.ts)
+    // también incrustaba la ruta cruda sin pasar por ningún filtro (`nombre`
+    // se copiaba tal cual a `spanFinalizado.nombre`). Ahora ambas
+    // superficies pasan la ruta/nombre por `redactarPiiEnTexto`, que
+    // redacta cualquier subcadena que parezca email/teléfono dentro de un
+    // texto libre más grande (a diferencia de `sanitizarAtributos`, que
+    // sustituye el valor completo del atributo).
     lineasLog.length = 0;
     const res = await app.request(`/ruta-que-no-existe/${PII_EMAIL}`, autenticado(accessToken));
     expect(res.status).toBe(404);
@@ -302,16 +309,19 @@ describe("Bloque A — LOGS/PII sobre flujo real de mensajería (embedded-postgr
     expect(lineaLoggerPlano).toBeDefined();
     expect(lineaSpanOtel).toBeDefined();
 
-    // (1) El logger de línea plano deja el email en texto plano en `ruta`:
-    expect(lineaLoggerPlano).toContain(PII_EMAIL);
+    // (1) El logger de línea plano ya NO deja el email en texto plano
+    // (el patrón de email es codicioso y no encuentra ningún límite de
+    // espacio/@ dentro de un path sin espacios, así que redacta el
+    // segmento completo — sobre-redactar es el error seguro, nunca al
+    // revés):
+    expect(lineaLoggerPlano).not.toContain(PII_EMAIL);
+    expect(lineaLoggerPlano).toContain('"ruta":"[redactado-pii]"');
 
-    // (2) El atributo `http.route` del span SÍ queda redactado...
+    // (2) El atributo `http.route` del span sigue redactado (sin cambios)...
     expect(lineaSpanOtel).toContain('"http.route":"[redactado-pii]"');
-    // ...pero el campo `nombre` del MISMO span (usado para armar el nombre
-    // legible del trace) sigue llevando el email en texto plano — el
-    // sanitizador tiene un hueco de cobertura, no cubre `span.nombre`:
-    expect(lineaSpanOtel).toContain(PII_EMAIL);
-    expect(lineaSpanOtel).toContain(`"nombre":"HTTP GET /ruta-que-no-existe/${PII_EMAIL}"`);
+    // ...y ahora el campo `nombre` del MISMO span también queda redactado:
+    expect(lineaSpanOtel).not.toContain(PII_EMAIL);
+    expect(lineaSpanOtel).toContain('"nombre":"HTTP GET [redactado-pii]"');
   });
 
   it("A3 — CONFIRMADO: un valor z.enum() inválido en un campo de contrato SÍ se ecoa textualmente en la respuesta 422, contradiciendo el comentario de apps/api/src/app.ts ('ZodError... sin ecoar el valor recibido')", async () => {
