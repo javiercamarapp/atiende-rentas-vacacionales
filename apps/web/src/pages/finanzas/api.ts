@@ -10,6 +10,15 @@ import type {
 } from "@atiende-rv/api/contrato";
 import { peticion } from "../../lib/api/cliente";
 
+// Auditoría 2, corrección Q-01 (calidad-codigo.md): reexporta el
+// formateador de dinero único de `packages/domain/finanzas` en vez de
+// reimplementarlo — antes esta copia usaba `Math.round`, mientras el
+// "criterio único" declarado en domain usa `Math.trunc`, con el caso
+// límite `x.xx5` divergiendo entre ambas. Se mantiene el nombre exportado
+// (`decimalDesdeCentavos`) para no tocar los ~6 sitios de FinanzasPage.tsx
+// que ya la importan desde este archivo.
+export { decimalDesdeCentavos } from "@atiende-rv/domain/finanzas";
+
 export interface ReglaComisionCanal {
   id: string;
   canalCodigo: string;
@@ -138,10 +147,4 @@ export function listarUnidadesBasico(): Promise<{
   unidades: { id: string; nombre: string; propiedadId: string; ownerId: string | null }[];
 }> {
   return peticion("/unidades");
-}
-
-export function decimalDesdeCentavos(centavos: number): string {
-  const negativo = centavos < 0;
-  const abs = Math.abs(Math.round(centavos));
-  return `${negativo ? "-" : ""}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, "0")}`;
 }

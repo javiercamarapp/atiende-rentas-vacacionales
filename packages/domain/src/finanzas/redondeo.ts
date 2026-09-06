@@ -35,7 +35,34 @@ export function centavosDesdeDecimal(texto: string): number {
   return negativo ? -resultado : resultado;
 }
 
-/** Convierte centavos enteros a un string decimal con 2 decimales fijos. */
+/**
+ * Convierte centavos a un string decimal con 2 decimales fijos —
+ * FORMATEADOR ÚNICO de dinero para todo el repo (Auditoría 2, corrección
+ * Q-01/`docs/auditoria-2/calidad-codigo.md`). Antes de esta corrección
+ * existían 4 copias casi idénticas de esta función (`apps/api/src/routes/
+ * finanzas.ts`, `apps/web/src/pages/finanzas/api.ts`,
+ * `apps/web/src/pages/reportes/api.ts`) con DOS criterios de redondeo
+ * distintos coexistiendo en el mismo flujo de Owner Statement — riesgo
+ * real de que el propietario viera un neto distinto al que domain calculó.
+ * Las 3 copias ahora reexportan esta misma función; no queda ninguna
+ * reimplementación.
+ *
+ * Criterio único, justificado (RV12 — finanzas/owners/contabilidad): en
+ * este punto `centavos` YA es un entero (garantizado por el resto del
+ * motor: `centavosDesdeDecimal`/`aplicarPorcentaje` arriba usan redondeo
+ * half-up determinista sobre BigInt antes de llegar aquí, nunca punto
+ * flotante). `Math.trunc` en este paso final no es una decisión de
+ * redondeo — es una guarda defensiva de idempotencia: si por un bug de
+ * capas superiores llegara un valor no entero (p. ej. `100.5` centavos),
+ * truncar es la opción que RV12 exige para un documento financiero: nunca
+ * "inventar" un centavo adicional a favor de ninguna de las partes
+ * (gestora, propietario o canal) en el paso de PRESENTACIÓN de un monto ya
+ * calculado — cualquier ajuste real de redondeo debe ocurrir donde se
+ * calculó el monto (`aplicarPorcentaje`), con su criterio half-up
+ * documentado y trazable, no silenciosamente en el formateador de salida.
+ * Ver `redondeo.test.ts` para el caso límite `x.xx5` que antes divergía
+ * entre las 4 copias (`Math.trunc` vs. `Math.round`).
+ */
 export function decimalDesdeCentavos(centavos: number): string {
   const entero = Math.trunc(centavos);
   const negativo = entero < 0;

@@ -58,4 +58,40 @@ describe("redondeo monetario determinista (sin float)", () => {
     }
     expect(acumulado).toBe(3300); // 100 * 33 centavos, exacto
   });
+
+  describe("Auditoría 2, corrección Q-01: caso límite x.xx5 que antes divergía entre 4 copias", () => {
+    // Antes de esta corrección `apps/api/src/routes/finanzas.ts` y las 2
+    // copias de `apps/web` (finanzas/api.ts, reportes/api.ts) reimplementaban
+    // este formateador con `Math.round` en vez del `Math.trunc` que domain ya
+    // declaraba "criterio único" — divergencia real solo visible cuando
+    // `centavos` llega con un residuo fraccionario (defensivo: en operación
+    // normal siempre es entero, ver justificación en redondeo.ts). Las 3
+    // copias ahora reexportan literalmente esta función (mismo módulo,
+    // mismo objeto de función) — este test fija el comportamiento del ÚNICO
+    // punto que las 4 llamadas comparten.
+    it("1000.5 centavos (10.005 pesos) trunca a 10.00, nunca redondea a 10.01", () => {
+      // Con Math.trunc (criterio único, canónico): 1000.
+      // Con Math.round (criterio de las 3 copias eliminadas): 1001.
+      expect(decimalDesdeCentavos(1000.5)).toBe("10.00");
+    });
+
+    it("el mismo caso límite en negativo: -1000.5 trunca hacia cero, a -10.00", () => {
+      expect(decimalDesdeCentavos(-1000.5)).toBe("-10.00");
+    });
+
+    it("para centavos ya enteros (el caso real de producción) el criterio no importa: idéntico resultado", () => {
+      // Confirma que la consolidación no cambió NINGÚN resultado para el
+      // caso normal (entero) — solo eliminó la divergencia en el caso de
+      // bug defensivo.
+      for (const centavos of [0, 1, 99, 100, 123456, -5025, 840000]) {
+        const viaTrunc = decimalDesdeCentavos(centavos);
+        const viaRoundHipotetico = (() => {
+          const negativo = centavos < 0;
+          const abs = Math.abs(Math.round(centavos));
+          return `${negativo ? "-" : ""}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, "0")}`;
+        })();
+        expect(viaTrunc).toBe(viaRoundHipotetico);
+      }
+    });
+  });
 });

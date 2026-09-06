@@ -4,6 +4,7 @@ import type { PoolClient } from "pg";
 import {
   calcularMovimientoReserva,
   conciliarPayout,
+  decimalDesdeCentavos,
   esMismoContenidoQueVersionAnterior,
   evaluarAlertaRetencionFiscal,
   generarOwnerStatement,
@@ -443,9 +444,9 @@ export function crearRutasFinanzas(pool: pg.Pool, jwtSecret: string): Hono {
     const auth = c.get("auth");
     const id = c.req.param("id");
     const resultado = await conSesion(pool, sesionDeAuth(auth), async (cliente) => {
-      const { rows } = await cliente.query("SELECT * FROM owner_statement WHERE id = $1", [id]);
+      const { rows } = await cliente.query<FilaOwnerStatement>("SELECT * FROM owner_statement WHERE id = $1", [id]);
       if (!rows[0]) return null;
-      const lineas = await cliente.query(
+      const lineas = await cliente.query<FilaOwnerStatementLinea>(
         "SELECT tipo, descripcion, monto_centavos, moneda, ocupacion_unidad_id FROM owner_statement_linea WHERE statement_id = $1 ORDER BY tipo",
         [id],
       );
@@ -461,12 +462,12 @@ export function crearRutasFinanzas(pool: pg.Pool, jwtSecret: string): Hono {
     const auth = c.get("auth");
     const id = c.req.param("id");
     const resultado = await conSesion(pool, sesionDeAuth(auth), async (cliente) => {
-      const { rows } = await cliente.query(
+      const { rows } = await cliente.query<FilaOwnerStatement>(
         `SELECT os.*, o.nombre AS owner_nombre FROM owner_statement os JOIN owner o ON o.id = os.owner_id WHERE os.id = $1`,
         [id],
       );
       if (!rows[0]) return null;
-      const lineas = await cliente.query(
+      const lineas = await cliente.query<FilaOwnerStatementLinea>(
         "SELECT tipo, descripcion, monto_centavos, moneda FROM owner_statement_linea WHERE statement_id = $1 ORDER BY tipo",
         [id],
       );
@@ -668,8 +669,38 @@ function serializarStatement(s: ReturnType<typeof generarOwnerStatement>) {
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function serializarStatementFila(statement: any, lineas: any[]) {
+// Auditoría 2, corrección Q-08 (calidad-codigo.md): estas 2 filas de BD
+// eran los únicos `any` de todo el repo sobre objetos de dinero — tipadas
+// aquí con las columnas reales de `owner_statement`/`owner_statement_linea`
+// (packages/db/src/migrations/0050_finanzas_pricing.ts y siguientes).
+interface FilaOwnerStatement {
+  id: string;
+  owner_id: string;
+  periodo_inicio: unknown; // Date (parser de pg) — formateada con aFechaIso().
+  periodo_fin: unknown;
+  version: number;
+  moneda: string;
+  ingresos_brutos_centavos: string | number;
+  comision_canal_centavos: string | number;
+  comision_gestor_centavos: string | number;
+  gastos_centavos: string | number;
+  impuestos_centavos: string | number;
+  neto_centavos: string | number;
+  generado_en: string;
+  /** Solo presente en la consulta de `/statements/:id/descarga` (JOIN con `owner`). */
+  owner_nombre?: string;
+}
+
+interface FilaOwnerStatementLinea {
+  tipo: string;
+  descripcion: string | null;
+  monto_centavos: string | number;
+  moneda: string;
+  /** Solo seleccionada en `/statements/:id` (no en `/descarga`). */
+  ocupacion_unidad_id?: string | null;
+}
+
+function serializarStatementFila(statement: FilaOwnerStatement, lineas: FilaOwnerStatementLinea[]) {
   return {
     id: statement.id,
     ownerId: statement.owner_id,
@@ -706,18 +737,17 @@ function aFechaIso(valor: unknown): string {
   return String(valor).slice(0, 10);
 }
 
-function decimalDeCentavos(centavos: number): string {
-  const negativo = centavos < 0;
-  const abs = Math.abs(Math.round(centavos));
-  return `${negativo ? "-" : ""}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, "0")}`;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function renderizarStatementHtml(statement: any, lineas: any[]): string {
+// Auditoría 2, corrección Q-01: el formateador de dinero vivía duplicado
+// aquí (`decimalDeCentavos`, con `Math.round`) mientras `packages/domain`
+// ya declaraba uno "canónico" (`decimalDesdeCentavos`, con `Math.trunc`) —
+// ver `packages/domain/src/finanzas/redondeo.ts` para el criterio único
+// documentado. Se elimina la copia local; el HTML del Owner Statement usa
+// la misma función que domain/web.
+function renderizarStatementHtml(statement: FilaOwnerStatement, lineas: FilaOwnerStatementLinea[]): string {
   const filas = lineas
     .map(
       (l) =>
-        `<tr><td>${escaparHtml(l.tipo)}</td><td>${escaparHtml(l.descripcion ?? "")}</td><td style="text-align:right">${statement.moneda} ${decimalDeCentavos(Number(l.monto_centavos))}</td></tr>`,
+        `<tr><td>${escaparHtml(l.tipo)}</td><td>${escaparHtml(l.descripcion ?? "")}</td><td style="text-align:right">${statement.moneda} ${decimalDesdeCentavos(Number(l.monto_centavos))}</td></tr>`,
     )
     .join("\n");
   return `<!doctype html>
@@ -732,7 +762,7 @@ function renderizarStatementHtml(statement: any, lineas: any[]): string {
 <table>
 <thead><tr><th>Tipo</th><th>Descripción</th><th style="text-align:right">Monto</th></tr></thead>
 <tbody>${filas}</tbody>
-<tfoot><tr><td colspan="2"><strong>Neto a pagar</strong></td><td style="text-align:right"><strong>${statement.moneda} ${decimalDeCentavos(Number(statement.neto_centavos))}</strong></td></tr></tfoot>
+<tfoot><tr><td colspan="2"><strong>Neto a pagar</strong></td><td style="text-align:right"><strong>${statement.moneda} ${decimalDesdeCentavos(Number(statement.neto_centavos))}</strong></td></tr></tfoot>
 </table>
 </body>
 </html>`;

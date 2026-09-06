@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json"
   },
   "dependencies": {
+    "@atiende-rv/domain": "*",
     "@atiende-rv/ui-atiende": "*",
     "lucide-react": "^0.469.0",
     "react": "^18.3.1",

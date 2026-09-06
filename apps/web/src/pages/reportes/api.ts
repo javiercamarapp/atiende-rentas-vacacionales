@@ -1,7 +1,12 @@
 // Llamadas de API propias de reporting (Lote 7, BACKLOG E12). Solo lectura
 // de agregados ya calculados por apps/api/src/routes/reportes.ts — esta
 // capa nunca recalcula nada, solo tipa y expone la exportación CSV.
-import { BASE_URL, peticion, tokenGuardado } from "../../lib/api/cliente";
+import { construirUrl, peticion, tokenGuardado } from "../../lib/api/cliente";
+
+// Auditoría 2, corrección Q-01 (calidad-codigo.md): reexporta el
+// formateador de dinero único de `packages/domain/finanzas` — ver el
+// mismo comentario en apps/web/src/pages/finanzas/api.ts.
+export { decimalDesdeCentavos } from "@atiende-rv/domain/finanzas";
 
 export interface FilaOcupacion {
   unidadId: string;
@@ -39,22 +44,12 @@ export function obtenerReporteIngresos(desde: string, hasta: string, propiedadId
  * endpoint (que iría sin el header Authorization). */
 export async function descargarCsv(ruta: string, query: Record<string, string | undefined>): Promise<Blob> {
   const token = tokenGuardado();
-  const url = new URL(ruta.replace(/^\//, ""), BASE_URL.endsWith("/") ? BASE_URL : `${BASE_URL}/`);
-  for (const [clave, valor] of Object.entries(query)) {
-    if (valor !== undefined) url.searchParams.set(clave, valor);
-  }
-  url.searchParams.set("formato", "csv");
-  const respuesta = await fetch(url.toString(), {
+  const url = construirUrl(ruta, { ...query, formato: "csv" });
+  const respuesta = await fetch(url, {
     headers: token ? { authorization: `Bearer ${token}` } : {},
   });
   if (!respuesta.ok) throw new Error(`No se pudo exportar (HTTP ${respuesta.status})`);
   return respuesta.blob();
-}
-
-export function decimalDesdeCentavos(centavos: number): string {
-  const negativo = centavos < 0;
-  const abs = Math.abs(Math.round(centavos));
-  return `${negativo ? "-" : ""}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, "0")}`;
 }
 
 export function porcentajeDesdeBasisPoints(bp: number): string {

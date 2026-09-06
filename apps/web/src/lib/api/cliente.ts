@@ -52,7 +52,11 @@ export interface OpcionesPeticion {
   query?: Record<string, string | number | undefined>;
 }
 
-function construirUrl(ruta: string, query?: OpcionesPeticion["query"]): string {
+// Exportada (Auditoría 2, corrección Q-07/calidad-codigo.md): vivía sin
+// exportar y `apps/web/src/pages/reportes/api.ts` (`descargarCsv`) no podía
+// reusarla, así que reimplementaba a mano la misma lógica de armado de URL
+// + querystring. Un solo lugar para esa lógica ahora.
+export function construirUrl(ruta: string, query?: OpcionesPeticion["query"]): string {
   const url = new URL(ruta.replace(/^\//, ""), BASE_URL.endsWith("/") ? BASE_URL : `${BASE_URL}/`);
   if (query) {
     for (const [clave, valor] of Object.entries(query)) {
