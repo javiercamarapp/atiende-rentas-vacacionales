@@ -77,3 +77,10 @@ export * from "./limpieza/index.js";
 // `./mensajeria/index.js`, carpeta exclusiva de ese lote — mismo patrón
 // aditivo que la línea de Lote 5 de arriba.
 export * from "./mensajeria/index.js";
+
+// Lote 9 (E14, automatización agéntica): reexporta el barril de
+// `./agentes/index.js`, carpeta exclusiva de ese lote — mismo patrón
+// aditivo que las dos líneas de arriba. También accesible como subpath
+// propio `@atiende-rv/domain/agentes` (ver `packages/domain/package.json`
+// "exports"), igual que `./finanzas`/`./pricing` de Lote 7.
+export * from "./agentes/index.js";
