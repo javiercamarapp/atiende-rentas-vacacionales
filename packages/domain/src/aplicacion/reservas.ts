@@ -33,6 +33,62 @@ export interface InfoConflicto {
   ocupacionExistenteId: string;
 }
 
+/**
+ * D-DSD-02: verificación de solapamiento contra capas NO bloqueantes a
+ * nivel de EXCLUDE (`capa='bloqueo'`: BLOQUEO_PROPIETARIO, MANTENIMIENTO,
+ * BUFFER_LIMPIEZA) que `crearReservaConfirmada`/`modificarFechasReserva`
+ * necesitan replicar del mismo patrón que ya usa `crearBloqueo` (líneas
+ * más abajo): el `EXCLUDE` de base de datos SOLO protege
+ * `capa='reserva' AND bloqueante=true`, así que una reserva de canal que
+ * aterriza sobre un bloqueo ya existente nunca dispara `23P01` y, sin esta
+ * verificación explícita, se insertaría sin ninguna fila en
+ * `conflicto_calendario` ni alerta (D-002).
+ *
+ * Decisión de producto (documentada aquí, ver también
+ * docs/auditoria-2/correcciones-dominio.md): la reserva de canal SIEMPRE
+ * se acepta —el canal externo ya la confirmó frente al huésped, cancelarla
+ * unilateralmente violaría REQ-000— y el conflicto se registra para
+ * revisión humana como `capa_cruzada`, nunca como motivo de rechazo. La UI
+ * debe mostrar esta reserva como "conflicto pendiente" (mismo tratamiento
+ * visual que `overbooking_confirmado`) aunque a nivel de `estado` de BD
+ * siga siendo `confirmado`/`provisional` normal.
+ */
+async function detectarYRegistrarConflictosCapaCruzada(
+  ejecutor: EjecutorTransaccional,
+  unidadId: string,
+  ocupacionId: string,
+  rango: RangoFechas,
+): Promise<InfoConflicto[]> {
+  const solapadas = await ejecutor.query<{ id: string }>(
+    `SELECT id FROM ocupacion_unidad
+     WHERE unidad_id = $1 AND id <> $2 AND estado <> 'cancelado' AND capa = 'bloqueo'
+       AND rango && daterange($3, $4, '[)')`,
+    [unidadId, ocupacionId, rango.inicio, rango.fin],
+  );
+
+  const conflictos: InfoConflicto[] = [];
+  for (const fila of solapadas.rows) {
+    const conflictoInsertado = await ejecutor.query<{ id: string }>(
+      `INSERT INTO conflicto_calendario (unidad_id, ocupacion_a_id, ocupacion_b_id, tipo)
+       VALUES ($1, $2, $3, 'capa_cruzada')
+       RETURNING id`,
+      [unidadId, fila.id, ocupacionId],
+    );
+    const info: InfoConflicto = {
+      tipo: "capa_cruzada",
+      conflictoId: conflictoInsertado.rows[0]!.id,
+      ocupacionExistenteId: fila.id,
+    };
+    conflictos.push(info);
+    await ejecutor.query(
+      `INSERT INTO outbox_evento (ocupacion_unidad_id, tipo_evento, payload)
+       VALUES ($1, 'alerta_capa_cruzada', $2::jsonb)`,
+      [ocupacionId, JSON.stringify({ conflicto: info })],
+    );
+  }
+  return conflictos;
+}
+
 // ---------------------------------------------------------------------------
 // Crear reserva confirmada / provisional (H-017, H-021)
 // ---------------------------------------------------------------------------
@@ -54,6 +110,10 @@ export interface EntradaCrearReserva {
 export interface ResultadoCrearReserva {
   ocupacionId: string;
   conflicto: InfoConflicto | null;
+  /** D-DSD-02: conflictos `capa_cruzada` contra bloqueos (propietario,
+   * mantenimiento, buffer) ya existentes sobre el mismo rango. Nunca
+   * bloquea la inserción de la reserva de canal — solo la reporta. */
+  conflictosCapaCruzada: InfoConflicto[];
 }
 
 export async function crearReservaConfirmada(
@@ -166,8 +226,19 @@ export async function crearReservaConfirmada(
         );
       }
 
+      // D-DSD-02: el conflicto reserva-vs-reserva (overbooking) no excluye
+      // que ADEMÁS haya un solapamiento contra un bloqueo de menor
+      // precedencia (capa cruzada) — se verifica siempre, no solo en la
+      // rama de éxito.
+      const conflictosCapaCruzada = await detectarYRegistrarConflictosCapaCruzada(
+        ejecutor,
+        entrada.unidadId,
+        ocupacionId,
+        entrada.rango,
+      );
+
       await ejecutor.exec("COMMIT");
-      return { ocupacionId, conflicto };
+      return { ocupacionId, conflicto, conflictosCapaCruzada };
     }
 
     await ejecutor.query(
@@ -175,8 +246,21 @@ export async function crearReservaConfirmada(
        VALUES ($1, 'cerrar_disponibilidad', '{}'::jsonb)`,
       [ocupacionId],
     );
+
+    // D-DSD-02: la reserva de canal se acepta SIEMPRE (el canal externo ya
+    // la confirmó frente al huésped) incluso cuando solapa con un bloqueo
+    // de propietario/mantenimiento/buffer ya existente; el solapamiento se
+    // registra como conflicto de capa cruzada para revisión humana, nunca
+    // como motivo de rechazo.
+    const conflictosCapaCruzada = await detectarYRegistrarConflictosCapaCruzada(
+      ejecutor,
+      entrada.unidadId,
+      ocupacionId,
+      entrada.rango,
+    );
+
     await ejecutor.exec("COMMIT");
-    return { ocupacionId, conflicto: null };
+    return { ocupacionId, conflicto: null, conflictosCapaCruzada };
   } catch (error) {
     await ejecutor.exec("ROLLBACK");
     throw error;
@@ -318,6 +402,9 @@ export interface ResultadoModificarFechas {
    * conflicto (la modificación se rechazó sin tocar la reserva). */
   rangoEfectivo: RangoFechas;
   conflicto: InfoConflicto | null;
+  /** D-DSD-02: conflictos `capa_cruzada` contra bloqueos ya existentes
+   * sobre el rango efectivo tras la operación. */
+  conflictosCapaCruzada: InfoConflicto[];
 }
 
 export async function modificarFechasReserva(
@@ -408,8 +495,19 @@ export async function modificarFechasReserva(
         );
       }
 
+      // D-DSD-02: el rango efectivo, tras rechazar el intento de
+      // modificación, sigue siendo `rangoAnterior` — se verifica capa
+      // cruzada contra ESE rango (el que realmente sigue vigente), no
+      // contra el rango rechazado.
+      const conflictosCapaCruzada = await detectarYRegistrarConflictosCapaCruzada(
+        ejecutor,
+        fila.unidad_id,
+        ocupacionId,
+        rangoAnterior,
+      );
+
       await ejecutor.exec("COMMIT");
-      return { ocupacionId, rangoAnterior, rangoEfectivo: rangoAnterior, conflicto };
+      return { ocupacionId, rangoAnterior, rangoEfectivo: rangoAnterior, conflicto, conflictosCapaCruzada };
     }
 
     await ejecutor.query(
@@ -417,8 +515,20 @@ export async function modificarFechasReserva(
        VALUES ($1, 'modificar_disponibilidad', $2::jsonb)`,
       [ocupacionId, JSON.stringify({ rangoAnterior, rangoNuevo: nuevoRango })],
     );
+
+    // D-DSD-02: una ampliación/movimiento de fechas (BLUEPRINT §4.4) que
+    // aterriza sobre un bloqueo de propietario/mantenimiento/buffer se
+    // acepta igual (mismo criterio que crearReservaConfirmada) y se
+    // registra como conflicto de capa cruzada.
+    const conflictosCapaCruzada = await detectarYRegistrarConflictosCapaCruzada(
+      ejecutor,
+      fila.unidad_id,
+      ocupacionId,
+      nuevoRango,
+    );
+
     await ejecutor.exec("COMMIT");
-    return { ocupacionId, rangoAnterior, rangoEfectivo: nuevoRango, conflicto: null };
+    return { ocupacionId, rangoAnterior, rangoEfectivo: nuevoRango, conflicto: null, conflictosCapaCruzada };
   } catch (error) {
     await ejecutor.exec("ROLLBACK");
     throw error;

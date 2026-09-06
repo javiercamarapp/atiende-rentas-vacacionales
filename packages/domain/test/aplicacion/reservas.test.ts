@@ -175,6 +175,45 @@ describe("crearReservaConfirmada (H-017)", () => {
     expect(a.conflicto).toBeNull();
     expect(b.conflicto).toBeNull();
   });
+
+  it("D-DSD-02 (regresión): un bloqueo de mantenimiento ya existente + reserva de canal que lo solapa después SÍ genera conflicto capa_cruzada, y la reserva se acepta igual", async () => {
+    await crearBloqueo(fixture.ejecutor, {
+      unidadId: fixture.unidadId,
+      rango: { inicio: "2026-09-01", fin: "2026-09-10" },
+      razon: "MANTENIMIENTO",
+    });
+
+    const resultado = await crearReservaConfirmada(fixture.ejecutor, {
+      unidadId: fixture.unidadId,
+      rango: { inicio: "2026-09-03", fin: "2026-09-06" },
+      estado: "confirmado",
+      bloqueante: true,
+      externalId: "reserva-solapa-mantenimiento@canal-externo.com",
+    });
+
+    // La reserva de canal se acepta SIEMPRE (REQ-000: nunca se cancela
+    // unilateralmente una reserva ya confirmada por el canal externo) — el
+    // EXCLUDE de BD ni siquiera dispara (capa='bloqueo' nunca participa),
+    // así que `conflicto` (overbooking reserva-vs-reserva) sigue null.
+    expect(resultado.conflicto).toBeNull();
+    expect(resultado.conflictosCapaCruzada).toHaveLength(1);
+    expect(resultado.conflictosCapaCruzada[0]!.tipo).toBe("capa_cruzada");
+
+    const estado = await estadoDe(fixture.ejecutor, resultado.ocupacionId);
+    expect(estado.estado).toBe("confirmado");
+
+    const conflictos = await fixture.ejecutor.query<{ tipo: string }>(
+      `SELECT tipo FROM conflicto_calendario WHERE unidad_id = $1`,
+      [fixture.unidadId],
+    );
+    expect(conflictos.rows).toEqual([{ tipo: "capa_cruzada" }]);
+
+    const outbox = await fixture.ejecutor.query<{ tipo_evento: string }>(
+      `SELECT tipo_evento FROM outbox_evento WHERE ocupacion_unidad_id = $1 ORDER BY tipo_evento`,
+      [resultado.ocupacionId],
+    );
+    expect(outbox.rows.map((r) => r.tipo_evento)).toEqual(["alerta_capa_cruzada", "cerrar_disponibilidad"]);
+  });
 });
 
 describe("cancelarOcupacion (H-018)", () => {
@@ -285,6 +324,30 @@ describe("modificarFechasReserva (H-019, H-020)", () => {
     });
     expect(resultado.conflicto).toBeNull();
     expect(resultado.rangoEfectivo).toEqual({ inicio: "2026-06-08", fin: "2026-06-17" });
+  });
+
+  it("D-DSD-02 (regresión): ampliar una reserva hacia un bloqueo de propietario ya existente SÍ genera conflicto capa_cruzada, y la ampliación se acepta igual", async () => {
+    const reserva = await crearReservaConfirmada(fixture.ejecutor, {
+      unidadId: fixture.unidadId,
+      rango: { inicio: "2026-06-10", fin: "2026-06-15" },
+      estado: "confirmado",
+      bloqueante: true,
+    });
+    await crearBloqueo(fixture.ejecutor, {
+      unidadId: fixture.unidadId,
+      rango: { inicio: "2026-06-15", fin: "2026-06-20" },
+      razon: "BLOQUEO_PROPIETARIO",
+    });
+
+    const resultado = await modificarFechasReserva(fixture.ejecutor, reserva.ocupacionId, {
+      inicio: "2026-06-10",
+      fin: "2026-06-18",
+    });
+
+    expect(resultado.conflicto).toBeNull();
+    expect(resultado.rangoEfectivo).toEqual({ inicio: "2026-06-10", fin: "2026-06-18" });
+    expect(resultado.conflictosCapaCruzada).toHaveLength(1);
+    expect(resultado.conflictosCapaCruzada[0]!.tipo).toBe("capa_cruzada");
   });
 
   it("reduce una reserva sin conflicto", async () => {
