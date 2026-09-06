@@ -238,5 +238,128 @@ export const QueryRangoCalendario = z.object({
 });
 export type QueryRangoCalendario = z.infer<typeof QueryRangoCalendario>;
 
+// ---------------------------------------------------------------------------
+// Finanzas / owners / statements (Lote 7, BACKLOG E10, RV12)
+// ---------------------------------------------------------------------------
+
+const FechaIso = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "fecha ISO YYYY-MM-DD");
+const CodigoMonedaContrato = z.string().regex(/^[A-Z]{3}$/, "código de moneda ISO 4217, ej. MXN");
+const CanalCodigoContrato = z.enum(["airbnb", "vrbo", "booking", "manual"]);
+const BasisPoints = z.number().int().min(0).max(10000);
+
+export const CuerpoReglaComisionCanal = z.object({
+  canalCodigo: CanalCodigoContrato,
+  propiedadId: z.string().uuid().optional(),
+  yaNetoDeComision: z.boolean(),
+  comisionBasisPoints: BasisPoints,
+  fuente: z.string().min(1, "toda cifra de comisión debe declarar su fuente (RV12 R1/R5)"),
+  vigenteDesde: FechaIso.optional(),
+});
+export type CuerpoReglaComisionCanal = z.infer<typeof CuerpoReglaComisionCanal>;
+
+export const CuerpoLineaGasto = z.object({
+  tipo: z.string().min(1),
+  descripcion: z.string().optional(),
+  montoCentavos: z.number().int().min(0),
+});
+export type CuerpoLineaGasto = z.infer<typeof CuerpoLineaGasto>;
+
+export const CuerpoLineaImpuesto = z.object({
+  tipo: z.string().min(1),
+  montoCentavos: z.number().int().min(0),
+  nota: z.string().optional(),
+});
+export type CuerpoLineaImpuesto = z.infer<typeof CuerpoLineaImpuesto>;
+
+export const CuerpoMovimientoReserva = z.object({
+  moneda: CodigoMonedaContrato,
+  montoBrutoCentavos: z.number().int().min(0),
+  comisionGestorBasisPoints: BasisPoints,
+  comisionGestorBase: z.enum(["bruto", "neto_de_canal"]).default("neto_de_canal"),
+  gastos: z.array(CuerpoLineaGasto).default([]),
+  impuestos: z.array(CuerpoLineaImpuesto).default([]),
+});
+export type CuerpoMovimientoReserva = z.infer<typeof CuerpoMovimientoReserva>;
+
+export const CuerpoGenerarStatement = z.object({
+  ownerId: z.string().uuid(),
+  periodoInicio: FechaIso,
+  periodoFin: FechaIso,
+  motivoVersion: z.string().optional(),
+});
+export type CuerpoGenerarStatement = z.infer<typeof CuerpoGenerarStatement>;
+
+export const CuerpoLineaPayoutImportada = z.object({
+  referenciaExternaReserva: z.string().optional(),
+  montoCentavos: z.number().int(),
+});
+
+export const CuerpoImportarPayout = z.object({
+  canalCodigo: CanalCodigoContrato,
+  moneda: CodigoMonedaContrato,
+  fechaPayout: FechaIso,
+  referenciaExterna: z.string().optional(),
+  lineas: z.array(CuerpoLineaPayoutImportada).min(1),
+});
+export type CuerpoImportarPayout = z.infer<typeof CuerpoImportarPayout>;
+
+// ---------------------------------------------------------------------------
+// Pricing básico (Lote 7, BACKLOG E11, RV13)
+// ---------------------------------------------------------------------------
+
+export const CuerpoTarifaBase = z.object({
+  precioNocheCentavos: z.number().int().min(0),
+  moneda: CodigoMonedaContrato,
+  vigenteDesde: FechaIso.optional(),
+});
+export type CuerpoTarifaBase = z.infer<typeof CuerpoTarifaBase>;
+
+export const CuerpoTarifaTemporada = z.object({
+  nombre: z.string().min(1),
+  rango: RangoFechasContrato,
+  precioNocheCentavos: z.number().int().min(0),
+  moneda: CodigoMonedaContrato,
+});
+export type CuerpoTarifaTemporada = z.infer<typeof CuerpoTarifaTemporada>;
+
+export const CuerpoDescuentoDuracion = z.object({
+  nochesMinimas: z.number().int().min(1),
+  porcentajeDescuentoBasisPoints: BasisPoints,
+  fuente: z.string().min(1, "RV13-R-02: todo umbral de descuento debe declarar su fuente"),
+});
+export type CuerpoDescuentoDuracion = z.infer<typeof CuerpoDescuentoDuracion>;
+
+export const CuerpoMinStay = z.object({
+  rango: RangoFechasContrato,
+  diaSemanaCheckIn: z.number().int().min(0).max(6).nullable().default(null),
+  nochesMinimas: z.number().int().min(1),
+});
+export type CuerpoMinStay = z.infer<typeof CuerpoMinStay>;
+
+export const CuerpoReglaCanalPricing = z.object({
+  canalCodigo: CanalCodigoContrato,
+  markupBasisPoints: BasisPoints,
+  activo: z.boolean().default(false),
+});
+export type CuerpoReglaCanalPricing = z.infer<typeof CuerpoReglaCanalPricing>;
+
+export const CuerpoCotizar = z.object({
+  unidadId: z.string().uuid(),
+  rango: RangoFechasContrato,
+  canalCodigo: CanalCodigoContrato.optional(),
+});
+export type CuerpoCotizar = z.infer<typeof CuerpoCotizar>;
+
+// ---------------------------------------------------------------------------
+// Reporting (Lote 7, BACKLOG E12)
+// ---------------------------------------------------------------------------
+
+export const QueryReportePeriodo = z.object({
+  desde: FechaIso,
+  hasta: FechaIso,
+  propiedadId: z.string().uuid().optional(),
+});
+export type QueryReportePeriodo = z.infer<typeof QueryReportePeriodo>;
+
 export { CODIGOS_ERROR, ErrorDominio } from "./errores.js";
 export type { CodigoError, CuerpoErrorHttp } from "./errores.js";

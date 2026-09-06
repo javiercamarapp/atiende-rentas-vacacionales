@@ -37,6 +37,10 @@ tags:
   - name: canales
   - name: conflictos
   - name: auditoria
+  - name: operacion
+  - name: finanzas
+  - name: pricing
+  - name: reportes
 
 paths:
   /auth/login:
@@ -347,6 +351,607 @@ paths:
               schema: { $ref: "#/components/schemas/RespuestaAuditoriaPaginada" }
         "403": { $ref: "#/components/responses/RolForbidden" }
 
+  # ---------------------------------------------------------------------
+  # Operación: limpieza/mantenimiento/inspección (Lote 5, BACKLOG E08).
+  # Rol `limpieza` solo ve/opera sus propias tareas asignadas (RLS,
+  # packages/db migración 0036); propietario tiene solo lectura de la
+  # operación de sus propias unidades.
+  # ---------------------------------------------------------------------
+  /operacion/tareas:
+    get:
+      tags: [operacion]
+      summary: Lista tareas operativas (filtrable por unidadId/estado/programadaPara)
+      parameters:
+        - name: unidadId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: estado
+          in: query
+          schema: { type: string }
+        - name: programadaPara
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Lista de tareas visibles para el rol actual (filtrado por RLS)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tareas:
+                    type: array
+                    items: { $ref: "#/components/schemas/TareaOperativa" }
+    post:
+      tags: [operacion]
+      summary: Crea una tarea MANUAL (mantenimiento/inspección) — 'limpieza' siempre se genera vía checkout (H-049)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoCrearTareaOperativa" }
+      responses:
+        "201":
+          description: Tarea creada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TareaOperativa" }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+
+  /operacion/tareas/calendario:
+    get:
+      tags: [operacion]
+      summary: Turnos por día (H-049) — agrupa tareas por `programadaPara` dentro de [desde, hasta]
+      parameters:
+        - name: desde
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: hasta
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: unidadId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Turnos agrupados por día
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  turnos:
+                    type: array
+                    items: { $ref: "#/components/schemas/TurnoDia" }
+
+  /operacion/tareas/procesar-eventos:
+    post:
+      tags: [operacion]
+      summary: Dispara manualmente el consumidor de outbox_evento (H-049) — genera/reprograma/cancela tareas de limpieza según checkouts confirmados/modificados/cancelados
+      responses:
+        "200":
+          description: Resumen de eventos procesados
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  procesados: { type: integer }
+                  tareasCreadas: { type: array, items: { type: string, format: uuid } }
+                  tareasReprogramadas: { type: array, items: { type: string, format: uuid } }
+                  tareasCanceladas: { type: array, items: { type: string, format: uuid } }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+
+  /operacion/tareas/{id}:
+    get:
+      tags: [operacion]
+      summary: Detalle de una tarea con su checklist
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Tarea con checklist
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/TareaOperativa"
+                  - type: object
+                    properties:
+                      checklist:
+                        type: array
+                        items: { $ref: "#/components/schemas/ChecklistItem" }
+        "404": { description: Tarea no encontrada o sin acceso (RLS) }
+
+  /operacion/tareas/{id}/asignar:
+    patch:
+      tags: [operacion]
+      summary: Asigna la tarea a personal interno o proveedor externo (H-053)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoAsignarTarea" }
+      responses:
+        "200": { description: Tarea asignada }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+
+  /operacion/tareas/{id}/checklist/{itemId}/completar:
+    post:
+      tags: [operacion]
+      summary: Completa un ítem del checklist con timestamp y fotos opcionales (H-051)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: itemId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoCompletarChecklistItem" }
+      responses:
+        "204": { description: Ítem completado }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+
+  /operacion/tareas/{id}/completar:
+    post:
+      tags: [operacion]
+      summary: Completa la tarea — exige checklist completo (409 si incompleto, REQ-113) y descuenta inventario configurado (H-052)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoCompletarTarea" }
+      responses:
+        "200": { description: Tarea completada, con alertas de stock bajo si aplica }
+        "409": { description: Checklist incompleto — la tarea queda en estado 'bloqueada' }
+
+  /operacion/incidencias:
+    get:
+      tags: [operacion]
+      summary: Lista incidencias de mantenimiento (RLS limita 'limpieza' a las suyas)
+      parameters:
+        - name: unidadId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Lista de incidencias
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  incidencias:
+                    type: array
+                    items: { $ref: "#/components/schemas/Incidencia" }
+    post:
+      tags: [operacion]
+      summary: Reporta una incidencia de mantenimiento (H-055) — severidad 'grave' con propuestaBloqueoRango queda en estado 'bloqueo_propuesto'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoCrearIncidencia" }
+      responses:
+        "201":
+          description: Incidencia registrada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Incidencia" }
+
+  /operacion/incidencias/{id}/confirmar-bloqueo:
+    post:
+      tags: [operacion]
+      summary: |
+        Confirma el bloqueo de mantenimiento propuesto por una incidencia grave
+        (H-055, REQ-118) — decisión de producto explícita, NUNCA automática:
+        exige un `confirmadoPor` humano (el usuario autenticado) y delega en
+        `crearBloqueo` de Lote 1, que jamás cancela reservas existentes; un
+        solape con una reserva confirmada se registra como conflicto
+        `capa_cruzada`, nunca rechaza la operación.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rango: { $ref: "#/components/schemas/RangoFechas" }
+      responses:
+        "200": { description: Bloqueo de mantenimiento confirmado y creado en el calendario }
+        "422": { description: La incidencia no es severidad 'grave', o no hay rango propuesto/provisto }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+
+  /operacion/inventario:
+    get:
+      tags: [operacion]
+      summary: Inventario mínimo de ropa blanca/consumibles por unidad (H-052)
+      parameters:
+        - name: unidadId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Lista de ítems de inventario
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/ItemInventario" }
+    post:
+      tags: [operacion]
+      summary: Registra un ítem de inventario para una unidad
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoCrearItemInventario" }
+      responses:
+        "201":
+          description: Ítem creado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ItemInventario" }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+
+  # -------------------------------------------------------------------
+  # Finanzas / owners / statements (Lote 7, BACKLOG E10, RV12)
+  # -------------------------------------------------------------------
+  /finanzas/reglas-comision:
+    get:
+      tags: [finanzas]
+      summary: Reglas de comisión de canal configurables por tenant/propiedad (H-063/H-065)
+      responses:
+        "200":
+          description: Lista de reglas
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reglas:
+                    type: array
+                    items: { $ref: "#/components/schemas/ReglaComisionCanal" }
+    post:
+      tags: [finanzas]
+      summary: Crea/versiona una regla de comisión de canal (nunca hardcodeada, RV12 R1/R5)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoReglaComisionCanal" }
+      responses:
+        "201": { description: Regla creada }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+
+  /finanzas/reservas/{ocupacionId}/movimiento:
+    post:
+      tags: [finanzas]
+      summary: Calcula y persiste el movimiento financiero de una reserva (H-062/H-063, Finanzas-1 — nunca doble descuento)
+      parameters:
+        - name: ocupacionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoMovimientoReserva" }
+      responses:
+        "201": { description: Movimiento calculado y persistido }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+
+  /finanzas/reservas/{ocupacionId}:
+    get:
+      tags: [finanzas]
+      summary: Lee el movimiento financiero de una reserva + alerta de retención (H-067, sin calcular impuestos, B-005)
+      parameters:
+        - name: ocupacionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Movimiento financiero }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+
+  /finanzas/statements/generar:
+    post:
+      tags: [finanzas]
+      summary: Genera (idempotente y versionado) el owner statement de un periodo (H-062)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoGenerarStatement" }
+      responses:
+        "201": { description: Nueva versión creada }
+        "200": { description: Contenido idéntico a la versión vigente — no se creó una nueva versión }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+
+  /finanzas/statements:
+    get:
+      tags: [finanzas]
+      summary: Lista la última versión de cada owner statement visible para el rol actual (propietario solo ve los suyos)
+      parameters:
+        - name: ownerId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Lista de statements }
+
+  /finanzas/statements/{id}:
+    get:
+      tags: [finanzas]
+      summary: Detalle de un owner statement con sus líneas
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Statement con líneas }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+
+  /finanzas/statements/{id}/descarga:
+    get:
+      tags: [finanzas]
+      summary: Descarga HTML imprimible del statement (dev — nunca un CFDI ni comprobante fiscal)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: HTML del statement
+          content:
+            text/html: { schema: { type: string } }
+
+  /finanzas/payouts:
+    post:
+      tags: [finanzas]
+      summary: Importa un payout de canal y concilia sus líneas contra reservas (H-064, Finanzas-2)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoImportarPayout" }
+      responses:
+        "201": { description: Payout importado y conciliado }
+
+  /finanzas/payouts/{id}:
+    get:
+      tags: [finanzas]
+      summary: Detalle de un payout con el estado de conciliación de cada línea
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Payout con líneas }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+
+  /finanzas/alerta-fiscal/{unidadId}:
+    get:
+      tags: [finanzas]
+      summary: Alerta de retención fiscal por RFC ausente — SIN calcular ningún monto (H-067, B-005)
+      parameters:
+        - name: unidadId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Alerta fiscal }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+
+  # -------------------------------------------------------------------
+  # Pricing básico (Lote 7, BACKLOG E11, RV13)
+  # -------------------------------------------------------------------
+  /pricing/unidades/{unidadId}:
+    get:
+      tags: [pricing]
+      summary: Contexto de pricing completo de una unidad (base, temporadas, descuentos, min-stay)
+      parameters:
+        - name: unidadId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Contexto de pricing }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+
+  /pricing/unidades/{unidadId}/base:
+    post:
+      tags: [pricing]
+      summary: Fija el precio base por noche de una unidad
+      parameters:
+        - name: unidadId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoTarifaBase" }
+      responses:
+        "201": { description: Tarifa base creada/actualizada }
+
+  /pricing/unidades/{unidadId}/temporadas:
+    post:
+      tags: [pricing]
+      summary: Añade una temporada con precio propio (H-068)
+      parameters:
+        - name: unidadId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoTarifaTemporada" }
+      responses:
+        "201": { description: Temporada creada }
+
+  /pricing/unidades/{unidadId}/descuentos-duracion:
+    post:
+      tags: [pricing]
+      summary: Descuento por duración de estancia (7/28 noches como dato con fuente, RV13-R-02)
+      parameters:
+        - name: unidadId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoDescuentoDuracion" }
+      responses:
+        "201": { description: Descuento creado/actualizado }
+
+  /pricing/unidades/{unidadId}/min-stay:
+    post:
+      tags: [pricing]
+      summary: Regla de estancia mínima por rango de fechas y día de check-in (RV13-R-03)
+      parameters:
+        - name: unidadId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoMinStay" }
+      responses:
+        "201": { description: Regla de min-stay creada }
+
+  /pricing/unidades/{unidadId}/reglas-canal:
+    post:
+      tags: [pricing]
+      summary: Markup por canal (comisión) para pricing publicado (RV13-R-04)
+      parameters:
+        - name: unidadId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoReglaCanalPricing" }
+      responses:
+        "201": { description: Regla de canal creada/actualizada }
+
+  /pricing/unidades/{unidadId}/publicacion/{canalCodigo}:
+    get:
+      tags: [pricing]
+      summary: Evalúa si las tarifas se pueden publicar hacia un canal (SOLO si declara ratesPush:true, H-069)
+      parameters:
+        - name: unidadId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: canalCodigo
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: "Evaluación { puedePublicar, mensaje } — hoy siempre false: ningún adaptador real de Fase 2 declara ratesPush" }
+
+  /pricing/cotizar:
+    post:
+      tags: [pricing]
+      summary: Cotización determinista de una estadía para reserva directa (H-068)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoCotizar" }
+      responses:
+        "200": { description: Cotización calculada }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+        "422": { description: Rango inválido o sin noches }
+
+  # -------------------------------------------------------------------
+  # Reporting (Lote 7, BACKLOG E12) — solo lectura de reserva/statement,
+  # sin duplicar lógica de cálculo.
+  # -------------------------------------------------------------------
+  /reportes/ocupacion:
+    get:
+      tags: [reportes]
+      summary: Ocupación/ADR/RevPAR por unidad en un rango (H-072/H-073)
+      parameters:
+        - name: desde
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: hasta
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: propiedadId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: formato
+          in: query
+          schema: { type: string, enum: [json, csv] }
+      responses:
+        "200":
+          description: Reporte de ocupación (JSON o CSV descargable según `formato`)
+
+  /reportes/ingresos:
+    get:
+      tags: [reportes]
+      summary: Ingresos agrupados por canal/propiedad/mes (H-072)
+      parameters:
+        - name: desde
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: hasta
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: propiedadId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: formato
+          in: query
+          schema: { type: string, enum: [json, csv] }
+      responses:
+        "200": { description: Reporte de ingresos (JSON o CSV descargable) }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -611,3 +1216,270 @@ components:
         entradas:
           type: array
           items: { $ref: "#/components/schemas/EntradaAuditoria" }
+
+    # -----------------------------------------------------------------
+    # Operación: limpieza/mantenimiento/inspección (Lote 5, BACKLOG E08)
+    # -----------------------------------------------------------------
+    TareaOperativa:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        unidadId: { type: string, format: uuid }
+        ocupacionUnidadId: { type: string, format: uuid, nullable: true }
+        bufferOcupacionId: { type: string, format: uuid, nullable: true }
+        tipo: { type: string, enum: [limpieza, mantenimiento, inspeccion] }
+        estado: { type: string, enum: [pendiente, asignada, en_progreso, completada, bloqueada, cancelada] }
+        prioridad: { type: string, enum: [baja, media, alta, urgente] }
+        asignadoA: { type: string, format: uuid, nullable: true }
+        esProveedorExterno: { type: boolean }
+        programadaPara: { type: string, format: date }
+        slaVenceEn: { type: string, format: date-time, nullable: true }
+        completadaEn: { type: string, format: date-time, nullable: true }
+        notas: { type: string, nullable: true }
+
+    CuerpoCrearTareaOperativa:
+      type: object
+      required: [unidadId, tipo, programadaPara]
+      properties:
+        unidadId: { type: string, format: uuid }
+        tipo: { type: string, enum: [mantenimiento, inspeccion] }
+        prioridad: { type: string, enum: [baja, media, alta, urgente] }
+        programadaPara: { type: string, format: date }
+        notas: { type: string }
+
+    CuerpoAsignarTarea:
+      type: object
+      required: [asignadoA]
+      properties:
+        asignadoA: { type: string, format: uuid }
+        esProveedorExterno: { type: boolean, default: false }
+
+    ChecklistItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tareaId: { type: string, format: uuid }
+        descripcion: { type: string }
+        orden: { type: integer }
+        completado: { type: boolean }
+        completadoEn: { type: string, format: date-time, nullable: true }
+        completadoPor: { type: string, format: uuid, nullable: true }
+
+    CuerpoCompletarChecklistItem:
+      type: object
+      properties:
+        fotos:
+          type: array
+          items:
+            type: object
+            properties:
+              rutaAlmacenamiento: { type: string, description: "Metadato de almacenamiento local de desarrollo (dev-local), REQ-113" }
+
+    CuerpoCompletarTarea:
+      type: object
+      properties:
+        consumos:
+          type: array
+          items:
+            type: object
+            properties:
+              itemInventarioId: { type: string, format: uuid }
+              cantidad: { type: number }
+
+    TurnoDia:
+      type: object
+      properties:
+        fecha: { type: string, format: date }
+        tareas:
+          type: array
+          items: { $ref: "#/components/schemas/TareaOperativa" }
+
+    Incidencia:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        unidadId: { type: string, format: uuid }
+        severidad: { type: string, enum: [leve, moderada, grave] }
+        titulo: { type: string }
+        descripcion: { type: string, nullable: true }
+        estado:
+          type: string
+          enum: [abierta, en_revision, bloqueo_propuesto, bloqueo_confirmado, resuelta, descartada]
+        requiereConfirmacionHumana: { type: boolean }
+
+    CuerpoCrearIncidencia:
+      type: object
+      required: [unidadId, severidad, titulo]
+      properties:
+        unidadId: { type: string, format: uuid }
+        tareaOrigenId: { type: string, format: uuid }
+        severidad: { type: string, enum: [leve, moderada, grave] }
+        titulo: { type: string }
+        descripcion: { type: string }
+        propuestaBloqueoRango: { $ref: "#/components/schemas/RangoFechas" }
+
+    ItemInventario:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        unidadId: { type: string, format: uuid }
+        nombre: { type: string }
+        categoria: { type: string, enum: [ropa_blanca, consumible, otro] }
+        cantidadActual: { type: number }
+        umbralMinimo: { type: number }
+        unidadMedida: { type: string }
+        stockBajo: { type: boolean }
+
+    CuerpoCrearItemInventario:
+      type: object
+      required: [unidadId, nombre]
+      properties:
+        unidadId: { type: string, format: uuid }
+        nombre: { type: string }
+        categoria: { type: string, enum: [ropa_blanca, consumible, otro], default: consumible }
+        cantidadActual: { type: number, default: 0 }
+        umbralMinimo: { type: number, default: 0 }
+        unidadMedida: { type: string, default: pza }
+
+    # -----------------------------------------------------------------
+    # Finanzas / owners / statements (Lote 7)
+    # -----------------------------------------------------------------
+    ReglaComisionCanal:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        canalCodigo: { type: string, enum: [airbnb, vrbo, booking, manual] }
+        propiedadId: { type: string, format: uuid, nullable: true }
+        yaNetoDeComision: { type: boolean, description: "true = el canal ya entrega el monto neto de su comisión (caso Airbnb confirmado, L-RV12-02)" }
+        comisionBasisPoints: { type: integer, minimum: 0, maximum: 10000 }
+        fuente: { type: string, description: "Cita obligatoria de la fuente/fecha de la cifra (RV12 R1/R5) — nunca un valor mudo" }
+        vigenteDesde: { type: string, format: date }
+
+    CuerpoReglaComisionCanal:
+      type: object
+      required: [canalCodigo, yaNetoDeComision, comisionBasisPoints, fuente]
+      properties:
+        canalCodigo: { type: string, enum: [airbnb, vrbo, booking, manual] }
+        propiedadId: { type: string, format: uuid }
+        yaNetoDeComision: { type: boolean }
+        comisionBasisPoints: { type: integer, minimum: 0, maximum: 10000 }
+        fuente: { type: string }
+        vigenteDesde: { type: string, format: date }
+
+    CuerpoLineaGasto:
+      type: object
+      required: [tipo, montoCentavos]
+      properties:
+        tipo: { type: string }
+        descripcion: { type: string }
+        montoCentavos: { type: integer, minimum: 0 }
+
+    CuerpoLineaImpuesto:
+      type: object
+      required: [tipo, montoCentavos]
+      properties:
+        tipo: { type: string }
+        montoCentavos: { type: integer, minimum: 0 }
+        nota:
+          type: string
+          description: "Siempre tratado como revisión legal/fiscal pendiente (B-005) — nunca una cifra definitiva"
+
+    CuerpoMovimientoReserva:
+      type: object
+      required: [moneda, montoBrutoCentavos, comisionGestorBasisPoints]
+      properties:
+        moneda: { type: string, pattern: "^[A-Z]{3}$" }
+        montoBrutoCentavos: { type: integer, minimum: 0 }
+        comisionGestorBasisPoints: { type: integer, minimum: 0, maximum: 10000 }
+        comisionGestorBase: { type: string, enum: [bruto, neto_de_canal], default: neto_de_canal }
+        gastos:
+          type: array
+          items: { $ref: "#/components/schemas/CuerpoLineaGasto" }
+        impuestos:
+          type: array
+          items: { $ref: "#/components/schemas/CuerpoLineaImpuesto" }
+
+    CuerpoGenerarStatement:
+      type: object
+      required: [ownerId, periodoInicio, periodoFin]
+      properties:
+        ownerId: { type: string, format: uuid }
+        periodoInicio: { type: string, format: date }
+        periodoFin: { type: string, format: date }
+        motivoVersion: { type: string }
+
+    CuerpoImportarPayout:
+      type: object
+      required: [canalCodigo, moneda, fechaPayout, lineas]
+      properties:
+        canalCodigo: { type: string, enum: [airbnb, vrbo, booking, manual] }
+        moneda: { type: string, pattern: "^[A-Z]{3}$" }
+        fechaPayout: { type: string, format: date }
+        referenciaExterna: { type: string }
+        lineas:
+          type: array
+          items:
+            type: object
+            required: [montoCentavos]
+            properties:
+              referenciaExternaReserva: { type: string }
+              montoCentavos: { type: integer }
+
+    AlertaRetencionFiscal:
+      type: object
+      properties:
+        rfcRegistrado: { type: boolean }
+        requiereRevisionFiscal: { type: boolean, enum: [true], description: "Siempre true — B-005, ninguna cifra fiscal es definitiva sin revisión legal" }
+        mensaje: { type: string }
+
+    # -----------------------------------------------------------------
+    # Pricing básico (Lote 7)
+    # -----------------------------------------------------------------
+    CuerpoTarifaBase:
+      type: object
+      required: [precioNocheCentavos, moneda]
+      properties:
+        precioNocheCentavos: { type: integer, minimum: 0 }
+        moneda: { type: string, pattern: "^[A-Z]{3}$" }
+        vigenteDesde: { type: string, format: date }
+
+    CuerpoTarifaTemporada:
+      type: object
+      required: [nombre, rango, precioNocheCentavos, moneda]
+      properties:
+        nombre: { type: string }
+        rango: { $ref: "#/components/schemas/RangoFechas" }
+        precioNocheCentavos: { type: integer, minimum: 0 }
+        moneda: { type: string, pattern: "^[A-Z]{3}$" }
+
+    CuerpoDescuentoDuracion:
+      type: object
+      required: [nochesMinimas, porcentajeDescuentoBasisPoints, fuente]
+      properties:
+        nochesMinimas: { type: integer, minimum: 1, description: "Umbrales estándar RV13: 7 (semanal), 28 (mensual)" }
+        porcentajeDescuentoBasisPoints: { type: integer, minimum: 0, maximum: 10000 }
+        fuente: { type: string }
+
+    CuerpoMinStay:
+      type: object
+      required: [rango, nochesMinimas]
+      properties:
+        rango: { $ref: "#/components/schemas/RangoFechas" }
+        diaSemanaCheckIn: { type: integer, minimum: 0, maximum: 6, nullable: true, description: "0=domingo..6=sábado; null=todos los días" }
+        nochesMinimas: { type: integer, minimum: 1 }
+
+    CuerpoReglaCanalPricing:
+      type: object
+      required: [canalCodigo, markupBasisPoints]
+      properties:
+        canalCodigo: { type: string, enum: [airbnb, vrbo, booking, manual] }
+        markupBasisPoints: { type: integer, minimum: 0, maximum: 10000 }
+        activo: { type: boolean, default: false }
+
+    CuerpoCotizar:
+      type: object
+      required: [unidadId, rango]
+      properties:
+        unidadId: { type: string, format: uuid }
+        rango: { $ref: "#/components/schemas/RangoFechas" }
+        canalCodigo: { type: string, enum: [airbnb, vrbo, booking, manual] }

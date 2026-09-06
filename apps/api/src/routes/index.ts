@@ -6,7 +6,10 @@ import { crearRutasAuth } from "./auth.js";
 import { crearRutasBloqueos } from "./bloqueos.js";
 import { crearRutasCanales } from "./canales.js";
 import { crearRutasConflictos } from "./conflictos.js";
+import { crearRutasFinanzas } from "./finanzas.js";
+import { crearRutasPricing } from "./pricing.js";
 import { crearRutasPropiedades } from "./propiedades.js";
+import { crearRutasReportes } from "./reportes.js";
 import { crearRutasReservas } from "./reservas.js";
 import { crearRutasTenants } from "./tenants.js";
 import { crearRutasUnidades } from "./unidades.js";
@@ -36,6 +39,9 @@ export function registrarRutas(app: Hono, deps: DependenciasRutas): Hono {
   app.route("/conflictos", crearRutasConflictos(pool, jwtSecret));
   app.route("/canales", crearRutasCanales(pool, jwtSecret, keyring));
   app.route("/auditoria", crearRutasAuditoria(pool, jwtSecret));
+  app.route("/finanzas", crearRutasFinanzas(pool, jwtSecret));
+  app.route("/pricing", crearRutasPricing(pool, jwtSecret));
+  app.route("/reportes", crearRutasReportes(pool, jwtSecret));
 
   return app;
 }
