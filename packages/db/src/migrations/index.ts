@@ -68,6 +68,18 @@ import { migracion0112CanalExpediaAgodaSiteminder } from "./0112_canal_expedia_a
 // 0110-0119 ya está tomado por el Lote 3.4 concurrente (RV22).
 import { migracion0120NotificacionesMulticanal } from "./0120_notificaciones_multicanal.js";
 import { migracion0111AlertaParidadPrecio } from "./0111_alerta_paridad_precio.js";
+// 0121-0124: Lote 3.3 (Fase 3, RV16) — onboarding self-serve +
+// planes/facturación. NOTA DE CONCURRENCIA: el comentario de arriba
+// reserva 0120-0129 a Lote 3.0, pero el encargo de Lote 3.3 asignó ese
+// mismo rango a este lote — 0120 ya estaba tomado por
+// migracion0120NotificacionesMulticanal al momento de escribir esto, así
+// que 0121-0124 son los siguientes libres; si Lote 3.0 también necesita
+// ids en este rango, uno de los dos lotes deberá renumerar antes de
+// converger en `main` (a criterio del orquestador, no de este archivo).
+import { migracion0121OnboardingFunciones } from "./0121_onboarding_funciones.js";
+import { migracion0122FacturacionEsquema } from "./0122_facturacion_esquema.js";
+import { migracion0123FacturacionRls } from "./0123_facturacion_rls.js";
+import { migracion0124FacturacionWebhook } from "./0124_facturacion_webhook.js";
 
 // Orden fijo, nunca reordenar migraciones ya aplicadas en algún entorno
 // (patrón expand/contract real llega en Lote 10 — H-088). Cada lote
@@ -173,4 +185,8 @@ export const migraciones: Migracion[] = [
   migracion0111AlertaParidadPrecio,
   migracion0112CanalExpediaAgodaSiteminder,
   migracion0120NotificacionesMulticanal,
+  migracion0121OnboardingFunciones,
+  migracion0122FacturacionEsquema,
+  migracion0123FacturacionRls,
+  migracion0124FacturacionWebhook,
 ];
