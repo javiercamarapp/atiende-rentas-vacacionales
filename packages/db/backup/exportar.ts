@@ -13,6 +13,9 @@ interface FilaFk extends FilaSql {
 
 interface FilaColumna extends FilaSql {
   column_name: string;
+  // 'ARRAY' para columnas de ARRAY nativo de Postgres (text[], int[], ...)
+  // — ver comentario de cabecera de tiposBackup.ts (H-096+).
+  data_type: string;
 }
 
 async function listarTablasBase(ejecutor: EjecutorSql): Promise<string[]> {
@@ -72,14 +75,23 @@ export function ordenTopologicoTablas(tablas: string[], dependencias: Array<[str
   return [...orden, ...restantes];
 }
 
-async function columnasDeTabla(ejecutor: EjecutorSql, tabla: string): Promise<string[]> {
+interface ColumnasDeTabla {
+  columnas: string[];
+  /** Nombres de columna cuyo `data_type` es 'ARRAY' — ver tiposBackup.ts. */
+  columnasArray: string[];
+}
+
+async function columnasDeTabla(ejecutor: EjecutorSql, tabla: string): Promise<ColumnasDeTabla> {
   const resultado = await ejecutor.query<FilaColumna>(
-    `SELECT column_name FROM information_schema.columns
+    `SELECT column_name, data_type FROM information_schema.columns
      WHERE table_schema = 'public' AND table_name = $1
      ORDER BY ordinal_position`,
     [tabla],
   );
-  return resultado.rows.map((f) => f.column_name);
+  return {
+    columnas: resultado.rows.map((f) => f.column_name),
+    columnasArray: resultado.rows.filter((f) => f.data_type === "ARRAY").map((f) => f.column_name),
+  };
 }
 
 export interface OpcionesExportarBackup {
@@ -110,16 +122,17 @@ export async function exportarBackupLogico(
 
   const tablas: TablaBackup[] = [];
   for (const nombre of ordenTablas) {
-    const columnas = await columnasDeTabla(ejecutor, nombre);
+    const { columnas, columnasArray } = await columnasDeTabla(ejecutor, nombre);
+    const columnasArraySet = new Set(columnasArray);
     const resultado = await ejecutor.query<FilaSql>(`SELECT * FROM "${nombre}"`);
     const filas: FilaSerializada[] = resultado.rows.map((fila) => {
       const filaSerializada: FilaSerializada = {};
       for (const columna of columnas) {
-        filaSerializada[columna] = serializarValor(fila[columna]);
+        filaSerializada[columna] = serializarValor(fila[columna], columnasArraySet.has(columna));
       }
       return filaSerializada;
     });
-    tablas.push({ nombre, columnas, filas });
+    tablas.push({ nombre, columnas, columnasArray, filas });
   }
 
   return {

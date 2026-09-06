@@ -17,7 +17,18 @@ import { peticion } from "../../lib/api/cliente";
 // límite `x.xx5` divergiendo entre ambas. Se mantiene el nombre exportado
 // (`decimalDesdeCentavos`) para no tocar los ~6 sitios de FinanzasPage.tsx
 // que ya la importan desde este archivo.
-export { decimalDesdeCentavos } from "@atiende-rv/domain/finanzas";
+// Lote 3.2 (H-096+, fix cruzado reportado por Lote 3.4): importar del
+// barril "@atiende-rv/domain/finanzas" evalúa TODO ese módulo, incluido
+// finanzas/statement.ts (`import { createHash } from "node:crypto"` a
+// nivel de módulo) — Vite externaliza node:crypto para el navegador y esa
+// sola importación (sin siquiera llamar la función) tira TODA la app web
+// con "Module externalized for browser compatibility" en cualquier ruta,
+// porque apps/web/src/App.tsx importa FinanzasPage de forma no perezosa.
+// `decimalDesdeCentavos` en sí es aritmética pura sin ninguna dependencia
+// de Node — se importa del subpath granular
+// "@atiende-rv/domain/finanzas/redondeo" (packages/domain/package.json)
+// que NUNCA evalúa statement.ts.
+export { decimalDesdeCentavos } from "@atiende-rv/domain/finanzas/redondeo";
 
 export interface ReglaComisionCanal {
   id: string;

@@ -1,10 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle, AtiendeWordmark } from "@atiende-rv/ui-atiende";
 import type { UsuarioSesion } from "@atiende-rv/api/contrato";
-import { guardarToken, peticion } from "../../lib/api/cliente";
-
-const CLAVE_USUARIO = "atiende-rv-usuario-sesion";
+import { peticion } from "../../lib/api/cliente";
+import { useSesion } from "../../lib/sesion/SesionProvider";
 
 interface RespuestaRefreshWeb {
   accessToken: string;
@@ -19,21 +18,39 @@ interface RespuestaRefreshWeb {
 // cookie por un access token en memoria (mismo mecanismo que
 // SesionProvider.login para el cliente 'web'), sin que el token nunca
 // haya viajado en la URL (evita dejarlo en el historial/referrer).
+//
+// El canje se hace vía `useSesion().establecerSesion(...)`, NUNCA
+// escribiendo `localStorage`/`guardarToken` directamente desde aquí: eso
+// dejaría el estado de React de `SesionProvider` (lo que `RutaProtegida`
+// realmente consulta) intacto en "sin sesión" — el resultado observado
+// era que `<Navigate to="/calendario">` sí navegaba, pero `RutaProtegida`
+// rebotaba de inmediato de vuelta a /login porque `autenticado` seguía
+// en `false` (bug real encontrado al ejecutar el E2E, nunca solo un
+// problema de la doble invocación de efectos de StrictMode).
 export function GoogleCompletadoPage() {
+  const { establecerSesion } = useSesion();
   const [estado, setEstado] = useState<"cargando" | "ok" | "error">("cargando");
+  // Guarda contra una doble invocación del efecto (React 18 StrictMode en
+  // desarrollo monta/desmonta/remonta a propósito para detectar efectos
+  // no idempotentes) — sin esto, dos POST /auth/refresh casi simultáneos
+  // usan el MISMO refresh token todavía sin rotar: el primero en llegar
+  // al servidor rota con éxito, pero el segundo llega con un token que el
+  // servidor ya ve como revocado y lo trata como reutilización (H-096),
+  // revocando TODA la familia — incluida la sesión que el primer POST
+  // acababa de crear. Nunca ocurre en producción (sin StrictMode), pero
+  // rompía el login con Google en desarrollo/E2E.
+  const yaEjecutado = useRef(false);
 
   useEffect(() => {
+    if (yaEjecutado.current) return;
+    yaEjecutado.current = true;
     peticion<RespuestaRefreshWeb>("/auth/refresh", { metodo: "POST" })
       .then((respuesta) => {
-        guardarToken(respuesta.accessToken);
-        try {
-          localStorage.setItem(CLAVE_USUARIO, JSON.stringify(respuesta.usuario));
-        } catch {
-          // sesión solo en memoria si localStorage no está disponible.
-        }
+        establecerSesion(respuesta.accessToken, respuesta.usuario);
         setEstado("ok");
       })
       .catch(() => setEstado("error"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `establecerSesion` es estable (useCallback sin deps); solo debe correr una vez al montar.
   }, []);
 
   if (estado === "ok") return <Navigate to="/calendario" replace />;

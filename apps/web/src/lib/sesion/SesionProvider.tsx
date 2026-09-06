@@ -28,6 +28,14 @@ interface ContextoSesion {
   cargandoInicial: boolean;
   login: (email: string, password: string) => Promise<ResultadoLogin>;
   completarLoginConMfa: (mfaToken: string, codigo: string) => Promise<void>;
+  /** Usado por `GoogleCompletadoPage` tras canjear la cookie de sesión
+   * (cliente 'web', ver POST /auth/refresh) por un access token: guarda el
+   * token/usuario Y actualiza el estado de React de este provider — sin
+   * esto, `RutaProtegida`/`autenticado` seguirían viendo el estado inicial
+   * (sin sesión) calculado al montar la app, ya que escribir directamente
+   * en localStorage nunca por sí solo dispara un re-render de este
+   * contexto. */
+  establecerSesion: (accessToken: string, usuario: UsuarioSesion) => void;
   logout: () => Promise<void>;
 }
 
@@ -86,6 +94,12 @@ export function SesionProvider({ children }: { children: ReactNode }) {
     setUsuario(respuesta.usuario);
   }, []);
 
+  const establecerSesion = useCallback((accessToken: string, usuarioNuevo: UsuarioSesion) => {
+    guardarToken(accessToken);
+    guardarUsuario(usuarioNuevo);
+    setUsuario(usuarioNuevo);
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       // Revoca el refresh token en el servidor (cookie httpOnly, el
@@ -105,8 +119,16 @@ export function SesionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const valor = useMemo<ContextoSesion>(
-    () => ({ usuario, autenticado: usuario !== null, cargandoInicial: false, login, completarLoginConMfa, logout }),
-    [usuario, login, completarLoginConMfa, logout],
+    () => ({
+      usuario,
+      autenticado: usuario !== null,
+      cargandoInicial: false,
+      login,
+      completarLoginConMfa,
+      establecerSesion,
+      logout,
+    }),
+    [usuario, login, completarLoginConMfa, establecerSesion, logout],
   );
 
   return <Contexto.Provider value={valor}>{children}</Contexto.Provider>;

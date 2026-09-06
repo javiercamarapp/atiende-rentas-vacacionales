@@ -6,7 +6,10 @@ import { construirUrl, peticion, tokenGuardado } from "../../lib/api/cliente";
 // Auditoría 2, corrección Q-01 (calidad-codigo.md): reexporta el
 // formateador de dinero único de `packages/domain/finanzas` — ver el
 // mismo comentario en apps/web/src/pages/finanzas/api.ts.
-export { decimalDesdeCentavos } from "@atiende-rv/domain/finanzas";
+// Ver comentario detallado en apps/web/src/pages/finanzas/api.ts: el
+// subpath granular evita evaluar finanzas/statement.ts (node:crypto a
+// nivel de módulo, rompe el bundle del navegador).
+export { decimalDesdeCentavos } from "@atiende-rv/domain/finanzas/redondeo";
 
 export interface FilaOcupacion {
   unidadId: string;
