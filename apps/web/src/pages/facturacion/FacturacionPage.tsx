@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { Button, Card, CardContent, CardHeader, CardTitle } from "@atiende-rv/ui-atiende";
-import { decimalDesdeCentavos } from "@atiende-rv/domain/finanzas";
+// Subpath ESPECÍFICO — ver el comentario equivalente en
+// apps/web/src/pages/publica/PreciosPage.tsx (nunca el barril
+// `@atiende-rv/domain/finanzas` completo desde código de navegador).
+import { decimalDesdeCentavos } from "@atiende-rv/domain/finanzas/redondeo";
 import { useSesion } from "../../lib/sesion/SesionProvider";
 import { ErrorApi } from "../../lib/api/cliente";
 import { iniciarCheckout, obtenerMrrEstimado, obtenerPortal, obtenerSuscripcion, type EstadoSuscripcion, type MrrEstimado } from "./api";

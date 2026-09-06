@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button, Card, CardContent, CardHeader, CardTitle } from "@atiende-rv/ui-atiende";
-import { decimalDesdeCentavos } from "@atiende-rv/domain/finanzas";
+// Subpath ESPECÍFICO (redondeo.js), NUNCA el barril `@atiende-rv/domain/finanzas`
+// completo — ese barril reexporta `statement.ts`, que importa `node:crypto`
+// a nivel de módulo; Vite lo externaliza en el navegador y el mero
+// `import` (sin llegar a llamarlo) revienta toda la SPA en modo dev con
+// "Cannot access node:crypto.createHash in client code" — verificado en
+// vivo con el script de captura de este mismo lote. Mismo criterio ya
+// establecido en apps/web/src/pages/finanzas/api.ts y pages/reportes/api.ts.
+import { decimalDesdeCentavos } from "@atiende-rv/domain/finanzas/redondeo";
 import { BorradorBanner } from "./components/BorradorBanner";
 import { PublicaFooter, PublicaHeader } from "./components/PublicaHeader";
 import { obtenerPlanesPublicos, type PlanPublico } from "./api";
