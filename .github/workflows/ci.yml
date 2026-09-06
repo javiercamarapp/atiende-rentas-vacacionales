@@ -36,10 +36,21 @@ jobs:
       - name: Pruebas unitarias
         run: npm run test
 
+      - name: Conteo de pruebas por paquete (Lote 10)
+        run: npm run verificar:lotes
+
+      - name: Pruebas de integración (embedded-postgres real)
+        run: npm run test:integration
+
+      - name: Pruebas adversariales (subset de sync, Lote 2/11)
+        run: npm run test:adversarial
+
       - name: Build
         run: npm run build
 
-      # test:integration y test:e2e quedan fuera de este gate hasta que
-      # tengan sujeto real (Lote 1 y Lote 4 respectivamente, ver
-      # docs/fase2/LOTES.md). Se añaden a este workflow en el commit que los
-      # introduzca, no antes.
+      # test:e2e (Playwright) queda fuera de este gate: requiere un
+      # navegador headless instalado (`npx playwright install`) que este
+      # workflow todavía no provisiona — se añade en el commit de Lote 4/11
+      # que lo introduzca, no aquí. test:integration y test:adversarial SÍ
+      # entraron en este commit (Lote 10) porque ya tienen sujeto real
+      # desde Lote 1/2/3 en adelante — ver docs/fase2/LOTES.md.

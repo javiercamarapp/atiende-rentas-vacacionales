@@ -16,7 +16,8 @@
     "test:e2e": "npm run test:e2e --workspace=@atiende-rv/web",
     "lint": "eslint .",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "ci": "npm run lint && npm run typecheck && npm run test && npm run build"
+    "verificar:lotes": "node scripts/verificar-lotes.mjs",
+    "ci": "npm run lint && npm run typecheck && npm run test && npm run test:integration && npm run test:adversarial && npm run build"
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",
