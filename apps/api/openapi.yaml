@@ -102,6 +102,222 @@ paths:
       responses:
         "204": { description: Sesión cerrada (no-op si el token ya era inválido) }
 
+  /auth/config:
+    get:
+      tags: [auth]
+      summary: Configuración pública de auth (nunca requiere sesión)
+      security: []
+      responses:
+        "200":
+          description: Estado del botón de Google y de registro abierto
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RespuestaConfigAuth" }
+
+  /auth/mfa/verificar:
+    post:
+      tags: [auth]
+      summary: Paso 2 de login con MFA (código TOTP o de recuperación)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoMfaVerificar" }
+      responses:
+        "200":
+          description: Sesión iniciada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RespuestaTokens" }
+        "401": { description: "mfa_invalido o token_invalido" }
+
+  /auth/registro:
+    post:
+      tags: [auth]
+      summary: Registro por invitación o por registro abierto de un tenant
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoRegistro" }
+      responses:
+        "201": { description: "Cuenta creada (requiereVerificacionCorreo indica si falta verificar el correo)" }
+        "403": { description: "registro_no_permitido" }
+        "422": { $ref: "#/components/responses/Validacion" }
+
+  /auth/reenviar-verificacion:
+    post:
+      tags: [auth]
+      summary: Reenvía el correo de verificación (no revela si el correo existe)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoOlvidePassword" }
+      responses:
+        "200": { description: "{ enviado: true } siempre, exista o no la cuenta" }
+
+  /auth/verificar-correo:
+    post:
+      tags: [auth]
+      summary: Confirma un correo con el token de un solo uso enviado por email
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoVerificarCorreo" }
+      responses:
+        "200": { description: "{ verificado: true }" }
+        "401": { description: "token_invalido (expirado, usado o inexistente)" }
+
+  /auth/olvide-password:
+    post:
+      tags: [auth]
+      summary: Solicita un correo de restablecimiento (no revela si el correo existe)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoOlvidePassword" }
+      responses:
+        "200": { description: "{ enviado: true } siempre" }
+
+  /auth/restablecer-password:
+    post:
+      tags: [auth]
+      summary: Restablece la contraseña con el token de un solo uso — invalida TODAS las sesiones existentes
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoRestablecerPassword" }
+      responses:
+        "200": { description: "{ restablecido: true }" }
+        "401": { description: "token_invalido" }
+        "422": { $ref: "#/components/responses/Validacion" }
+
+  /auth/cambiar-password:
+    post:
+      tags: [auth]
+      summary: Cambia la contraseña del usuario autenticado — revoca sus refresh tokens
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoCambiarPassword" }
+      responses:
+        "200": { description: "{ cambiada: true }" }
+        "401": { description: "credenciales_invalidas (contraseña actual incorrecta)" }
+        "422": { $ref: "#/components/responses/Validacion" }
+
+  /auth/mfa/iniciar:
+    post:
+      tags: [auth]
+      summary: Genera un secreto TOTP (aún no habilitado hasta /mfa/confirmar)
+      responses:
+        "200":
+          description: Secreto + otpauth:// URL para el QR
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RespuestaMfaIniciar" }
+
+  /auth/mfa/confirmar:
+    post:
+      tags: [auth]
+      summary: Confirma el código TOTP y habilita MFA — devuelve códigos de recuperación (una sola vez)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoMfaConfirmar" }
+      responses:
+        "200":
+          description: MFA habilitado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RespuestaMfaConfirmar" }
+        "401": { description: "mfa_invalido" }
+
+  /auth/mfa/deshabilitar:
+    post:
+      tags: [auth]
+      summary: Deshabilita MFA (requiere la contraseña actual)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoMfaDeshabilitar" }
+      responses:
+        "200": { description: "{ deshabilitado: true }" }
+        "401": { description: "credenciales_invalidas" }
+
+  /auth/sesiones:
+    get:
+      tags: [auth]
+      summary: Lista las sesiones (refresh tokens) activas del usuario autenticado
+      responses:
+        "200":
+          description: Sesiones activas
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sesiones: { type: array, items: { $ref: "#/components/schemas/SesionActiva" } }
+
+  /auth/sesiones/{id}:
+    delete:
+      tags: [auth]
+      summary: Revoca una sesión (dispositivo) propia
+      parameters:
+        - { $ref: "#/components/parameters/Id" }
+      responses:
+        "200": { description: "{ revocada: true }" }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+
+  /auth/logout-global:
+    post:
+      tags: [auth]
+      summary: Revoca TODAS las sesiones (refresh tokens) del usuario autenticado
+      responses:
+        "204": { description: Todas las sesiones cerradas }
+
+  /auth/google/inicio:
+    get:
+      tags: [auth]
+      summary: Inicia el flujo de Google Sign-In (Authorization Code + PKCE) — redirige a Google
+      security: []
+      parameters:
+        - name: invitacionToken
+          in: query
+          schema: { type: string }
+          description: Mutuamente excluyente con tenantId
+        - name: tenantId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "302": { description: Redirect a accounts.google.com }
+        "503": { description: "google_deshabilitado (faltan credenciales configuradas)" }
+
+  /auth/google/callback:
+    get:
+      tags: [auth]
+      summary: Callback de Google — vincula/crea la cuenta y fija cookies de sesión
+      security: []
+      parameters:
+        - { name: state, in: query, required: true, schema: { type: string } }
+        - { name: code, in: query, required: true, schema: { type: string } }
+      responses:
+        "302": { description: Redirect a la web con la sesión ya iniciada (cookies fijadas) }
+        "401": { description: "oidc_invalido" }
+        "403": { description: "google_vinculacion_no_permitida" }
+
   /tenants:
     post:
       tags: [tenants]
@@ -1762,6 +1978,15 @@ components:
                 - validacion
                 - rate_limited
                 - error_interno
+                - mfa_requerido
+                - mfa_invalido
+                - cuenta_bloqueada_temporalmente
+                - registro_no_permitido
+                - correo_no_verificado
+                - google_deshabilitado
+                - google_vinculacion_no_permitida
+                - oidc_invalido
+                - csrf_invalido
             mensaje: { type: string }
             detalles: {}
 
@@ -1771,6 +1996,106 @@ components:
       properties:
         email: { type: string, format: email }
         password: { type: string, minLength: 8 }
+        cliente:
+          type: string
+          enum: [api, web]
+          default: api
+          description: >-
+            'web' entrega el refresh token SOLO como cookie httpOnly+Secure+SameSite
+            (nunca en el cuerpo); 'api' (por defecto) lo devuelve en el cuerpo JSON.
+
+    RespuestaMfaPendiente:
+      type: object
+      required: [mfaRequerido, mfaToken, expiraEn]
+      properties:
+        mfaRequerido: { type: boolean, enum: [true] }
+        mfaToken: { type: string }
+        expiraEn: { type: integer }
+
+    CuerpoMfaVerificar:
+      type: object
+      required: [mfaToken, codigo]
+      properties:
+        mfaToken: { type: string }
+        codigo: { type: string, description: "Código TOTP de 6 dígitos o un código de recuperación XXXX-XXXX" }
+        cliente: { type: string, enum: [api, web], default: api }
+
+    CuerpoRegistro:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 10 }
+        nombre: { type: string }
+        invitacionToken: { type: string, description: "Mutuamente excluyente con tenantId" }
+        tenantId: { type: string, format: uuid, description: "Solo válido si ese tenant tiene permite_registro=true" }
+
+    CuerpoVerificarCorreo:
+      type: object
+      required: [token]
+      properties:
+        token: { type: string }
+
+    CuerpoOlvidePassword:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email }
+
+    CuerpoRestablecerPassword:
+      type: object
+      required: [token, password]
+      properties:
+        token: { type: string }
+        password: { type: string, minLength: 10 }
+
+    CuerpoCambiarPassword:
+      type: object
+      required: [passwordActual, passwordNueva]
+      properties:
+        passwordActual: { type: string }
+        passwordNueva: { type: string, minLength: 10 }
+
+    RespuestaMfaIniciar:
+      type: object
+      properties:
+        secretBase32: { type: string }
+        otpauthUrl: { type: string }
+
+    CuerpoMfaConfirmar:
+      type: object
+      required: [codigo]
+      properties:
+        codigo: { type: string, minLength: 6, maxLength: 8 }
+
+    RespuestaMfaConfirmar:
+      type: object
+      properties:
+        habilitado: { type: boolean, enum: [true] }
+        codigosRecuperacion: { type: array, items: { type: string } }
+
+    CuerpoMfaDeshabilitar:
+      type: object
+      required: [password]
+      properties:
+        password: { type: string }
+
+    SesionActiva:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        creadoEn: { type: string, format: date-time }
+        expiraEn: { type: string, format: date-time }
+        aud: { type: string, enum: [api, web] }
+        dispositivoEtiqueta: { type: string, nullable: true }
+        actual: { type: boolean }
+
+    RespuestaConfigAuth:
+      type: object
+      properties:
+        googleHabilitado: { type: boolean }
+        googleMotivoDeshabilitado: { type: string, nullable: true }
+        registroAbierto: { type: boolean }
 
     CuerpoRefresh:
       type: object
