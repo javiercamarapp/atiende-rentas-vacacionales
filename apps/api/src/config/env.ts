@@ -13,7 +13,18 @@ export interface ConfiguracionApi {
   databaseUrl: string;
   jwtSecret: string;
   cifradoCanalClaves: string;
-  rateLimit: { ventanaMs: number; maximo: number };
+  rateLimit: {
+    ventanaMs: number;
+    maximo: number;
+    /** S-06: allow-list de IPs de proxy de confianza (balanceador/reverse
+     * proxy propio) que sí pueden fijar `X-Forwarded-For`/`X-Real-IP` de
+     * forma confiable. Vacía por defecto — fail-safe. */
+    proxiesDeConfianza: readonly string[];
+  };
+  /** S-06: límite adicional de intentos de login por email/usuario,
+   * independiente del límite genérico por IP — evita fuerza bruta contra
+   * una sola cuenta desde múltiples IPs/proxies. */
+  rateLimitLoginPorEmail: { ventanaMs: number; maximo: number };
   /** Base pública de esta API (Lote 11B, corrección #3: URL de
    * exportación iCal) — usada SOLO para componer la URL absoluta del feed
    * `.ics` que se le muestra al usuario; la ruta pública en sí
@@ -125,6 +136,14 @@ export function cargarConfiguracion(env: NodeJS.ProcessEnv = process.env): Confi
     rateLimit: {
       ventanaMs: Number.parseInt(env.RATE_LIMIT_VENTANA_MS ?? "60000", 10),
       maximo: Number.parseInt(env.RATE_LIMIT_MAXIMO ?? "100", 10),
+      proxiesDeConfianza: (env.RATE_LIMIT_PROXIES_DE_CONFIANZA ?? "")
+        .split(",")
+        .map((ip) => ip.trim())
+        .filter((ip) => ip !== ""),
+    },
+    rateLimitLoginPorEmail: {
+      ventanaMs: Number.parseInt(env.RATE_LIMIT_LOGIN_EMAIL_VENTANA_MS ?? "900000", 10),
+      maximo: Number.parseInt(env.RATE_LIMIT_LOGIN_EMAIL_MAXIMO ?? "20", 10),
     },
     urlPublicaApi: env.API_PUBLIC_URL ?? `http://localhost:${Number.parseInt(env.PORT ?? "8787", 10)}`,
   };

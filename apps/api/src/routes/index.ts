@@ -19,6 +19,7 @@ import { crearRutasReservas } from "./reservas.js";
 import { crearRutasTenants } from "./tenants.js";
 import { crearRutasUnidades } from "./unidades.js";
 import { crearRutasUsuarios } from "./usuarios.js";
+import type { OpcionesRateLimit } from "../seguridad/rateLimit.js";
 
 export interface DependenciasRutas {
   pool: pg.Pool;
@@ -28,6 +29,9 @@ export interface DependenciasRutas {
    * esta API para componer la URL absoluta del feed que se le entrega al
    * usuario. */
   urlPublicaApi: string;
+  /** S-06: límite adicional de intentos de /auth/login por email,
+   * independiente del rate limit genérico por IP. */
+  rateLimitLoginPorEmail: OpcionesRateLimit;
 }
 
 // Registro de rutas de apps/api (Lote 3: primera carga real, sobre el
@@ -36,9 +40,9 @@ export interface DependenciasRutas {
 // propio `app.route(...)` aquí, en un commit pequeño y separado — nunca
 // reescriben este archivo completo.
 export function registrarRutas(app: Hono, deps: DependenciasRutas): Hono {
-  const { pool, jwtSecret, keyring, urlPublicaApi } = deps;
+  const { pool, jwtSecret, keyring, urlPublicaApi, rateLimitLoginPorEmail } = deps;
 
-  app.route("/auth", crearRutasAuth(pool, jwtSecret));
+  app.route("/auth", crearRutasAuth(pool, jwtSecret, rateLimitLoginPorEmail));
   app.route("/tenants", crearRutasTenants(pool, jwtSecret));
   app.route("/usuarios", crearRutasUsuarios(pool, jwtSecret));
   app.route("/propiedades", crearRutasPropiedades(pool, jwtSecret));

@@ -599,12 +599,15 @@ describe("H-AUD2-05: rate limit de /auth/login confía en X-Forwarded-For contro
     delete process.env.RATE_LIMIT_MAXIMO;
   });
 
-  it("REPRODUCCION: tras agotar el límite (maximo=3) con una IP fija, cambiar X-Forwarded-For por request lo evade indefinidamente", async () => {
-    // apps/api/src/seguridad/rateLimit.ts línea ~21: `obtenerIp` confía
-    // ciegamente en el header `x-forwarded-for` (primer valor de la
-    // lista) sin ninguna validación de que la petición venga de un proxy
-    // de confianza que lo haya fijado — cualquier cliente puede escribir
-    // ese header directamente.
+  it("[CORREGIDO S-06] REPRODUCCION: tras agotar el límite (maximo=3) con una IP fija, cambiar X-Forwarded-For por request YA NO lo evade — sin proxy de confianza configurado, la cabecera se ignora y todas las peticiones comparten la clave real del socket", async () => {
+    // Antes de la corrección, apps/api/src/seguridad/rateLimit.ts
+    // (`obtenerIp`) confiaba ciegamente en el header `x-forwarded-for`
+    // (primer valor de la lista) sin ninguna validación de que la
+    // petición viniera de un proxy de confianza que lo hubiera fijado —
+    // cualquier cliente podía escribir ese header directamente. Ahora
+    // `resolverIp` solo confía en la cabecera si la IP que REALMENTE
+    // conectó está en `proxiesDeConfianza` (vacío por defecto, ninguna
+    // variable de entorno la configura en esta prueba).
     const intentoLogin = () =>
       app.request("/auth/login", {
         method: "POST",
@@ -624,24 +627,27 @@ describe("H-AUD2-05: rate limit de /auth/login confía en X-Forwarded-For contro
     expect(r3.status).not.toBe(429);
     expect(r4Bloqueado.status).toBe(429); // límite alcanzado con esa IP
 
-    // Ahora, con una IP FALSIFICADA distinta en cada request, el límite se
-    // evade por completo — 20 requests adicionales, ninguna 429.
+    // [CORREGIDO S-06] Antes: una IP FALSIFICADA distinta en cada request
+    // evadía el límite por completo (0/20 bloqueadas). Ahora, sin proxy de
+    // confianza configurado, la cabecera rotada no tiene ningún efecto —
+    // las 20 peticiones adicionales comparten la misma clave real de
+    // socket que ya agotó el límite y deben seguir todas bloqueadas.
     let bloqueadasConIpRotada = 0;
     for (let i = 0; i < 20; i++) {
       const res = await app.request("/auth/login", {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-forwarded-for": `198.51.100.${i}`, // distinta en cada intento
+          "x-forwarded-for": `198.51.100.${i}`, // ya no tiene ningún efecto
         },
         body: JSON.stringify({ email: "nadie@x.local", password: "x" }),
       });
       if (res.status === 429) bloqueadasConIpRotada++;
     }
     console.log(
-      `[H-AUD2-05] tras agotar el límite con IP fija, 20 intentos con X-Forwarded-For rotado -> bloqueados=${bloqueadasConIpRotada}/20`,
+      `[H-AUD2-05 corregido] tras agotar el límite con IP fija, 20 intentos con X-Forwarded-For rotado -> bloqueados=${bloqueadasConIpRotada}/20`,
     );
-    expect(bloqueadasConIpRotada).toBe(0);
+    expect(bloqueadasConIpRotada).toBe(20);
   });
 });
 

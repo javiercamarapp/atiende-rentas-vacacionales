@@ -10,6 +10,7 @@ import {
   generarRefreshToken,
   hashearRefreshToken,
 } from "../seguridad/jwt.js";
+import { LimitadorVentana, type OpcionesRateLimit } from "../seguridad/rateLimit.js";
 import type { ColaboradorNivel, RolUsuario } from "../contrato/tipos.js";
 
 interface FilaUsuarioAuth {
@@ -56,12 +57,25 @@ async function emitirParDeTokens(
   return { accessToken, refreshToken, expiraEn };
 }
 
-export function crearRutasAuth(pool: pg.Pool, jwtSecret: string): Hono {
+export function crearRutasAuth(
+  pool: pg.Pool,
+  jwtSecret: string,
+  rateLimitLoginPorEmail: OpcionesRateLimit,
+): Hono {
   const app = new Hono();
+
+  // S-06: límite adicional por email/usuario, independiente del rate
+  // limit genérico por IP (apps/api/src/seguridad/rateLimit.ts) — evita
+  // fuerza bruta contra una sola cuenta desde muchas IPs/proxies
+  // distintos, un vector que el límite por IP nunca puede cerrar por sí
+  // solo. Normalizado (lowercase/trim) para que variantes de
+  // mayúsculas/espacios del mismo email compartan el mismo contador.
+  const limitadorPorEmail = new LimitadorVentana(rateLimitLoginPorEmail);
 
   // POST /auth/login
   app.post("/login", async (c) => {
     const cuerpo = CuerpoLogin.parse(await c.req.json());
+    limitadorPorEmail.registrarIntento(`login:${cuerpo.email.trim().toLowerCase()}`);
 
     const resultado = await conConexion(pool, async (cliente) => {
       await limpiarSesion(cliente);
