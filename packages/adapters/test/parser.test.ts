@@ -23,6 +23,63 @@ const VEVENT_BASICO =
   "SUMMARY:Reserved\r\n" +
   "END:VEVENT\r\n";
 
+describe("parsearIcs — validación semántica de fecha/hora (S-07, docs/auditoria-2/seguridad.md)", () => {
+  function feedConDtstart(dtstart: string, dtend = "DTEND;VALUE=DATE:20270601\r\n"): string {
+    return feed(
+      "BEGIN:VEVENT\r\n" +
+        "UID:sem@canal.com\r\n" +
+        "DTSTAMP:20260901T120000Z\r\n" +
+        `${dtstart}\r\n${dtend}` +
+        "END:VEVENT\r\n",
+    );
+  }
+
+  it("rechaza DATE con mes fuera de rango (99)", () => {
+    expect(() => parsearIcs(feedConDtstart("DTSTART;VALUE=DATE:20269999"))).toThrowError(IcsParseError);
+    try {
+      parsearIcs(feedConDtstart("DTSTART;VALUE=DATE:20269999"));
+    } catch (e) {
+      expect((e as IcsParseError).codigo).toBe("valor_fecha_invalido");
+    }
+  });
+
+  it("rechaza DATE con día inexistente para el mes (30 de febrero)", () => {
+    expect(() => parsearIcs(feedConDtstart("DTSTART;VALUE=DATE:20270230"))).toThrow(/día fuera de rango/);
+  });
+
+  it("rechaza el 29 de febrero en un año NO bisiesto", () => {
+    expect(() => parsearIcs(feedConDtstart("DTSTART;VALUE=DATE:20270229"))).toThrow(/día fuera de rango/);
+  });
+
+  it("acepta el 29 de febrero en un año bisiesto", () => {
+    expect(() => parsearIcs(feedConDtstart("DTSTART;VALUE=DATE:20280229"))).not.toThrow();
+  });
+
+  it("rechaza DATE-TIME con hora/minuto/segundo fuera de rango (99:99:99)", () => {
+    expect(() =>
+      parsearIcs(feedConDtstart("DTSTART:20270101T999999Z", "DTEND:20270102T000000Z\r\n")),
+    ).toThrow(/hora fuera de rango/);
+  });
+
+  it("rechaza DATE-TIME con minuto/segundo fuera de rango aunque la hora sea válida", () => {
+    expect(() =>
+      parsearIcs(feedConDtstart("DTSTART:20270101T126000Z", "DTEND:20270102T000000Z\r\n")),
+    ).toThrow(/minuto fuera de rango/);
+    expect(() =>
+      parsearIcs(feedConDtstart("DTSTART:20270101T120060Z", "DTEND:20270102T000000Z\r\n")),
+    ).toThrow(/segundo fuera de rango/);
+  });
+
+  it("acepta límites válidos exactos (23:59:59, día 31, día 30, día 28/29)", () => {
+    expect(() =>
+      parsearIcs(feedConDtstart("DTSTART:20270101T235959Z", "DTEND:20270102T000000Z\r\n")),
+    ).not.toThrow();
+    expect(() => parsearIcs(feedConDtstart("DTSTART;VALUE=DATE:20270131"))).not.toThrow();
+    expect(() => parsearIcs(feedConDtstart("DTSTART;VALUE=DATE:20270430"))).not.toThrow();
+    expect(() => parsearIcs(feedConDtstart("DTSTART;VALUE=DATE:20270228"))).not.toThrow();
+  });
+});
+
 describe("parsearIcs", () => {
   it("parsea un VEVENT básico con DTEND;VALUE=DATE exclusivo", () => {
     const resultado = parsearIcs(feed(VEVENT_BASICO));

@@ -121,6 +121,44 @@ function dividirRespetandoComillas(texto: string, separador: string): string[] {
 // Valores de fecha (DATE / DATE-TIME UTC / DATE-TIME+TZID / flotante)
 // ---------------------------------------------------------------------------
 
+// S-07 (docs/auditoria-2/seguridad.md): las expresiones regulares de más
+// abajo solo validaban FORMA (dígitos en la posición correcta) — un DTSTART
+// como "20269999" (mes 99, día 99) o "20270101T999999Z" (hora/minuto/
+// segundo 99) pasaba el regex y se propagaba como si fuera una fecha de
+// calendario válida, contaminando el modelo de dominio aguas abajo (nunca
+// vuelve a validarse: resolverFechaLocal tampoco lo hace). Se añade
+// validación semántica de RANGO tras el match de forma.
+function validarComponentesFecha(anio: string, mes: string, dia: string, contexto: string): void {
+  const a = Number(anio);
+  const m = Number(mes);
+  const d = Number(dia);
+  if (m < 1 || m > 12) {
+    throw new IcsParseError("valor_fecha_invalido", `${contexto}: mes fuera de rango 01-12: "${mes}"`);
+  }
+  // Truco estándar: día 0 del mes `m` (tratado como índice 0-based, es
+  // decir el mes SIGUIENTE al humano `m`) es el último día del mes humano
+  // `m` — respeta años bisiestos automáticamente vía Date.UTC.
+  const diasEnElMes = new Date(Date.UTC(a, m, 0)).getUTCDate();
+  if (d < 1 || d > diasEnElMes) {
+    throw new IcsParseError(
+      "valor_fecha_invalido",
+      `${contexto}: día fuera de rango para el mes ${mes} (máximo ${diasEnElMes}): "${dia}"`,
+    );
+  }
+}
+
+function validarComponentesHora(hora: string, minuto: string, segundo: string, contexto: string): void {
+  if (Number(hora) > 23) {
+    throw new IcsParseError("valor_fecha_invalido", `${contexto}: hora fuera de rango 00-23: "${hora}"`);
+  }
+  if (Number(minuto) > 59) {
+    throw new IcsParseError("valor_fecha_invalido", `${contexto}: minuto fuera de rango 00-59: "${minuto}"`);
+  }
+  if (Number(segundo) > 59) {
+    throw new IcsParseError("valor_fecha_invalido", `${contexto}: segundo fuera de rango 00-59: "${segundo}"`);
+  }
+}
+
 function parsearValorFecha(linea: LineaContenido): ValorFechaIcs {
   const valorParam = linea.parametros.get("VALUE");
   const tzid = linea.parametros.get("TZID");
@@ -129,12 +167,15 @@ function parsearValorFecha(linea: LineaContenido): ValorFechaIcs {
   if (valorParam === "DATE" || /^\d{8}$/.test(v)) {
     const m = /^(\d{4})(\d{2})(\d{2})$/.exec(v);
     if (!m) throw new IcsParseError("valor_fecha_invalido", `DATE inválido: "${v}"`);
+    validarComponentesFecha(m[1]!, m[2]!, m[3]!, `DATE "${v}"`);
     return { tipo: "DATE", fecha: `${m[1]}-${m[2]}-${m[3]}` };
   }
 
   const mDt = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z)?$/.exec(v);
   if (!mDt) throw new IcsParseError("valor_fecha_invalido", `DATE-TIME inválido: "${v}"`);
   const [, aa, mm, dd, hh, mi, ss, z] = mDt;
+  validarComponentesFecha(aa!, mm!, dd!, `DATE-TIME "${v}"`);
+  validarComponentesHora(hh!, mi!, ss!, `DATE-TIME "${v}"`);
   const fechaHoraLocal = `${aa}-${mm}-${dd}T${hh}:${mi}:${ss}`;
 
   if (z === "Z") {

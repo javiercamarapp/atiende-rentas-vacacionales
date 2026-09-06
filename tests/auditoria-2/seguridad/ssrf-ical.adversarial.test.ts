@@ -474,31 +474,52 @@ function feedConEvento(propiedadesExtra: string, dtstartLinea = "DTSTART;VALUE=D
   );
 }
 
-describe("H6 CRÍTICO/ALTO — parser ICS: DTSTART/DTEND con rangos de calendario inválidos NO se validan (solo forma, no semántica)", () => {
-  it("DTSTART;VALUE=DATE:20269999 (mes 99, día 99) NO lanza IcsParseError — se acepta como fecha 'válida'", () => {
+describe("H6 [CORREGIDO S-07] — parser ICS: DTSTART/DTEND con rangos de calendario inválidos AHORA se validan semánticamente", () => {
+  it("DTSTART;VALUE=DATE:20269999 (mes 99, día 99) SÍ lanza IcsParseError('valor_fecha_invalido')", () => {
     const feed = feedConEvento("DTEND;VALUE=DATE:20270102\r\n", "DTSTART;VALUE=DATE:20269999");
-    const resultado = parsearIcs(feed);
-    console.log("DTSTART garbage aceptado:", JSON.stringify(resultado.eventos[0]!.dtstart));
-    expect(resultado.eventos).toHaveLength(1);
-    expect(resultado.eventos[0]!.dtstart).toEqual({ tipo: "DATE", fecha: "2026-99-99" });
+    let lanzo: unknown;
+    try {
+      parsearIcs(feed);
+    } catch (e) {
+      lanzo = e;
+    }
+    console.log("DTSTART garbage ahora rechazado:", lanzo instanceof Error ? lanzo.message : lanzo);
+    // Antes de la corrección: se aceptaba como { tipo: "DATE", fecha:
+    // "2026-99-99" }. validarComponentesFecha (parser.ts) ahora rechaza
+    // meses fuera de 01-12 antes de construir el ValorFechaIcs.
+    expect((lanzo as { codigo?: string })?.codigo).toBe("valor_fecha_invalido");
   });
 
-  it("DTSTART DATE-TIME con hora/minuto/segundo fuera de rango (99:99:99) tampoco se valida", () => {
+  it("DTSTART DATE-TIME con hora/minuto/segundo fuera de rango (99:99:99) también lanza IcsParseError('valor_fecha_invalido')", () => {
     const feed = feedConEvento("DTEND:20270101T999999Z\r\n", "DTSTART:20270101T999999Z");
-    const resultado = parsearIcs(feed);
-    console.log("DTSTART DATE-TIME garbage aceptado:", JSON.stringify(resultado.eventos[0]!.dtstart));
-    expect(resultado.eventos[0]!.dtstart).toEqual({ tipo: "DATE-TIME-UTC", instanteIso: "2027-01-01T99:99:99Z" });
+    let lanzo: unknown;
+    try {
+      parsearIcs(feed);
+    } catch (e) {
+      lanzo = e;
+    }
+    console.log("DTSTART DATE-TIME garbage ahora rechazado:", lanzo instanceof Error ? lanzo.message : lanzo);
+    expect((lanzo as { codigo?: string })?.codigo).toBe("valor_fecha_invalido");
   });
 
-  it("IMPACTO: resolverFechaLocal (resolverFecha.ts) NO valida el rango de una fecha DATE — la propaga tal cual sin lanzar, contaminando el modelo de dominio con 'fechas' sintácticamente inválidas", () => {
+  it("[CORREGIDO] el rechazo ocurre en parsearIcs() mismo — resolverFechaLocal ya nunca ve una fecha sintácticamente inválida, porque nunca llega a construirse un VEventNormalizado con ella", () => {
     const feed = feedConEvento("DTEND;VALUE=DATE:20270102\r\n", "DTSTART;VALUE=DATE:20269999");
-    const resultado = parsearIcs(feed);
-    const fechaLocal = resolverFechaLocal(resultado.eventos[0]!.dtstart, "America/Mexico_City");
-    console.log("resolverFechaLocal con DATE inválido devuelve (sin lanzar):", fechaLocal);
-    // BUG: no lanza, propaga el string garbage "2026-99-99" como si fuera
-    // una fecha de calendario válida (tipo FechaLocal = string, sin
-    // validación de runtime en este punto).
-    expect(fechaLocal).toBe("2026-99-99");
+    expect(() => parsearIcs(feed)).toThrow(/mes fuera de rango/);
+    // Antes de la corrección: parsearIcs() no lanzaba, y
+    // resolverFechaLocal propagaba el string garbage "2026-99-99" sin
+    // validar. Ahora el hallazgo se cierra en el origen (parser), antes
+    // de que el dato llegue a ningún llamador aguas abajo.
+  });
+
+  it("control positivo: fechas válidas en los límites de cada mes (28/29/30/31, año bisiesto) se siguen aceptando sin falsos positivos", () => {
+    const casos = ["20270228", "20280229" /* 2028 es bisiesto */, "20270430", "20270131"];
+    for (const dtstart of casos) {
+      const feed = feedConEvento(`DTEND;VALUE=DATE:20270601\r\n`, `DTSTART;VALUE=DATE:${dtstart}`);
+      expect(() => parsearIcs(feed), dtstart).not.toThrow();
+    }
+    // Y el 29 de febrero de un año NO bisiesto sí se rechaza.
+    const feedNoBisiesto = feedConEvento("DTEND;VALUE=DATE:20270601\r\n", "DTSTART;VALUE=DATE:20270229");
+    expect(() => parsearIcs(feedNoBisiesto)).toThrow(/día fuera de rango/);
   });
 
   it("en cambio, DATE-TIME-TZID con zona horaria inválida SÍ lanza -- pero un Error genérico, NO un IcsParseError/tipo reconocible por el contrato del parser", () => {
