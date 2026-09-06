@@ -20,6 +20,7 @@ import {
   type EstadoFeedCanal,
   type ResultadoCicloFetch,
 } from "./cuarentena.js";
+import { reconciliarCompleto, type UidActivoInterno } from "./reconciliacion.js";
 import {
   construirUidExportado,
   exportarFeedIcs,
@@ -58,6 +59,14 @@ export interface ResultadoImportarCiclo {
    * procesarlos. Nunca abortan el resto del ciclo — los demás eventos
    * válidos del mismo feed se siguen aplicando con normalidad. */
   eventosDescartadosPorError: number;
+  /** D-DSD-09/D-DSD-11: drift de la reconciliación completa (RV07 §15,
+   * RV07-R-06) computado en ESTE ciclo — cuántos UIDs que el sistema creía
+   * activos ya no aparecen en el feed actual, sin `CANCEL` explícito.
+   * `undefined` cuando el ciclo no llegó a tener un feed completo que
+   * reconciliar (fallo de red/parseo, sin cambios, feed vacío) — en esos
+   * casos el valor persistido en `drift_ultima_reconciliacion_completa`
+   * se conserva tal cual estaba. */
+  driftReconciliacionCompleta?: number;
 }
 
 interface FilaFeed {
@@ -197,6 +206,25 @@ async function upsertEventoImportado(
       [ctx.unidadId, ctx.canalId, entrada.uid, ultimaAccion],
     );
   }
+}
+
+/** D-DSD-09/D-DSD-11: UIDs que el sistema cree activos AHORA MISMO para
+ * (unidad, canal) — la fila de `evento_canal_importado` sigue apuntando a
+ * una `ocupacion_unidad` que no está cancelada. Se calcula DESPUÉS del
+ * bucle de aplicación incremental del ciclo (línea de llamada más abajo),
+ * así que ya refleja cualquier `CANCELLED` explícito que ese mismo ciclo
+ * acabe de procesar — `reconciliarCompleto` (packages/adapters/src/sync/
+ * reconciliacion.ts) solo necesita encontrar los que quedan sin ningún
+ * `CANCEL` explícito y que además ya no aparecen en el feed actual. */
+async function obtenerUidsActivosInternos(ctx: ContextoSincronizacion): Promise<UidActivoInterno[]> {
+  const fila = await ctx.ejecutor.query<{ uid_canal: string; ocupacion_unidad_id: string }>(
+    `SELECT eci.uid_evento AS uid_canal, eci.ocupacion_unidad_id
+     FROM evento_canal_importado eci
+     JOIN ocupacion_unidad ou ON ou.id = eci.ocupacion_unidad_id
+     WHERE eci.unidad_id = $1 AND eci.canal_id = $2 AND ou.estado <> 'cancelado'`,
+    [ctx.unidadId, ctx.canalId],
+  );
+  return fila.rows.map((r) => ({ ocupacionUnidadId: r.ocupacion_unidad_id, uidCanal: r.uid_canal }));
 }
 
 // D-DSD-04: SIN filtro por canal a propósito — un bloqueo que exportamos a
@@ -372,6 +400,39 @@ export async function ejecutarCicloImport(
         ],
       );
     }
+  }
+
+  // D-DSD-09/D-DSD-11: reconciliación completa (RV07-R-06) — se computa en
+  // CADA ciclo con eventos, no en un job aparte: ya se tiene el feed
+  // completo recién parseado en memoria (`eventos`), así que comparar
+  // contra el conjunto de UIDs que el sistema cree activos internamente
+  // no cuesta ninguna llamada de red adicional. Antes, `persistirEstadoFeed`
+  // nunca recibía un `drift` real (quinto argumento omitido) y
+  // `reconciliarCompleto` no tenía ningún llamador fuera de pruebas — un
+  // UID que un canal deja de listar sin `CANCEL` explícito nunca se
+  // detectaba en el sistema en ejecución normal.
+  const activosInternos = await obtenerUidsActivosInternos(ctx);
+  const uidsPresentesEnFeed = new Set(eventos.map((e) => e.uid));
+  const reconciliacion = reconciliarCompleto(activosInternos, uidsPresentesEnFeed);
+  resumen.driftReconciliacionCompleta = reconciliacion.drift;
+
+  // Persistencia explícita del drift real (nunca `undefined`/`null` aquí:
+  // un drift que bajó a 0 tras resolverse debe sobrescribir el valor
+  // anterior, no conservarlo vía el COALESCE de `persistirEstadoFeed`).
+  await persistirEstadoFeed(ctx, nuevoEstado, nuevoEtag, nuevoLastModified, reconciliacion.drift);
+
+  // D-006/RV07 §15: los candidatos a cancelación implícita NUNCA se
+  // cancelan automáticamente — se encolan para revisión humana, mismo
+  // patrón que 'revisar_uid_reciclado'/'revisar_evento_fallido'.
+  for (const candidato of reconciliacion.candidatosACancelarPorAusencia) {
+    await ctx.ejecutor.query(
+      `INSERT INTO outbox_evento (ocupacion_unidad_id, tipo_evento, payload)
+       VALUES ($1, 'revisar_drift_reconciliacion', $2::jsonb)`,
+      [
+        candidato.ocupacionUnidadId,
+        JSON.stringify({ unidadId: ctx.unidadId, canalId: ctx.canalId, uid: candidato.uidCanal }),
+      ],
+    );
   }
 
   return resumen;

@@ -468,3 +468,65 @@ describe("D-DSD-12 (regresión) — crash entre el efecto de dominio y el bookke
   });
 });
 
+describe("D-DSD-09/D-DSD-11 (regresión) — la reconciliación completa se computa en cada ciclo real, no solo en pruebas aisladas", () => {
+  it("un UID que el canal deja de listar sin CANCEL se detecta como drift=1 en el propio ciclo real, sin cancelar nada unilateralmente", async () => {
+    const unidadId = await entorno.crearUnidad("d-dsd-09-11-reconciliacion");
+    const uidQueDesaparece = "d-dsd-09-desaparece@canal-externo.com";
+    const uidQueSigue = "d-dsd-09-sigue@canal-externo.com";
+
+    const r1 = await ciclo(
+      unidadId,
+      feedIcsDePrueba([
+        { uid: uidQueDesaparece, sequence: 1, dtstamp: "20270101T000000Z", dtstart: "20281001", dtend: "20281005", status: "CONFIRMED" },
+        { uid: uidQueSigue, sequence: 1, dtstamp: "20270101T000000Z", dtstart: "20281101", dtend: "20281105", status: "CONFIRMED" },
+      ]),
+    );
+    expect(r1.driftReconciliacionCompleta).toBe(0);
+
+    const r2 = await ciclo(
+      unidadId,
+      feedIcsDePrueba([
+        { uid: uidQueSigue, sequence: 1, dtstamp: "20270101T000000Z", dtstart: "20281101", dtend: "20281105", status: "CONFIRMED" },
+      ]),
+    );
+
+    // Drift real detectado EN el ciclo, sin necesidad de un job aparte.
+    expect(r2.driftReconciliacionCompleta).toBe(1);
+
+    // Nunca cancela unilateralmente (D-006): la reserva ausente sigue activa.
+    expect(await contarBloqueosActivos(entorno.ejecutor(), unidadId)).toBe(2);
+
+    const filaFeed = await entorno.motor.ejecutor.query<{ drift: number }>(
+      `SELECT drift_ultima_reconciliacion_completa AS drift FROM unidad_canal_feed WHERE unidad_id = $1 AND canal_id = $2`,
+      [unidadId, canalId],
+    );
+    expect(filaFeed.rows[0]!.drift).toBe(1);
+
+    const outbox = await entorno.motor.ejecutor.query<{ tipo_evento: string }>(
+      `SELECT tipo_evento FROM outbox_evento WHERE tipo_evento = 'revisar_drift_reconciliacion'`,
+    );
+    expect(outbox.rows.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("cuando el UID reaparece en un ciclo posterior, el drift persistido vuelve a 0 (nunca queda pegado)", async () => {
+    const unidadId = await entorno.crearUnidad("d-dsd-09-11-drift-se-limpia");
+    const uid = "d-dsd-09-reaparece@canal-externo.com";
+
+    await ciclo(
+      unidadId,
+      feedIcsDePrueba([{ uid, sequence: 1, dtstamp: "20270101T000000Z", dtstart: "20281201", dtend: "20281205", status: "CONFIRMED" }]),
+    );
+    const rAusente = await ciclo(unidadId, feedIcsDePrueba([]));
+    // Feed vacío: no hay eventos que reconciliar en ESE ciclo (D-005 ya
+    // cubre "vacío no cancela nada"), driftReconciliacionCompleta ni
+    // siquiera se computa (undefined), el valor persistido se conserva.
+    expect(rAusente.driftReconciliacionCompleta).toBeUndefined();
+
+    const rReaparece = await ciclo(
+      unidadId,
+      feedIcsDePrueba([{ uid, sequence: 1, dtstamp: "20270101T000000Z", dtstart: "20281201", dtend: "20281205", status: "CONFIRMED" }]),
+    );
+    expect(rReaparece.driftReconciliacionCompleta).toBe(0);
+  });
+});
+

@@ -16,8 +16,19 @@ import type { BackupLogico } from "./tiposBackup.js";
  *      `confirmarReconciliacionYReactivarPush` se llame explícitamente.
  *   5. Ejecuta la reconciliación de drift que el llamador inyecta como
  *      `reconciliarFeed` (mantiene `packages/db` sin depender en tiempo de
- *      compilación de `@atiende-rv/adapters` — el llamador real,
- *      `apps/api`, sí importa ambos y pasa `reconciliarCompleto`).
+ *      compilación de `@atiende-rv/adapters`).
+ *
+ * D-DSD-09: a la fecha de este comentario, `apps/api` NO invoca
+ * `recuperarDesdeBackup` desde ninguna ruta ni script real — este
+ * orquestador solo se ejercita desde pruebas
+ * (`packages/db/test/integration/backup.test.ts`,
+ * `packages/db/test/backup/exportarRestaurar.test.ts`). El comentario
+ * anterior afirmaba que "el llamador real, `apps/api`, sí importa ambos y
+ * pasa `reconciliarCompleto`" — verificado FALSO por auditoría (no existe
+ * tal importación en `apps/api/src`). `reconciliarFeed` sigue siendo el
+ * punto de inyección correcto para cuando exista un runbook/endpoint real
+ * de recuperación de desastre; hasta entonces, no hay ningún camino de
+ * ejecución en producción que llegue a esta función.
  *
  * El flag NUNCA se reactiva automáticamente dentro de este flujo — eso es
  * una decisión explícita separada (`confirmarReconciliacionYReactivarPush`)
