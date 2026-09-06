@@ -101,3 +101,10 @@
 2026-09-06 12:58:23 | 429 SOSTENIDO | #48 3.3 caído de nuevo; solo #47 activo; espera hasta el despertar 13:14 antes de reanudar de uno en uno
 2026-09-06 13:11:17 | LATIDO-CRON 95b67309 | sin agentes activos (429 sostenido); reanudación escalonada: 3.3 (Vercel) primero
 2026-09-06 13:11:41 | VERCEL | proyecto vinculado; #48 reanudado; #45 #46 #47 en pausa escalonada
+2026-09-06 13:30:55 | AGENTE | #48 3.3: web ya sirve en preview de Vercel; función API falla; cortado por 429; reanudado
+2026-09-06 15:11:39 | LATIDO-CRON+DESPERTAR | reanudando #48 3.3 (Vercel API)
+2026-09-06 15:11:54 | REANUDACION | #48 y #47 activos; #46 #45 en pausa
+2026-09-06 15:19:45 | 429 | #47 3.4 caído otra vez; se mantiene solo #48 3.3 activo; #47 se reanuda en el despertar 15:32
+2026-09-06 15:19:58 | 429 | #48 3.3 caído al ir a rebuild+redeploy; sin agentes activos; reanudación única en el despertar 15:32
+2026-09-06 15:24:55 | DESPERTAR | usuario pide continuar; reanudando #48 3.3
+2026-09-06 15:30:43 | VERCEL | preview desplegada (SSO); prod pendiente de usuario
