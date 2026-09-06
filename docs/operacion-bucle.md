@@ -36,3 +36,7 @@ Reanudar desde `docs/PROGRESO.md` (último paso), `docs/BLOQUEOS.md`, `docs/AGEN
 ## Evidencia de ejecución
 - 2026-09-05 — `CronCreate` → `Scheduled recurring job 71e0bad6 (Every 2 hours at :23). Session-only... Auto-expires after 7 days.`
 - Latidos/despertares: `docs/logs/bucle.log`.
+
+## Parada del bucle — 2026-09-06 08:08
+- Condición 1 satisfecha: cierre auditado de Fase 2 aprobado (docs/auditoria-2/00-SINTESIS.md), sin defectos críticos/altos abiertos, evidencia de alcance en docs/logs, docs/capturas y pruebas. Lo no cerrable es exclusivamente externo (B-001..B-005).
+- Acciones: `ScheduleWakeup(stop:true)`, `CronDelete 71e0bad6`, `PushNotification` al usuario, entrada final en docs/PROGRESO.md.
