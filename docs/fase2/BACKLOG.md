@@ -122,27 +122,27 @@ externa").
 
 | ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
 |---|---|---|---|---|---|---|
-| H-062 | `statement` por owner/periodo calculado desde `reserva` (nunca al revés) | REQ-121, REQ-122 | §Finanzas-1 | MUST | L | por hacer |
-| H-063 | Configuración neto/bruto por canal para evitar doble descuento de comisión | REQ-121 | §Finanzas-1 | MUST | M | por hacer |
-| H-064 | Adaptador de conciliación Vrbo (import CSV/XLS oficial) | REQ-124 | §Finanzas-2 | MUST | M | por hacer |
-| H-065 | Comisión de Booking.com/Vrbo configurable por tenant/propiedad (no hardcodeada) | REQ-125 | §Finanzas-2 | MUST | S | por hacer |
-| H-066 | Auditoría append-only de mutaciones financieras (statement, gasto, comisión) | REQ-127 | §Auditoría-1 | MUST | M | por hacer |
-| H-067 | Captura de RFC por unidad y alerta de retención agravada sin calcular impuestos | REQ-129 | §Legal-1 | MUST (cálculo bloqueado por laguna legal B-005) | S | por hacer |
+| H-062 | `statement` por owner/periodo calculado desde `reserva` (nunca al revés) | REQ-121, REQ-122 | §Finanzas-1 | MUST | L | hecho (Lote 7) |
+| H-063 | Configuración neto/bruto por canal para evitar doble descuento de comisión | REQ-121 | §Finanzas-1 | MUST | M | hecho (Lote 7) |
+| H-064 | Adaptador de conciliación Vrbo (import CSV/XLS oficial) | REQ-124 | §Finanzas-2 | MUST | M | hecho (Lote 7, parcial — motor de conciliación genérico por referencia/monto; parser del CSV/XLS oficial de Vrbo con sus columnas exactas no implementado) |
+| H-065 | Comisión de Booking.com/Vrbo configurable por tenant/propiedad (no hardcodeada) | REQ-125 | §Finanzas-2 | MUST | S | hecho (Lote 7) |
+| H-066 | Auditoría append-only de mutaciones financieras (statement, gasto, comisión) | REQ-127 | §Auditoría-1 | MUST | M | hecho (Lote 7) |
+| H-067 | Captura de RFC por unidad y alerta de retención agravada sin calcular impuestos | REQ-129 | §Legal-1 | MUST (cálculo bloqueado por laguna legal B-005) | S | hecho (Lote 7) |
 
 ## E11 — Pricing básico
 
 | ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
 |---|---|---|---|---|---|---|
-| H-068 | Motor de reglas base + estacionalidad + descuentos por duración | REQ-130, REQ-131, REQ-132 | §Pricing-1 | SHOULD | L | por hacer |
-| H-069 | Sincronización de tarifa condicionada a integración API activa (nunca vía iCal) | REQ-130 | §Pricing-1 | MUST | S | por hacer |
-| H-070 | Desactivación explícita del pricing nativo del canal al activar el propio | REQ-133 | §Pricing-1 | MUST | S | por hacer |
+| H-068 | Motor de reglas base + estacionalidad + descuentos por duración | REQ-130, REQ-131, REQ-132 | §Pricing-1 | SHOULD | L | hecho (Lote 7) |
+| H-069 | Sincronización de tarifa condicionada a integración API activa (nunca vía iCal) | REQ-130 | §Pricing-1 | MUST | S | hecho (Lote 7) |
+| H-070 | Desactivación explícita del pricing nativo del canal al activar el propio | REQ-133 | §Pricing-1 | MUST | S | hecho (Lote 7) |
 | H-071 | Paridad de precios configurable por jurisdicción/mercado | REQ-135 | §Pricing-2 | SHOULD | S | por hacer |
 
 ## E12 — Reporting
 
 | ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
 |---|---|---|---|---|---|---|
-| H-072 | Reportes operativos/financieros derivados de `reserva`/`statement`/`tarea_limpieza` sin duplicar lógica de cálculo | RV17 §12 | §Finanzas-1 | SHOULD | M | por hacer |
+| H-072 | Reportes operativos/financieros derivados de `reserva`/`statement`/`tarea_limpieza` sin duplicar lógica de cálculo | RV17 §12 | §Finanzas-1 | SHOULD | M | hecho (Lote 7, parcial — ocupación/ADR/RevPAR e ingresos por canal/propiedad/mes desde `reserva_financiero`; no cruza `tarea_limpieza` de Lote 5) |
 | H-073 | Reporte de latencia interna vs. por canal con percentiles p50/p95/p99 | REQ-039, REQ-171 | §RV19/21-8, §Plan-1 | MUST | M | por hacer |
 
 ## E13 — Back office / superadmin
@@ -418,3 +418,54 @@ lectura no disponible en este entorno de construcción, no un olvido).
   un orquestador de despliegues real.
 - **Commits:** ver `git log` — rango de esta entrega en
   `docs/PROGRESO.md`.
+
+## Lote 7 — cerrado, parcial (finanzas/owners/statements + pricing + reporting)
+
+10/95 historias marcadas `hecho (Lote 7)` arriba: 8 completas (H-062,
+H-063, H-065 a H-070) + 2 parciales (H-064, H-072). H-071 (paridad de
+precios por jurisdicción) y H-073 (percentiles de latencia interna vs.
+por canal, que depende de instrumentación de sync de Lote 2/10) quedan
+`por hacer` — no se fingió esa capacidad.
+
+- **Código:** `packages/domain/src/finanzas/` (redondeo determinista en
+  centavos vía BigInt, `calcularMovimientoReserva` sin doble descuento de
+  comisión cuando el canal ya entrega neto, `generarOwnerStatement`
+  idempotente/versionado por hash sha256, `conciliarPayout`,
+  `evaluarAlertaRetencionFiscal` sin calcular impuestos,
+  `calcularMetricasPeriodo`). `packages/domain/src/pricing/`
+  (`calcularCotizacion`, `evaluarViolacionesMinStay`,
+  `evaluarPublicacionTarifa` restringida a `ratesPush:true`).
+  `packages/db/src/migrations/0050-0055` (esquema de finanzas/pricing,
+  RLS completa con propietario acotado a sus unidades y contador con
+  acceso a finanzas pero nunca a `ocupacion_unidad`/`unidad`, auditoría
+  append-only). `apps/api/src/routes/{finanzas,pricing,reportes}.ts`
+  (endpoints tipados sobre el dominio puro, descarga HTML de statement en
+  dev, exportación CSV real). `apps/web/src/pages/{finanzas,pricing,
+  reportes}/` (vista por rol, formularios de configuración, cotizador,
+  reportes con gráfica de barras propia sin CDN).
+- **Pruebas:** 42 unitarias de dominio (`packages/domain/test/
+  {finanzas,pricing}/`), 10 de integración RLS contra `embedded-postgres`
+  real con rol `app_rv` (`packages/db/test/integration/
+  finanzasPricingRls.test.ts` — propietario A nunca ve statements de B,
+  contador ve finanzas pero no calendario), 13 de integración HTTP
+  (`apps/api/test/integration/finanzasPricingReportes.test.ts` —
+  entregable verificable de LOTES.md: reserva de Airbnb "ya neta de
+  comisión" no vuelve a descontarla ni en el movimiento ni en el
+  statement generado), 9 de componente web. Ver `docs/logs/lote7-test.log`,
+  `docs/logs/lote7-integration.log`, `docs/logs/lote7-ci.log`.
+- **Hallazgo de esta sesión, no previsto en el backlog:** un `JOIN`
+  normal desde `reserva_financiero` hacia `ocupacion_unidad`/`unidad`
+  para leer `rfc_propietario` quedaba vacío para el rol `contador` porque
+  RLS excluye a ese rol de esas dos tablas por completo (0015) — mismo
+  patrón de brecha que ya documentó Lote 5 para `limpieza`. Resuelto con
+  una función `SECURITY DEFINER` puntual (`reserva_financiero_rfc_
+  propietario`, migración 0054) que expone únicamente el RFC, nunca el
+  resto de columnas.
+- **Brechas documentadas, no un olvido:** H-064 se entregó como motor de
+  conciliación genérico (referencia externa → monto exacto →
+  pendiente/discrepancia), no como un parser del CSV/XLS oficial de Vrbo
+  con sus columnas exactas (requiere un archivo de ejemplo real para
+  verificar el formato, RV12 §4). H-072 no cruza `tarea_limpieza` de Lote
+  5. H-071 y H-073 no se implementaron en este lote.
+- **Commits:** 994805d (dominio), 037b2ce (migraciones 0050-0055),
+  d3553a5 (endpoints HTTP), 2020dc3 (páginas web), 8ebd171 (capturas).
