@@ -1,0 +1,45 @@
+name: CI
+
+# Equivalente en GitHub Actions del pipeline local `npm run ci`
+# (docs/fase2/LOTES.md, Lote 0). No se ejecuta en esta sesión (sin runner de
+# CI remoto disponible aquí) — es la definición reproducible para cuando el
+# repo se conecte a un remoto con Actions habilitado. Orden de gates
+# inspirado en el patrón verificado de Likida (RV20 §8): instalar con
+# lockfile exacto → lint → typecheck → test → build.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "25.6.1"
+          cache: "npm"
+
+      - name: Instalar dependencias (lockfile exacto)
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Pruebas unitarias
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+
+      # test:integration y test:e2e quedan fuera de este gate hasta que
+      # tengan sujeto real (Lote 1 y Lote 4 respectivamente, ver
+      # docs/fase2/LOTES.md). Se añaden a este workflow en el commit que los
+      # introduzca, no antes.
