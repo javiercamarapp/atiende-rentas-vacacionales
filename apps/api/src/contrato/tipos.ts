@@ -680,7 +680,16 @@ export type CuerpoSuspenderTenant = z.infer<typeof CuerpoSuspenderTenant>;
 
 export const CuerpoCrearAccesoRomperCristal = z.object({
   tenantId: z.string().uuid(),
-  motivo: z.string().min(1, "El acceso 'romper cristal' exige un motivo explícito"),
+  // S-21 (docs/auditoria-2/seguridad.md): `min(1)` por sí solo deja pasar
+  // un motivo compuesto solo por espacios (p. ej. " "), que el CHECK de
+  // base de datos (btrim(motivo) <> '') sí rechaza — pero como un error
+  // nativo de Postgres, clasificado por el manejador genérico como 500
+  // error_interno en vez de 422 de validación. `.trim().min(1)` rechaza
+  // el mismo caso aquí, en la capa de contrato, con el código correcto.
+  motivo: z
+    .string()
+    .trim()
+    .min(1, "El acceso 'romper cristal' exige un motivo explícito"),
   alcance: z.string().min(1).default("general"),
   minutos: z.number().int().min(1).max(24 * 60).default(30),
 });

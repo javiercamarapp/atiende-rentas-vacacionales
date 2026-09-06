@@ -703,7 +703,7 @@ describe("H-AUD2-06: acceso 'romper cristal' con motivo compuesto solo por espac
     await apagarCluster(ctx);
   });
 
-  it("NO REPRODUCIBLE: motivo de solo espacios es rechazado por el CHECK de base de datos (btrim(motivo) <> ''), aunque zod (min(1)) lo deja pasar", async () => {
+  it("[CORREGIDO S-21] motivo de solo espacios se rechaza con 422 validacion — YA NO llega a Postgres ni se clasifica como 500 error_interno", async () => {
     const login = await app.request("/auth/login", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -711,11 +711,14 @@ describe("H-AUD2-06: acceso 'romper cristal' con motivo compuesto solo por espac
     });
     const { accessToken } = (await login.json()) as { accessToken: string };
 
-    // packages/db/src/migrations/0061_acceso_romper_cristal.ts:
-    // `motivo text NOT NULL CHECK (btrim(motivo) <> '')` — un motivo de
-    // solo espacios pasa la validación zod de la API
-    // (`z.string().min(1)`, apps/api/src/contrato/tipos.ts línea 683,
-    // cuenta " " como longitud 1) pero es rechazado por la base de datos.
+    // Antes de la corrección: `z.string().min(1)` contaba " " como
+    // longitud 1 y dejaba pasar el motivo hasta el CHECK de base de datos
+    // (packages/db/src/migrations/0061_acceso_romper_cristal.ts:
+    // `motivo text NOT NULL CHECK (btrim(motivo) <> '')`), que lo
+    // rechazaba como una violación de Postgres sin traducir — 500
+    // error_interno en vez de 422 validacion. Ahora
+    // `z.string().trim().min(1)` (apps/api/src/contrato/tipos.ts) lo
+    // rechaza en la capa de contrato, antes de tocar la base de datos.
     const res = await app.request("/backoffice/romper-cristal", {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${accessToken}` },
@@ -723,22 +726,15 @@ describe("H-AUD2-06: acceso 'romper cristal' con motivo compuesto solo por espac
     });
     const cuerpo = (await res.json()) as { error?: { codigo: string } };
     console.log(
-      `[H-AUD2-06] POST /backoffice/romper-cristal motivo=" " -> status=${res.status} codigo=${cuerpo.error?.codigo}`,
+      `[H-AUD2-06 corregido] POST /backoffice/romper-cristal motivo=" " -> status=${res.status} codigo=${cuerpo.error?.codigo}`,
     );
-    // La concesión NUNCA debe crearse con un motivo vacío en la práctica.
-    expect(res.status).not.toBe(201);
+    expect(res.status).toBe(422);
+    expect(cuerpo.error?.codigo).toBe("validacion");
     const filas = await ctx.superusuario.query<{ n: string }>(
       `SELECT count(*)::text AS n FROM acceso_romper_cristal WHERE tenant_id = $1`,
       [tenantObjetivo],
     );
     expect(filas.rows[0]!.n).toBe("0");
-
-    // Defecto de clasificación potencial (igual patrón que el defecto
-    // documentado de POST /bloqueos en tests/adversarial/multitenant/
-    // casos.test.ts): si la violación CHECK de Postgres (código 23514) no
-    // se traduce a un error de dominio clasificado, cae a error_interno
-    // (500) en vez de 422 validacion. Documentamos el código real
-    // observado sin exigir un valor específico aquí.
   });
 
   it("reutilización: una concesión ya revocada no puede volver a usarse ni 'reactivarse' vía /revocar de nuevo", async () => {
