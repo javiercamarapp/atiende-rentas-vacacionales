@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { Hono } from "hono";
 import type pg from "pg";
 import { CuerpoLogin, CuerpoRefresh } from "../contrato/tipos.js";
@@ -12,6 +13,19 @@ import {
 } from "../seguridad/jwt.js";
 import { LimitadorVentana, type OpcionesRateLimit } from "../seguridad/rateLimit.js";
 import type { ColaboradorNivel, RolUsuario } from "../contrato/tipos.js";
+
+// S-13 (docs/auditoria-2/seguridad.md): hash "señuelo" con el mismo
+// formato/parámetros que `hashContrasena` (scrypt N=16384/r=8/p=1),
+// generado una sola vez al cargar el módulo — NUNCA corresponde a ninguna
+// contraseña real, su salt/derivada son bytes aleatorios sin significado.
+// Se usa exclusivamente para que `verificarContrasena` pague el MISMO
+// costo computacional de scrypt cuando el usuario no existe (o está
+// inactivo/sin hash) que cuando sí existe pero la contraseña es
+// incorrecta — sin esto, el camino "usuario inexistente" retorna
+// inmediatamente sin ejecutar scrypt, creando un canal lateral de tiempo
+// medible que permite enumerar usuarios (RV19/21-7, ASVS 2.1.11 exige
+// mensaje idéntico Y tiempo de respuesta equivalente).
+const HASH_SENUELO_TIMING = `scrypt$16384$8$1$${randomBytes(16).toString("base64")}$${randomBytes(64).toString("base64")}`;
 
 interface FilaUsuarioAuth {
   id: string;
@@ -87,6 +101,10 @@ export function crearRutasAuth(
       // Mensaje idéntico exista o no el email (nunca revelar cuál de los
       // dos falló — enumeración de usuarios, ASVS 2.1.11/§RV19/21-7).
       if (!usuario || !usuario.activo || !usuario.password_hash) {
+        // S-13: se paga el mismo costo de scrypt que un intento con
+        // password incorrecta antes de rechazar, para no filtrar por
+        // TIEMPO si el email existe o no (el resultado se descarta).
+        await verificarContrasena(cuerpo.password, HASH_SENUELO_TIMING);
         throw new ErrorDominio("credenciales_invalidas", "Email o contraseña incorrectos");
       }
       const claveValida = await verificarContrasena(cuerpo.password, usuario.password_hash);

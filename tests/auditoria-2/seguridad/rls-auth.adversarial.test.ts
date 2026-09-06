@@ -474,6 +474,13 @@ describe("H-AUD2-04: /auth/login — mensaje de error uniforme pero canal latera
 
   beforeAll(async () => {
     process.env.JWT_SECRET = JWT_SECRET_PRUEBA;
+    // S-06 (rate limit por email, apps/api/src/routes/auth.ts): esta
+    // prueba mide TIEMPO con 25 repeticiones seguidas del MISMO email
+    // (necesario para comparar contra un hash real) — muy por encima del
+    // default de 20 intentos/15min. Sin subir el techo aquí, las últimas
+    // repeticiones de cada tanda recibirían 429 (retorno casi
+    // instantáneo) y contaminarían la medición de tiempo real de scrypt.
+    process.env.RATE_LIMIT_LOGIN_EMAIL_MAXIMO = "1000";
     ctx = await levantarCluster("atiende_rv_aud2_timing");
     const tenant = await ctx.superusuario.query<{ id: string }>(
       "INSERT INTO tenant (nombre) VALUES ('AUD2-TIMING') RETURNING id",
@@ -495,6 +502,7 @@ describe("H-AUD2-04: /auth/login — mensaje de error uniforme pero canal latera
   afterAll(async () => {
     await pool?.end().catch(() => undefined);
     await apagarCluster(ctx);
+    delete process.env.RATE_LIMIT_LOGIN_EMAIL_MAXIMO;
   });
 
   it("mensaje de error es idéntico (mitigación existente, cita: apps/api/src/routes/auth.ts líneas 73-81)", async () => {
@@ -516,13 +524,17 @@ describe("H-AUD2-04: /auth/login — mensaje de error uniforme pero canal latera
     expect(c1.error.mensaje).toBe(c2.error.mensaje);
   });
 
-  it("REPRODUCCION: el TIEMPO de respuesta sí distingue usuario inexistente (short-circuit) de password incorrecta (scrypt N=16384 corrido igual)", async () => {
-    // apps/api/src/routes/auth.ts líneas 72-81: si `usuario` es undefined,
-    // se lanza el error INMEDIATAMENTE sin llamar a `verificarContrasena`
-    // (que ejecuta scrypt con N=16384 — computacionalmente cara a
-    // propósito, seguridad/contrasenas.ts). Si el usuario SÍ existe, ese
-    // costo de scrypt siempre se paga, sin importar si el password es
-    // correcto o no. Esto crea una asimetría de tiempo medible.
+  it("[CORREGIDO S-13] el TIEMPO de respuesta YA NO distingue usuario inexistente de contraseña incorrecta — ambos caminos pagan el mismo costo de scrypt", async () => {
+    // Antes de la corrección: apps/api/src/routes/auth.ts líneas 72-81 —
+    // si `usuario` era undefined, se lanzaba el error INMEDIATAMENTE sin
+    // llamar a `verificarContrasena` (que ejecuta scrypt con N=16384 —
+    // computacionalmente cara a propósito, seguridad/contrasenas.ts). Si
+    // el usuario SÍ existía, ese costo de scrypt siempre se pagaba, sin
+    // importar si el password era correcto o no. Eso creaba una asimetría
+    // de tiempo medible (~10x). Ahora, cuando el usuario no existe/está
+    // inactivo/sin hash, auth.ts corre `verificarContrasena` contra un
+    // hash "señuelo" fijo (HASH_SENUELO_TIMING) antes de rechazar,
+    // pagando el mismo costo de scrypt en ambos caminos.
     const REPETICIONES = 25;
 
     async function medir(email: string, password: string): Promise<number[]> {
@@ -556,15 +568,18 @@ describe("H-AUD2-04: /auth/login — mensaje de error uniforme pero canal latera
       `[H-AUD2-04] mediana usuario-inexistente=${medianaInexistente.toFixed(2)}ms mediana-password-mala=${medianaPasswordMala.toFixed(2)}ms razon=${razon.toFixed(2)}x`,
     );
 
-    // Documentamos la razón observada (no fallamos duro el test contra un
-    // umbral arbitrario que dependa de la máquina de CI, pero dejamos
-    // constancia numérica del canal lateral real). Un `expect` blando
-    // registra el hallazgo sin volver el test intermitente.
+    // Documentamos la razón observada. Antes de la corrección, la razón
+    // típica medida era ~10x (password incorrecta pagaba scrypt completo,
+    // usuario inexistente retornaba casi instantáneo). Un umbral estricto
+    // en una máquina de CI compartida sería frágil, así que se deja un
+    // margen amplio (<3x) que de todos modos habría fallado con el bug
+    // original, sin volver el test intermitente por ruido de la máquina.
     expect(medianaPasswordMala).toBeGreaterThan(0);
+    expect(razon).toBeLessThan(3);
     console.log(
       razon > 1.3
-        ? `[H-AUD2-04] CONFIRMADO: canal lateral de tiempo medible (${razon.toFixed(2)}x más lento con password incorrecta que con usuario inexistente)`
-        : `[H-AUD2-04] razón ${razon.toFixed(2)}x — canal lateral presente en el código pero no claramente medible en esta corrida/máquina`,
+        ? `[H-AUD2-04] razón ${razon.toFixed(2)}x — algo de asimetría residual, pero muy por debajo del ~10x original`
+        : `[H-AUD2-04 corregido] razón ${razon.toFixed(2)}x — sin canal lateral de tiempo medible entre usuario inexistente y password incorrecta`,
     );
   }, 60_000);
 });
