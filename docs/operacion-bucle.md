@@ -9,7 +9,7 @@ Creado 2026-09-05 desde la sesión Fable (claude-fable-5-1). Mecanismos reales d
 - **Persistencia:** solo sesión.
 
 ## Mecanismo de respaldo — CronCreate
-- **ID:** `71e0bad6`
+- **ID:** `71e0bad6` (Fase 1–2, eliminado al cierre) → **Fase 3: `95b67309`** (`41 */2 * * *`, creado 2026-09-06 08:20)
 - **Cron:** `23 */2 * * *` (cada 2 h al minuto 23, hora local). Recurrente. Solo dispara con la sesión ociosa.
 - **Persistencia:** solo sesión; **autoexpira a los 7 días** (~2026-09-12) tras un último disparo.
 - **Alcance del prompt:** si el bucle dinámico vive → solo latido en `docs/logs/bucle.log`; si murió → reanudar desde `docs/PROGRESO.md`.

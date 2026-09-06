@@ -98,3 +98,14 @@
 - Desviación registrada: 33+ commits con pie de coautoría añadido por el entorno; no se reescribió historial.
 
 **Reanudación (si se reabre):** ver docs/operacion-bucle.md; siguiente trabajo útil: H-054/H-071/H-073/H-091, Q-04/Q-06/P-08, y conexión de cuentas reales cuando el usuario lo autorice.
+
+## Fase 3 — Cierre punta a punta + canales México. Iniciada 2026-09-06 (orden del usuario: "termina de punta a punta y mete integraciones de rappi booking expedia de todos lados que usen en méxico")
+
+Regla: cada canal se integra según lo que documente oficialmente (API supply-side con partner, iCal, o nada). Donde no haya vía pública, el adaptador existe con estado honesto `partner_pendiente` + simulador etiquetado; nunca se presenta como conectado. Sin cuentas reales sin autorización.
+
+| Fecha/hora | Paso | Estado | Evidencia |
+|---|---|---|---|
+| 2026-09-06 08:20 | Fase 3 abierta. 3.1 investigación RV22 canales México (Sonnet) ∥ 3.0 backlog restante (H-054, H-071, H-073, H-091, Q-04, Q-06, P-08) | en curso | docs/AGENTES.md |
+| 2026-09-06 08:25 | Nueva orden del usuario: "software listo para vender con todo hecho, auth backend, Google auth, todo". Se amplía Fase 3 con: 3.2 autenticación completa (Google OIDC, verificación de correo, reset, sesiones, MFA opcional) → 3.3 listo para vender (onboarding self-serve, planes/facturación con proveedor simulado + adaptador Stripe sin claves, páginas legales borrador para revisión, empaquetado de despliegue y checklist de producción) → 3.4 adaptadores de canales México según RV22 → auditoría → cierre. Límites: no se despliega ni se compra nada sin autorización; credenciales de Google/Stripe las aporta el usuario | en curso | esta tabla |
+| 2026-09-06 08:35 | Aclaración del usuario: los canales objetivo son Airbnb, Booking, Expedia y los demás usados en México; Rappi fue una confusión y queda fuera del alcance. Instrucción enviada al investigador RV22 | hecho | docs/AGENTES.md #44 |
+| 2026-09-06 12:05 | RV22 completado. Despachando Lote 3.4: adaptadores por canal según niveles A/B/C con estado honesto + simuladores + puente SiteMinder | en curso | docs/investigacion/RV22-canales-mexico.md |

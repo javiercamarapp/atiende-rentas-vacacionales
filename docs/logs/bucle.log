@@ -84,3 +84,13 @@
 2026-09-06 07:30:13 | DESPACHO | ronda final #43:   10 "model":"claude-sonnet-5" 
 2026-09-06 07:38:46 | RONDA-FINAL | completa; reanudando #42
 2026-09-06 07:48:32 | PARADA | Fase 2 cerrada y aprobada; CronDelete 71e0bad6; ScheduleWakeup stop
+2026-09-06 11:07:29 | FASE3 | reabierto por orden del usuario; despachando investigación RV22 + backlog restante
+2026-09-06 11:09:06 | FASE3 | orden ampliada (listo para vender + Google auth); cron 95b67309; despachando 3.2 auth
+2026-09-06 11:10:09 | DESPACHO | 3.2 auth #46:   11 "model":"claude-sonnet-5" ; en curso #44 RV22, #45 3.0, #46 3.2
+2026-09-06 11:23:15 | FASE3 | alcance corregido: Airbnb en lugar de Rappi
+2026-09-06 11:35:23 | DESPERTAR | comprobando #44 #45 #46
+2026-09-06 11:38:41 | FASE3 | RV22 completo; despachando 3.4 adaptadores
+2026-09-06 11:39:45 | DESPACHO | 3.4 #47:   12 "model":"claude-sonnet-5" ; en curso #45 3.0, #46 3.2, #47 3.4
+2026-09-06 12:05:16 | DESPERTAR | comprobando #45 #46 #47
+2026-09-06 12:30:50 | REANUDACION | #45 #46 #47 tras 429 del servidor (B-006)
+2026-09-06 12:32:40 | DESPERTAR | usuario pide continuar; comprobando #45 #46 #47
