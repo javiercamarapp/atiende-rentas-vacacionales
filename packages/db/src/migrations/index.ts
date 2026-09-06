@@ -59,6 +59,10 @@ import { migracion0105OidcFlow } from "./0105_oidc_flow.js";
 import { migracion0106AuthFuncionesExtendidas } from "./0106_auth_funciones_extendidas.js";
 import { migracion0107AuthInvitacionYPoliticaTenant } from "./0107_auth_invitacion_y_politica_tenant.js";
 import { migracion0108RefreshTokenFamiliaFuncion } from "./0108_refresh_token_familia_funcion.js";
+// Rango 0110-0119: Lote 3.4 (Fase 3, RV22) — catálogo de canales de
+// distribución usados en México (niveles A/B/C, estado honesto). Ver
+// comentario de cabecera en 0110_catalogo_canales_mexico.ts.
+import { migracion0110CatalogoCanalesMexico } from "./0110_catalogo_canales_mexico.js";
 
 // Orden fijo, nunca reordenar migraciones ya aplicadas en algún entorno
 // (patrón expand/contract real llega en Lote 10 — H-088). Cada lote
@@ -157,4 +161,5 @@ export const migraciones: Migracion[] = [
   migracion0106AuthFuncionesExtendidas,
   migracion0107AuthInvitacionYPoliticaTenant,
   migracion0108RefreshTokenFamiliaFuncion,
+  migracion0110CatalogoCanalesMexico,
 ];
