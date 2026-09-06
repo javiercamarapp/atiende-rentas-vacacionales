@@ -68,26 +68,30 @@ export function useMutacionLigera<Args extends unknown[], T>(
   const [enCurso, setEnCurso] = useState(false);
   const [error, setError] = useState<ErrorApi | null>(null);
   const [datos, setDatos] = useState<T>();
+  // `ejecutar` se memoiza con deps `[]` para mantener su identidad estable
+  // entre renders (igual que `fnRef` en `useQueryLigero` arriba), pero debe
+  // invocar siempre el `fn` del render MÁS RECIENTE: guardarlo en un ref y
+  // reasignarlo en cada render evita que un `fn` que cierra sobre estado
+  // local (p. ej. `() => guardar({ nombre, precio })`) quede pegado para
+  // siempre a los valores del primer render.
+  const fnRef = useRef(fn);
+  fnRef.current = fn;
 
-  const ejecutar = useCallback(
-    async (...args: Args) => {
-      setEnCurso(true);
-      setError(null);
-      try {
-        const resultado = await fn(...args);
-        setDatos(resultado);
-        return resultado;
-      } catch (err) {
-        const errApi = err instanceof ErrorApi ? err : new ErrorApi("error_interno", String(err), 0);
-        setError(errApi);
-        throw errApi;
-      } finally {
-        setEnCurso(false);
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
+  const ejecutar = useCallback(async (...args: Args) => {
+    setEnCurso(true);
+    setError(null);
+    try {
+      const resultado = await fnRef.current(...args);
+      setDatos(resultado);
+      return resultado;
+    } catch (err) {
+      const errApi = err instanceof ErrorApi ? err : new ErrorApi("error_interno", String(err), 0);
+      setError(errApi);
+      throw errApi;
+    } finally {
+      setEnCurso(false);
+    }
+  }, []);
 
   return { ejecutar, enCurso, error, datos, limpiarError: () => setError(null) };
 }
