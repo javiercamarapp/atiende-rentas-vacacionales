@@ -8,11 +8,13 @@
   "exports": {
     ".": "./src/index.ts",
     "./finanzas": "./src/finanzas/index.ts",
-    "./pricing": "./src/pricing/index.ts"
+    "./pricing": "./src/pricing/index.ts",
+    "./agentes": "./src/agentes/index.ts"
   },
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "evals:agentes": "tsx src/agentes/evals/cli.ts"
   },
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1"
