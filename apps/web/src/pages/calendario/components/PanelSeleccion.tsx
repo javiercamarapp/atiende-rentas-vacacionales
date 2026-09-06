@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Button, Card, CardContent, CardHeader, CardTitle } from "@atiende-rv/ui-atiende";
 import type { NocheCalendario } from "@atiende-rv/api/contrato";
 import { claveCapaDeNoche, infoCapa, ETIQUETA_ESTADO } from "../capas";
-import { buscarOcupacionCreada, quitarOcupacionCreada, type EntradaCache } from "../cacheOcupaciones";
 import { cancelarBloqueo, cancelarReservaDirecta } from "../api";
 import { useMutacionLigera } from "../../../lib/api/queryLigero";
 import { ModalCrearBloqueo } from "./ModalCrearBloqueo";
@@ -32,7 +31,7 @@ export function PanelSeleccion({
   onCambio: () => void;
 }) {
   const [modal, setModal] = useState<"bloqueo" | "reserva" | "modificar" | "confirmar-cancelar" | null>(null);
-  const mutacionCancelar = useMutacionLigera(async (entrada: EntradaCache) =>
+  const mutacionCancelar = useMutacionLigera(async (entrada: OcupacionAccionable) =>
     entrada.tipo === "reserva" ? cancelarReservaDirecta(entrada.id) : cancelarBloqueo(entrada.id),
   );
 
@@ -50,12 +49,11 @@ export function PanelSeleccion({
   const { unidadId, unidadNombre, zonaHoraria, inicio, fin, noches } = seleccion;
   const primeraOcupada = noches.find((n) => n?.ocupada);
   const todoLibre = noches.every((n) => !n?.ocupada);
-  const entradaCache = primeraOcupada ? buscarOcupacionCreada(unidadId, inicio) : null;
+  const accionable = ocupacionAccionable(primeraOcupada);
 
   async function confirmarCancelacion() {
-    if (!entradaCache) return;
-    await mutacionCancelar.ejecutar(entradaCache);
-    quitarOcupacionCreada(entradaCache.id);
+    if (!accionable) return;
+    await mutacionCancelar.ejecutar(accionable);
     setModal(null);
     onCambio();
   }
@@ -91,7 +89,7 @@ export function PanelSeleccion({
         {!todoLibre && primeraOcupada && (
           <DetalleOcupado
             noche={primeraOcupada}
-            entradaCache={entradaCache}
+            accionable={accionable}
             onModificar={() => setModal("modificar")}
             onCancelar={() => setModal("confirmar-cancelar")}
           />
@@ -118,23 +116,22 @@ export function PanelSeleccion({
         fin={fin}
         onCreado={onCambio}
       />
-      {entradaCache?.tipo === "reserva" && (
+      {accionable?.tipo === "reserva" && (
         <ModalModificarFechas
           abierto={modal === "modificar"}
           onCerrar={() => setModal(null)}
-          reservaId={entradaCache.id}
-          unidadId={unidadId}
+          reservaId={accionable.id}
           unidadNombre={unidadNombre}
-          inicioActual={entradaCache.inicio}
-          finActual={entradaCache.fin}
+          inicioActual={accionable.inicio}
+          finActual={accionable.fin}
           onModificado={onCambio}
         />
       )}
-      {modal === "confirmar-cancelar" && entradaCache && (
+      {modal === "confirmar-cancelar" && accionable && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div role="dialog" aria-modal="true" className="w-full max-w-sm rounded-xl border border-border bg-card shadow-elevated p-4 space-y-3">
             <h2 className="text-sm font-semibold">
-              {entradaCache.tipo === "reserva" ? "¿Cancelar esta reserva directa?" : "¿Quitar este bloqueo?"}
+              {accionable.tipo === "reserva" ? "¿Cancelar esta reserva directa?" : "¿Quitar este bloqueo?"}
             </h2>
             <p className="text-xs text-muted-foreground">Esta acción libera {inicio} → {fin} en {unidadNombre}.</p>
             <ErrorApiAlerta error={mutacionCancelar.error} />
@@ -153,14 +150,32 @@ export function PanelSeleccion({
   );
 }
 
+/** Reserva o bloqueo sobre el que el panel puede actuar (modificar/cancelar),
+ * derivado directamente de la noche dominante que devuelve
+ * `GET /unidades/:id/calendario` — antes esto dependía de una caché de
+ * sessionStorage (`cacheOcupaciones`) que solo cubría lo creado en la
+ * sesión actual del navegador; el contrato ya expone `ocupacionId` para
+ * cualquier ocupación, propia o preexistente. */
+export interface OcupacionAccionable {
+  id: string;
+  tipo: "reserva" | "bloqueo";
+  inicio: string;
+  fin: string;
+}
+
+function ocupacionAccionable(noche: NocheCalendario | undefined): OcupacionAccionable | null {
+  if (!noche?.ocupacionId || !noche.capa || !noche.ocupacionInicio || !noche.ocupacionFin) return null;
+  return { id: noche.ocupacionId, tipo: noche.capa, inicio: noche.ocupacionInicio, fin: noche.ocupacionFin };
+}
+
 function DetalleOcupado({
   noche,
-  entradaCache,
+  accionable,
   onModificar,
   onCancelar,
 }: {
   noche: NocheCalendario;
-  entradaCache: EntradaCache | null;
+  accionable: OcupacionAccionable | null;
   onModificar: () => void;
   onCancelar: () => void;
 }) {
@@ -178,8 +193,6 @@ function DetalleOcupado({
         <dd>{noche.estado ? ETIQUETA_ESTADO[noche.estado] : "—"}</dd>
         <dt>Origen</dt>
         <dd>{noche.origenCanal ?? "manual (directa)"}</dd>
-        <dt>UID de canal</dt>
-        <dd>no expuesto por este contrato de solo lectura (ver nota en cacheOcupaciones.ts)</dd>
       </dl>
 
       {clave === "reserva_canal" && (
@@ -195,7 +208,7 @@ function DetalleOcupado({
         </p>
       )}
       {(clave === "reserva_directa" || clave === "bloqueo_propietario" || clave === "mantenimiento" || clave === "buffer_limpieza") &&
-        (entradaCache ? (
+        (accionable ? (
           <div className="flex gap-2">
             {clave === "reserva_directa" && (
               <Button size="sm" variant="outline" onClick={onModificar}>
@@ -208,9 +221,8 @@ function DetalleOcupado({
           </div>
         ) : (
           <p className="text-xs rounded-md border border-border bg-muted/40 p-2">
-            Esta entrada ya existía antes de esta sesión del panel — cancelarla/modificarla requiere un
-            identificador que <code>GET /unidades/:id/calendario</code> todavía no expone (gap de contrato
-            documentado en <code>docs/PROGRESO.md</code>, no un error de esta pantalla).
+            No se pudo determinar el identificador de esta ocupación — la API no devolvió `ocupacionId`
+            para esta noche, así que el panel no ofrece modificar/cancelar (nota honesta, no un botón roto).
           </p>
         ))}
     </div>

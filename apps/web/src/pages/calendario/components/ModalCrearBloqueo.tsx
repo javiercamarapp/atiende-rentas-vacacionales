@@ -5,7 +5,6 @@ import { ModalBase } from "./ModalBase";
 import { ErrorApiAlerta } from "./ErrorApiAlerta";
 import { useMutacionLigera } from "../../../lib/api/queryLigero";
 import { crearBloqueo } from "../api";
-import { registrarOcupacionCreada } from "../cacheOcupaciones";
 
 // `RazonBloqueoContrato` en el contrato es un `z.enum(...)` exportado solo
 // como valor (sin alias de tipo al lado) — se deriva el tipo desde el
@@ -41,8 +40,7 @@ export function ModalCrearBloqueo({
   const mutacion = useMutacionLigera(crearBloqueo);
 
   async function confirmar() {
-    const resultado = await mutacion.ejecutar({ unidadId, rango: { inicio, fin }, razon });
-    registrarOcupacionCreada({ id: resultado.id, tipo: "bloqueo", unidadId, inicio, fin });
+    await mutacion.ejecutar({ unidadId, rango: { inicio, fin }, razon });
     onCreado();
     onCerrar();
     setConfirmando(false);

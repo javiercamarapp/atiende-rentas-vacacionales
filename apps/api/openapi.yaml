@@ -1757,6 +1757,17 @@ components:
       properties:
         fecha: { type: string, format: date }
         ocupada: { type: boolean }
+        ocupacionId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >-
+            Id de la fila `ocupacion_unidad` dominante de esta noche.
+            Requerido por la UI para modificar/cancelar (nunca aplica a
+            capa=reserva con razon=RESERVA_CANAL — esa acción sigue
+            prohibida por regla de negocio, no por falta de id).
+        ocupacionInicio: { type: string, format: date, nullable: true }
+        ocupacionFin: { type: string, format: date, nullable: true }
         capa: { type: string, enum: [reserva, bloqueo], nullable: true }
         razon:
           type: string

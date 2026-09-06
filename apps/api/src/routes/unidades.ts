@@ -122,6 +122,9 @@ export function crearRutasUnidades(pool: pg.Pool, jwtSecret: string): Hono {
       return {
         fecha,
         ocupada: dominante !== null,
+        ocupacionId: dominante?.id ?? null,
+        ocupacionInicio: dominante?.rango.inicio ?? null,
+        ocupacionFin: dominante?.rango.fin ?? null,
         capa: dominante?.capa ?? null,
         razon: dominante?.razon ?? null,
         estado: dominante?.estado ?? null,

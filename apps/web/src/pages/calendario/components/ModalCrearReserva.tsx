@@ -4,7 +4,6 @@ import { ModalBase } from "./ModalBase";
 import { ErrorApiAlerta } from "./ErrorApiAlerta";
 import { useMutacionLigera } from "../../../lib/api/queryLigero";
 import { crearReservaDirecta } from "../api";
-import { registrarOcupacionCreada } from "../cacheOcupaciones";
 
 export function ModalCrearReserva({
   abierto,
@@ -29,13 +28,12 @@ export function ModalCrearReserva({
   const mutacion = useMutacionLigera(crearReservaDirecta);
 
   async function confirmar() {
-    const resultado = await mutacion.ejecutar({
+    await mutacion.ejecutar({
       unidadId,
       rango: { inicio, fin },
       huespedNombre: huespedNombre || undefined,
       huespedContacto: huespedContacto || undefined,
     });
-    registrarOcupacionCreada({ id: resultado.id, tipo: "reserva", unidadId, inicio, fin });
     onCreado();
     onCerrar();
     setConfirmando(false);

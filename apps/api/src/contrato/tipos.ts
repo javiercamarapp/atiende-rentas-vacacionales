@@ -105,10 +105,24 @@ export const EstadoOcupacionContrato = z.enum([
 ]);
 
 /** Una noche de calendario ya resuelta: capa/razón/estado/origen dominantes
- * para esa fecha, tal como los necesita la UI (RV09-R-01, §UX-1). */
+ * para esa fecha, tal como los necesita la UI (RV09-R-01, §UX-1).
+ *
+ * `ocupacionId`/`ocupacionInicio`/`ocupacionFin` identifican la fila de
+ * `ocupacion_unidad` dominante de esa noche (la misma que usan `capa` y
+ * `origenCanal`) — sin esto la UI no puede modificar/cancelar una
+ * reserva o bloqueo que no haya creado ella misma en la sesión actual
+ * (gap corregido en Lote 11B; antes se compensaba con una caché de
+ * sessionStorage, `cacheOcupaciones`, que solo cubría lo creado en la
+ * misma sesión del navegador). Nunca habilita cancelar una reserva de
+ * canal: esa regla sigue decidida por `capa`/`razon`/`esDirecta` en la
+ * UI (D-006/D-011), el `id` solo permite actuar sobre lo que ya estaba
+ * permitido actuar. */
 export const NocheCalendario = z.object({
   fecha: z.string(),
   ocupada: z.boolean(),
+  ocupacionId: z.string().uuid().nullable(),
+  ocupacionInicio: z.string().nullable(),
+  ocupacionFin: z.string().nullable(),
   capa: CapaContrato.nullable(),
   razon: RazonContrato.nullable(),
   estado: EstadoOcupacionContrato.nullable(),

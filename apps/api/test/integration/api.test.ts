@@ -253,6 +253,54 @@ describe("errores de dominio tipados", () => {
     expect(body.noches.every((n) => !n.ocupada)).toBe(true);
   });
 
+  it("GET /unidades/:id/calendario expone ocupacionId (Lote 11B, corrección 2): la UI puede identificar qué fila modificar/cancelar sin depender de una caché de sesión del navegador", async () => {
+    const { accessToken } = await login(fx.emailAdminA, fx.passwordAdminA);
+    const reserva = await app.request(
+      "/reservas",
+      autenticado(accessToken, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ unidadId: fx.unidadA, rango: { inicio: "2026-07-10", fin: "2026-07-13" } }),
+      }),
+    );
+    expect(reserva.status).toBe(201);
+    const reservaBody = (await reserva.json()) as { id: string };
+
+    const bloqueo = await app.request(
+      "/bloqueos",
+      autenticado(accessToken, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ unidadId: fx.unidadA, rango: { inicio: "2026-07-20", fin: "2026-07-22" }, razon: "BLOQUEO_PROPIETARIO" }),
+      }),
+    );
+    expect(bloqueo.status).toBe(201);
+    const bloqueoBody = (await bloqueo.json()) as { id: string };
+
+    const res = await app.request(
+      `/unidades/${fx.unidadA}/calendario?desde=2026-07-01&hasta=2026-07-31`,
+      autenticado(accessToken),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      noches: { fecha: string; ocupada: boolean; ocupacionId: string | null; ocupacionInicio: string | null; ocupacionFin: string | null; capa: string | null }[];
+    };
+
+    const nocheReserva = body.noches.find((n) => n.fecha === "2026-07-11")!;
+    expect(nocheReserva.ocupacionId).toBe(reservaBody.id);
+    expect(nocheReserva.ocupacionInicio).toBe("2026-07-10");
+    expect(nocheReserva.ocupacionFin).toBe("2026-07-13");
+    expect(nocheReserva.capa).toBe("reserva");
+
+    const nocheBloqueo = body.noches.find((n) => n.fecha === "2026-07-20")!;
+    expect(nocheBloqueo.ocupacionId).toBe(bloqueoBody.id);
+    expect(nocheBloqueo.capa).toBe("bloqueo");
+
+    const nocheLibre = body.noches.find((n) => n.fecha === "2026-07-01")!;
+    expect(nocheLibre.ocupada).toBe(false);
+    expect(nocheLibre.ocupacionId).toBeNull();
+  });
+
   it("403 rol_forbidden: GET /auditoria exige admin_gestora/superadmin", async () => {
     const { accessToken } = await login(fx.emailOperadorSolo, fx.passwordOperadorSolo);
     const res = await app.request("/auditoria", autenticado(accessToken));

@@ -4,7 +4,6 @@ import { ModalBase } from "./ModalBase";
 import { ErrorApiAlerta } from "./ErrorApiAlerta";
 import { useMutacionLigera } from "../../../lib/api/queryLigero";
 import { modificarFechasReserva } from "../api";
-import { quitarOcupacionCreada, registrarOcupacionCreada } from "../cacheOcupaciones";
 
 /** Solo aplica a reservas DIRECTAS (la propia página nunca ofrece esta
  * acción para una reserva de canal — D-006/D-011, ACEPTACION §UX-1). */
@@ -12,7 +11,6 @@ export function ModalModificarFechas({
   abierto,
   onCerrar,
   reservaId,
-  unidadId,
   unidadNombre,
   inicioActual,
   finActual,
@@ -21,7 +19,6 @@ export function ModalModificarFechas({
   abierto: boolean;
   onCerrar: () => void;
   reservaId: string;
-  unidadId: string;
   unidadNombre: string;
   inicioActual: string;
   finActual: string;
@@ -34,8 +31,6 @@ export function ModalModificarFechas({
 
   async function confirmar() {
     await mutacion.ejecutar(reservaId, { rango: { inicio, fin } });
-    quitarOcupacionCreada(reservaId);
-    registrarOcupacionCreada({ id: reservaId, tipo: "reserva", unidadId, inicio, fin });
     onModificado();
     onCerrar();
     setConfirmando(false);
