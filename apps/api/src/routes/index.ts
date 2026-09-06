@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type pg from "pg";
 import type { KeyringCifradoCanal } from "../seguridad/cifrado.js";
+import { crearRutasAgentes } from "./agentes/index.js";
 import { crearRutasAuditoria } from "./auditoria.js";
 import { crearRutasAuth } from "./auth.js";
 import { crearRutasBackoffice } from "./backoffice/index.js";
@@ -9,6 +10,7 @@ import { crearRutasCanales } from "./canales.js";
 import { crearRutasConflictos } from "./conflictos.js";
 import { crearRutasFinanzas } from "./finanzas.js";
 import { crearRutasLimpieza } from "./limpieza/index.js";
+import { crearRutasMensajeria } from "./mensajeria/index.js";
 import { crearRutasPricing } from "./pricing.js";
 import { crearRutasPropiedades } from "./propiedades.js";
 import { crearRutasReportes } from "./reportes.js";
@@ -42,10 +44,12 @@ export function registrarRutas(app: Hono, deps: DependenciasRutas): Hono {
   app.route("/canales", crearRutasCanales(pool, jwtSecret, keyring));
   app.route("/auditoria", crearRutasAuditoria(pool, jwtSecret));
   app.route("/operacion", crearRutasLimpieza(pool, jwtSecret));
+  app.route("/mensajeria", crearRutasMensajeria(pool, jwtSecret));
   app.route("/finanzas", crearRutasFinanzas(pool, jwtSecret));
   app.route("/pricing", crearRutasPricing(pool, jwtSecret));
   app.route("/reportes", crearRutasReportes(pool, jwtSecret));
   app.route("/backoffice", crearRutasBackoffice(pool, jwtSecret, keyring));
+  app.route("/agentes", crearRutasAgentes(pool, jwtSecret));
 
   return app;
 }

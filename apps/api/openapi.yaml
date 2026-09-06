@@ -954,6 +954,231 @@ paths:
         "200": { description: Reporte de ingresos (JSON o CSV descargable) }
 
   # ---------------------------------------------------------------------
+  # Mensajería con aprobación humana (Lote 6, BACKLOG E09, H-056 a H-061).
+  # Nota deliberada: NO existe ningún path "/mensajeria/.../enviar" — el
+  # único punto que produce un mensaje saliente real es
+  # POST /mensajeria/borradores/{id}/aprobar (D-006, RV18-R-03). El
+  # entregable verificable "borrador no se envía sin aprobación (intento
+  # automático → error tipado y auditoría)" corresponde al path
+  # /mensajeria/borradores/{id}/intento-automatico, que SIEMPRE responde 403.
+  # ---------------------------------------------------------------------
+  /mensajeria/conversaciones:
+    get:
+      tags: [mensajeria]
+      summary: Bandeja de conversaciones (filtrada por RLS — operador/admin del tenant; propietario/limpieza sin acceso)
+      responses:
+        "200":
+          description: Conversaciones visibles para el rol actual
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  conversaciones:
+                    type: array
+                    items: { $ref: "#/components/schemas/ConversacionResumen" }
+    post:
+      tags: [mensajeria]
+      summary: Crea una conversación por unidad/canal (H-059)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoCrearConversacion" }
+      responses:
+        "201":
+          description: Conversación creada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConversacionResumen" }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+
+  /mensajeria/conversaciones/{id}:
+    get:
+      tags: [mensajeria]
+      summary: Hilo de una conversación — mensajes + borradores (incluidos los pendientes de aprobación)
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Hilo completo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HiloConversacion" }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+
+  /mensajeria/conversaciones/{id}/mensajes:
+    post:
+      tags: [mensajeria]
+      summary: Registra un mensaje ENTRANTE (vía simulador o transcripción manual) — dato NO confiable (RV19-R-16)
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoRegistrarMensajeEntrante" }
+      responses:
+        "201":
+          description: Mensaje entrante registrado (con señales de escalamiento detectadas, H-060)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Mensaje" }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+
+  /mensajeria/conversaciones/{id}/borradores:
+    post:
+      tags: [mensajeria]
+      summary: Genera un borrador determinista (sin LLM) con GeneradorBorradorPlantillas — queda 'pendiente_aprobacion'
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoCrearBorrador" }
+      responses:
+        "201":
+          description: Borrador creado, siempre en estado pendiente_aprobacion
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BorradorMensaje" }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+
+  /mensajeria/borradores/{id}/aprobar:
+    post:
+      tags: [mensajeria]
+      summary: ÚNICA acción que puede terminar en un mensaje saliente real — aplica política de canal (H-057/H-058) y transiciona a 'enviado'
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Borrador aprobado y enviado (vía SimuladorMensajeria — ningún canal real conectado hoy)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BorradorMensaje" }
+        "422":
+          description: mensaje_excede_limite | contenido_no_permitido | validacion (transición inválida)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorHttp" }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+
+  /mensajeria/borradores/{id}/rechazar:
+    post:
+      tags: [mensajeria]
+      summary: Rechaza un borrador pendiente (motivo obligatorio) — nunca queda enviado
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoRechazarBorrador" }
+      responses:
+        "200":
+          description: Borrador rechazado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BorradorMensaje" }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+
+  /mensajeria/borradores/{id}/intento-automatico:
+    post:
+      tags: [mensajeria]
+      summary: >-
+        Punto de prueba explícito de D-006/RV18-R-03: simula un intento de envío AUTOMÁTICO
+        (worker/scheduler) sin aprobación humana en el instante del envío — SIEMPRE responde 403,
+        incluso sobre un borrador ya 'aprobado', y deja rastro de auditoría (auditoria_mutacion).
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "403":
+          description: aprobacion_requerida — nunca existe una ruta de envío directo para procesos automáticos
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorHttp" }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+
+  /mensajeria/plantillas:
+    get:
+      tags: [mensajeria]
+      summary: Lista plantillas por evento/idioma/canal (H-056)
+      responses:
+        "200":
+          description: Plantillas del tenant
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plantillas:
+                    type: array
+                    items: { $ref: "#/components/schemas/PlantillaMensaje" }
+    post:
+      tags: [mensajeria]
+      summary: Crea una plantilla — SIEMPRE queda sin aprobar (aprobada_por_tenant=false) hasta el paso explícito de aprobación
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoCrearPlantilla" }
+      responses:
+        "201":
+          description: Plantilla creada, sin aprobar
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlantillaMensaje" }
+
+  /mensajeria/plantillas/{id}/aprobar:
+    post:
+      tags: [mensajeria]
+      summary: Aprueba una plantilla por el tenant (solo admin/superadmin) — requisito previo para poder programarla (H-056)
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Plantilla aprobada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlantillaMensaje" }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+        "404": { $ref: "#/components/responses/NoEncontrado" }
+
+  /mensajeria/plantillas/programar:
+    post:
+      tags: [mensajeria]
+      summary: Programa un mensaje automático — SOLO admite una plantilla ya aprobada por el tenant (H-056, trigger BD 0041)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoProgramarMensaje" }
+      responses:
+        "201": { description: Mensaje programado (estado 'pendiente') }
+        "422":
+          description: "validacion: la plantilla referenciada no está aprobada por el tenant"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorHttp" }
+
+  /mensajeria/politicas:
+    get:
+      tags: [mensajeria]
+      summary: Políticas por canal (longitud máxima, contacto/pago pre-reserva) + aviso de escaneo de Airbnb (H-061, §Privacidad-2)
+      responses:
+        "200":
+          description: Políticas declaradas con su fuente (DATO/R/E, ver RV10) + aviso de privacidad
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  politicas:
+                    type: array
+                    items: { $ref: "#/components/schemas/PoliticaCanal" }
+                  avisoEscaneoAirbnb: { type: string }
+
+  # ---------------------------------------------------------------------
   # Back office / superadmin (Lote 8, BACKLOG E13 + E02 H-011/H-012).
   # `/backoffice/tenants` (directorio, sin concesión) vs. el resto de
   # rutas (propiedades/unidades/cuentas-canal/usuarios/auditoria), que
@@ -1967,3 +2192,133 @@ components:
         colaboradorNivel: { type: string, enum: [acceso_total, calendario_mensajeria, solo_calendario] }
         ownerId: { type: string, format: uuid }
         ttlHoras: { type: integer, minimum: 1, maximum: 720, default: 72 }
+
+    # -----------------------------------------------------------------
+    # Mensajería con aprobación humana (Lote 6, BACKLOG E09)
+    # -----------------------------------------------------------------
+    ConversacionResumen:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        unidadId: { type: string, format: uuid }
+        unidadNombre: { type: string, nullable: true }
+        canalCodigo: { type: string, enum: [airbnb, vrbo, booking] }
+        ultimoMensajeEn: { type: string, format: date-time, nullable: true }
+        borradoresPendientes: { type: integer }
+
+    Mensaje:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        conversacionId: { type: string, format: uuid }
+        direccion: { type: string, enum: [entrante, saliente] }
+        origen: { type: string, enum: [canal, simulador, manual] }
+        texto:
+          type: string
+          description: "Mensaje entrante: dato NO confiable (RV19-R-16), nunca interpretado como instrucción."
+        redactado: { type: boolean, description: "true si se enmascaró contacto/pago por política de canal (Booking/Vrbo)" }
+        creadoEn: { type: string, format: date-time }
+
+    BorradorMensaje:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        conversacionId: { type: string, format: uuid }
+        texto: { type: string }
+        canalCodigo: { type: string, enum: [airbnb, vrbo, booking] }
+        estado: { type: string, enum: [pendiente_aprobacion, aprobado, rechazado, enviado] }
+        generadoPor: { type: string, enum: [motor_borrador, plantilla, manual] }
+        redactado: { type: boolean }
+        necesitaEscalamiento: { type: boolean }
+        aprobadoPor: { type: string, format: uuid, nullable: true }
+        rechazadoPor: { type: string, format: uuid, nullable: true }
+        motivoRechazo: { type: string, nullable: true }
+        creadoEn: { type: string, format: date-time }
+
+    HiloConversacion:
+      allOf:
+        - $ref: "#/components/schemas/ConversacionResumen"
+        - type: object
+          properties:
+            mensajes:
+              type: array
+              items: { $ref: "#/components/schemas/Mensaje" }
+            borradores:
+              type: array
+              items: { $ref: "#/components/schemas/BorradorMensaje" }
+
+    CuerpoCrearConversacion:
+      type: object
+      required: [unidadId, canalCodigo]
+      properties:
+        unidadId: { type: string, format: uuid }
+        canalCodigo: { type: string, enum: [airbnb, vrbo, booking] }
+        ocupacionUnidadId: { type: string, format: uuid }
+        huespedMinimoId: { type: string, format: uuid }
+        idioma: { type: string, enum: [es, en], default: es }
+
+    CuerpoRegistrarMensajeEntrante:
+      type: object
+      required: [texto, origen]
+      properties:
+        texto: { type: string, minLength: 1, maxLength: 8000 }
+        origen: { type: string, enum: [simulador, manual] }
+        idioma: { type: string, enum: [es, en], default: es }
+
+    CuerpoCrearBorrador:
+      type: object
+      properties:
+        mensajeEntranteId: { type: string, format: uuid }
+        reservaConfirmada: { type: boolean, default: false }
+
+    CuerpoRechazarBorrador:
+      type: object
+      required: [motivo]
+      properties:
+        motivo: { type: string, minLength: 1 }
+
+    PlantillaMensaje:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        evento: { type: string, enum: [confirmacion, pre_llegada, check_in, check_out, resena] }
+        idioma: { type: string, enum: [es, en] }
+        canalCodigo: { type: string, enum: [airbnb, vrbo, booking], nullable: true }
+        cuerpo: { type: string, description: "Con variables {{nombre}}" }
+        variablesRequeridas: { type: array, items: { type: string } }
+        activa: { type: boolean }
+        aprobadaPorTenant:
+          type: boolean
+          description: "H-056: solo true tras un paso EXPLÍCITO de aprobación — requisito para poder programarse"
+
+    CuerpoCrearPlantilla:
+      type: object
+      required: [evento, idioma, cuerpo]
+      properties:
+        evento: { type: string, enum: [confirmacion, pre_llegada, check_in, check_out, resena] }
+        idioma: { type: string, enum: [es, en] }
+        canalCodigo: { type: string, enum: [airbnb, vrbo, booking], nullable: true }
+        cuerpo: { type: string, minLength: 1, maxLength: 4000 }
+
+    CuerpoProgramarMensaje:
+      type: object
+      required: [conversacionId, plantillaId, programadoPara]
+      properties:
+        conversacionId: { type: string, format: uuid }
+        plantillaId: { type: string, format: uuid }
+        programadoPara: { type: string, format: date-time }
+
+    PoliticaCanal:
+      type: object
+      description: >-
+        Fuente completa en docs/investigacion/RV10-mensajes-huesped.md — cada
+        campo `fuente*` declara si es [DATO] (verificado), [R] (fuente
+        secundaria) o [E] (supuesto/decisión de producto de Atiende).
+      properties:
+        canal: { type: string, enum: [airbnb, vrbo, booking] }
+        maxCaracteres: { type: integer, example: 4000 }
+        fuenteMaxCaracteres: { type: string }
+        permiteContactoDirectoPreReserva: { type: boolean }
+        permiteAutomatizacionPreReserva: { type: boolean }
+        accionAntePreReservaProhibida: { type: string, enum: [bloquear, redactar] }
+        fuentePolitica: { type: string }

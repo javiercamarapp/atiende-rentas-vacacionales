@@ -509,6 +509,114 @@ export const QueryCalendarioTareas = z.object({
 export type QueryCalendarioTareas = z.infer<typeof QueryCalendarioTareas>;
 
 // ---------------------------------------------------------------------------
+// Mensajería con aprobación humana (Lote 6, BACKLOG E09, H-056 a H-061)
+// ---------------------------------------------------------------------------
+
+export const CanalMensajeriaContrato = z.enum(["airbnb", "vrbo", "booking"]);
+export type CanalMensajeriaContrato = z.infer<typeof CanalMensajeriaContrato>;
+
+export const EventoPlantillaContrato = z.enum(["confirmacion", "pre_llegada", "check_in", "check_out", "resena"]);
+export type EventoPlantillaContrato = z.infer<typeof EventoPlantillaContrato>;
+
+export const EstadoBorradorContrato = z.enum(["pendiente_aprobacion", "aprobado", "rechazado", "enviado"]);
+export type EstadoBorradorContrato = z.infer<typeof EstadoBorradorContrato>;
+
+export const CuerpoCrearConversacion = z.object({
+  unidadId: z.string().uuid(),
+  canalCodigo: CanalMensajeriaContrato,
+  ocupacionUnidadId: z.string().uuid().optional(),
+  huespedMinimoId: z.string().uuid().optional(),
+  idioma: z.enum(["es", "en"]).default("es"),
+});
+export type CuerpoCrearConversacion = z.infer<typeof CuerpoCrearConversacion>;
+
+// H-... mensaje entrante — SIEMPRE dato no confiable (RV19-R-16): este
+// cuerpo nunca incluye un campo "instrucción" ni nada que el servidor
+// interprete como comando, solo el texto tal cual llegó.
+export const CuerpoRegistrarMensajeEntrante = z.object({
+  texto: z.string().min(1).max(8000),
+  origen: z.enum(["simulador", "manual"]),
+  idioma: z.enum(["es", "en"]).default("es"),
+});
+export type CuerpoRegistrarMensajeEntrante = z.infer<typeof CuerpoRegistrarMensajeEntrante>;
+
+export const CuerpoCrearBorrador = z.object({
+  // `mensajeEntranteId` es opcional: un borrador también puede originarse
+  // de una plantilla programada (H-056), sin mensaje entrante disparador.
+  mensajeEntranteId: z.string().uuid().optional(),
+  reservaConfirmada: z.boolean().default(false),
+});
+export type CuerpoCrearBorrador = z.infer<typeof CuerpoCrearBorrador>;
+
+export const CuerpoRechazarBorrador = z.object({
+  motivo: z.string().min(1, "El rechazo de un borrador requiere motivo explícito"),
+});
+export type CuerpoRechazarBorrador = z.infer<typeof CuerpoRechazarBorrador>;
+
+export const CuerpoCrearPlantilla = z.object({
+  evento: EventoPlantillaContrato,
+  idioma: z.enum(["es", "en"]),
+  canalCodigo: CanalMensajeriaContrato.nullable().default(null),
+  cuerpo: z.string().min(1).max(4000),
+});
+export type CuerpoCrearPlantilla = z.infer<typeof CuerpoCrearPlantilla>;
+
+export const CuerpoProgramarMensaje = z.object({
+  conversacionId: z.string().uuid(),
+  plantillaId: z.string().uuid(),
+  programadoPara: z.string().datetime(),
+});
+export type CuerpoProgramarMensaje = z.infer<typeof CuerpoProgramarMensaje>;
+
+export const MensajeContrato = z.object({
+  id: z.string().uuid(),
+  conversacionId: z.string().uuid(),
+  direccion: z.enum(["entrante", "saliente"]),
+  origen: z.enum(["canal", "simulador", "manual"]),
+  texto: z.string(),
+  redactado: z.boolean(),
+  creadoEn: z.string(),
+});
+export type MensajeContrato = z.infer<typeof MensajeContrato>;
+
+export const BorradorMensajeContrato = z.object({
+  id: z.string().uuid(),
+  conversacionId: z.string().uuid(),
+  texto: z.string(),
+  canalCodigo: CanalMensajeriaContrato,
+  estado: EstadoBorradorContrato,
+  generadoPor: z.enum(["motor_borrador", "plantilla", "manual"]),
+  redactado: z.boolean(),
+  necesitaEscalamiento: z.boolean().optional(),
+  aprobadoPor: z.string().uuid().nullable(),
+  rechazadoPor: z.string().uuid().nullable(),
+  motivoRechazo: z.string().nullable(),
+  creadoEn: z.string(),
+});
+export type BorradorMensajeContrato = z.infer<typeof BorradorMensajeContrato>;
+
+export const ConversacionResumenContrato = z.object({
+  id: z.string().uuid(),
+  unidadId: z.string().uuid(),
+  unidadNombre: z.string().nullable(),
+  canalCodigo: CanalMensajeriaContrato,
+  ultimoMensajeEn: z.string().nullable(),
+  borradoresPendientes: z.number().int(),
+});
+export type ConversacionResumenContrato = z.infer<typeof ConversacionResumenContrato>;
+
+export const PoliticaCanalContrato = z.object({
+  canal: CanalMensajeriaContrato,
+  maxCaracteres: z.number().int(),
+  fuenteMaxCaracteres: z.string(),
+  permiteContactoDirectoPreReserva: z.boolean(),
+  permiteAutomatizacionPreReserva: z.boolean(),
+  accionAntePreReservaProhibida: z.enum(["bloquear", "redactar"]),
+  fuentePolitica: z.string(),
+});
+export type PoliticaCanalContrato = z.infer<typeof PoliticaCanalContrato>;
+
+// ---------------------------------------------------------------------------
 // Back office / superadmin (Lote 8, BACKLOG E13 + E02 H-011/H-012 parte de
 // formulario CRUD). Rutas en apps/api/src/routes/backoffice/.
 // ---------------------------------------------------------------------------
@@ -748,6 +856,71 @@ export const QueryAuditoriaBackoffice = QueryPaginacion.extend({
   hasta: z.string().optional(),
 });
 export type QueryAuditoriaBackoffice = z.infer<typeof QueryAuditoriaBackoffice>;
+
+// ---------------------------------------------------------------------------
+// Automatización agéntica (Lote 9, BACKLOG E14, H-077 a H-085). Ningún
+// esquema de este bloque acepta un identificador de tenant/propiedad/
+// huésped/reserva como campo pensado para el MODELO — `unidadId` en las
+// rutas es un parámetro normal de la sesión autenticada (mismo patrón que
+// `pricing.ts`/`limpieza`), resuelto por el servidor ANTES de construir el
+// `ToolContext`; el catálogo de tools en sí (`@atiende-rv/domain/agentes`)
+// nunca declara esos campos en su `input_schema` (D-008, verificado en CI).
+// ---------------------------------------------------------------------------
+
+export const CuerpoInvocarAgente = z.object({
+  texto: z.string().min(1).max(4000),
+  idioma: z.enum(["es", "en"]).default("es"),
+  canal: z.enum(["airbnb", "vrbo", "booking", "panel"]).default("panel"),
+  conversationId: z.string().min(1).max(200).optional(),
+});
+export type CuerpoInvocarAgente = z.infer<typeof CuerpoInvocarAgente>;
+
+export const ToolCatalogoContrato = z.object({
+  nombre: z.string(),
+  descripcion: z.string(),
+  efecto: z.enum(["lectura", "propuesta_aprobacion", "accion_reversible"]),
+  requiereLlm: z.boolean(),
+  maxLlamadasPorConversacion: z.number().int(),
+});
+export type ToolCatalogoContrato = z.infer<typeof ToolCatalogoContrato>;
+
+export const ResultadoInvocacionAgenteContrato = z.object({
+  tipo: z.enum(["ok", "presupuesto_agotado", "bloqueado"]),
+  salida: z.unknown().optional(),
+  necesitaEscalamiento: z.boolean().optional(),
+  motivoEscalamiento: z.string().nullable().optional(),
+  motivo: z.string().optional(),
+  mensaje: z.string().optional(),
+});
+export type ResultadoInvocacionAgenteContrato = z.infer<typeof ResultadoInvocacionAgenteContrato>;
+
+export const CuotaAgenteContrato = z.object({
+  tenantId: z.string().uuid(),
+  techoTokensPeriodo: z.number().int(),
+  techoLlamadasPeriodo: z.number().int(),
+  tokensRestantes: z.number().int(),
+  llamadasRestantes: z.number().int(),
+  periodoIniciaEn: z.string(),
+});
+export type CuotaAgenteContrato = z.infer<typeof CuotaAgenteContrato>;
+
+export const TrazaAgenteContrato = z.object({
+  id: z.string().uuid(),
+  actorId: z.string().uuid(),
+  rolActor: z.string(),
+  conversationId: z.string(),
+  canal: z.string(),
+  toolNombre: z.string(),
+  resultado: z.string(),
+  duracionMs: z.number().int(),
+  modeloReal: z.string().nullable(),
+  costoUsdReal: z.number(),
+  creadoEn: z.string(),
+});
+export type TrazaAgenteContrato = z.infer<typeof TrazaAgenteContrato>;
+
+export const QueryTrazasAgente = QueryPaginacion.extend({});
+export type QueryTrazasAgente = z.infer<typeof QueryTrazasAgente>;
 
 export { CODIGOS_ERROR, ErrorDominio } from "./errores.js";
 export type { CodigoError, CuerpoErrorHttp } from "./errores.js";

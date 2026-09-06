@@ -19,6 +19,7 @@
     "@atiende-rv/adapters": "0.0.0",
     "@atiende-rv/db": "0.0.0",
     "@atiende-rv/domain": "0.0.0",
+    "@atiende-rv/sim": "0.0.0",
     "@hono/node-server": "^1.13.7",
     "hono": "^4.6.14",
     "jose": "^5.9.6",

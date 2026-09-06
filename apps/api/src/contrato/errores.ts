@@ -20,6 +20,15 @@ export const CODIGOS_ERROR = [
   "validacion",
   "rate_limited",
   "error_interno",
+  // Lote 6 (E09, mensajería con aprobación humana):
+  "mensaje_excede_limite",
+  "contenido_no_permitido",
+  "aprobacion_requerida",
+  // Lote 9 (E14, automatización agéntica):
+  "agentes_deshabilitado",
+  "cuota_ia_agotada",
+  "tool_no_autorizada",
+  "tool_bloqueada",
 ] as const;
 
 export type CodigoError = (typeof CODIGOS_ERROR)[number];
@@ -38,6 +47,13 @@ const HTTP_POR_CODIGO: Record<CodigoError, number> = {
   validacion: 422,
   rate_limited: 429,
   error_interno: 500,
+  mensaje_excede_limite: 422,
+  contenido_no_permitido: 422,
+  aprobacion_requerida: 403,
+  agentes_deshabilitado: 403,
+  cuota_ia_agotada: 429,
+  tool_no_autorizada: 403,
+  tool_bloqueada: 422,
 };
 
 export class ErrorDominio extends Error {
