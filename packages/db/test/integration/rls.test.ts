@@ -1,0 +1,358 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import EmbeddedPostgres from "embedded-postgres";
+import pg from "pg";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { aplicarMigraciones } from "../../src/runner/migrar.js";
+import { migraciones } from "../../src/migrations/index.js";
+import type { EjecutorSql } from "../../src/runner/ejecutorSql.js";
+
+/**
+ * Suite de aislamiento cross-tenant (H-042, caso adversarial 18) y
+ * escalada de privilegios (H-044, caso adversarial 19) — verificado con
+ * **SQL directo** contra el rol `app_rv` (packages/db migración 0012,
+ * SIN BYPASSRLS), nunca a través de `apps/api`: si un bug futuro en la
+ * capa HTTP olvidara un chequeo de rol, esta suite sigue probando que la
+ * base de datos por sí sola rechaza el cruce (D-020, "RLS es fail-closed
+ * por defecto").
+ *
+ * Instancia su PROPIO cluster `embedded-postgres` (no reutiliza
+ * `crearMotorEmbeddedPostgres`, que siempre conecta como el superusuario
+ * `postgres`) porque necesita abrir conexiones adicionales autenticadas
+ * como `app_rv` — un superusuario SIEMPRE ignora RLS sin importar `FORCE`
+ * (D-020/RV17-F-05), así que probar esto con la conexión de superusuario
+ * daría un falso verde.
+ */
+
+const USUARIO_SUPERUSUARIO = "postgres";
+const PASSWORD_SUPERUSUARIO = "postgres";
+const USUARIO_APP = "app_rv";
+const PASSWORD_APP = "app_rv_dev_change_in_prod"; // ver 0012_rol_aplicacion.ts
+
+let databaseDir: string;
+let servidor: EmbeddedPostgres;
+let puerto: number;
+let superusuario: pg.Client;
+const conexionesAppRv: pg.Client[] = [];
+
+interface IdsFixture {
+  tenantA: string;
+  tenantB: string;
+  propiedadA: string;
+  propiedadB: string;
+  unidadA: string;
+  unidadB: string;
+  ownerA: string;
+  egA: string;
+  adminA: string;
+  operadorAccesoTotal: string;
+  operadorSoloCalendario: string;
+  propietarioA: string;
+  contadorA: string;
+  limpiezaA: string;
+  superadmin: string;
+  adminB: string;
+}
+let ids: IdsFixture;
+
+function puertoAleatorioEnRango(): number {
+  return 40000 + Math.floor(Math.random() * 10000);
+}
+
+async function nuevaConexionAppRv(): Promise<pg.Client> {
+  const cliente = new pg.Client({
+    host: "127.0.0.1",
+    port: puerto,
+    database: "atiende_rv_rls_test",
+    user: USUARIO_APP,
+    password: PASSWORD_APP,
+  });
+  await cliente.connect();
+  conexionesAppRv.push(cliente);
+  return cliente;
+}
+
+/** Abre una conexión app_rv, fija la sesión (`set_config` de alcance de
+ * sesión, igual que apps/api/src/db/contexto.ts) y la deja lista para
+ * ejercitar RLS como ese usuario/rol exacto. */
+async function comoUsuario(
+  usuarioId: string,
+  tenantId: string | null,
+  rol: string,
+  colaboradorNivel: string | null = null,
+): Promise<pg.Client> {
+  const cliente = await nuevaConexionAppRv();
+  await cliente.query("SELECT set_config('app.user_id', $1, false)", [usuarioId]);
+  await cliente.query("SELECT set_config('app.tenant_id', $1, false)", [tenantId ?? ""]);
+  await cliente.query("SELECT set_config('app.rol', $1, false)", [rol]);
+  await cliente.query("SELECT set_config('app.colaborador_nivel', $1, false)", [colaboradorNivel ?? ""]);
+  return cliente;
+}
+
+beforeAll(async () => {
+  databaseDir = await mkdtemp(join(tmpdir(), "atiende-rv-rls-test-"));
+  puerto = puertoAleatorioEnRango();
+  servidor = new EmbeddedPostgres({
+    databaseDir,
+    port: puerto,
+    user: USUARIO_SUPERUSUARIO,
+    password: PASSWORD_SUPERUSUARIO,
+    persistent: false,
+    onLog: () => undefined,
+    onError: () => undefined,
+  });
+  await servidor.initialise();
+  await servidor.start();
+  await servidor.createDatabase("atiende_rv_rls_test");
+
+  superusuario = servidor.getPgClient("atiende_rv_rls_test");
+  await superusuario.connect();
+  await superusuario.query("CREATE EXTENSION IF NOT EXISTS btree_gist");
+
+  const ejecutor: EjecutorSql = {
+    async query(sql, params) {
+      const resultado = await superusuario.query(sql, params as unknown[] | undefined);
+      return { rows: resultado.rows, rowCount: resultado.rowCount };
+    },
+    async exec(sql) {
+      await superusuario.query(sql);
+    },
+  };
+  await aplicarMigraciones(ejecutor, migraciones);
+
+  // --- Fixtures: dos tenants, cada uno con su propiedad/unidad, y un
+  // usuario por cada rol relevante en el tenant A (§Roles-1/§Roles-4). ---
+  const tenantA = await superusuario.query<{ id: string }>(
+    "INSERT INTO tenant (nombre) VALUES ('Tenant A') RETURNING id",
+  );
+  const tenantB = await superusuario.query<{ id: string }>(
+    "INSERT INTO tenant (nombre) VALUES ('Tenant B') RETURNING id",
+  );
+  const egA = await superusuario.query<{ id: string }>(
+    "INSERT INTO empresa_gestora (tenant_id, razon_social) VALUES ($1, 'EG A') RETURNING id",
+    [tenantA.rows[0]!.id],
+  );
+  const ownerA = await superusuario.query<{ id: string }>(
+    "INSERT INTO owner (empresa_gestora_id, nombre) VALUES ($1, 'Owner A') RETURNING id",
+    [egA.rows[0]!.id],
+  );
+  const propiedadA = await superusuario.query<{ id: string }>(
+    "INSERT INTO propiedad (tenant_id, nombre, zona_horaria) VALUES ($1, 'Prop A', 'America/Cancun') RETURNING id",
+    [tenantA.rows[0]!.id],
+  );
+  const propiedadB = await superusuario.query<{ id: string }>(
+    "INSERT INTO propiedad (tenant_id, nombre, zona_horaria) VALUES ($1, 'Prop B', 'America/Cancun') RETURNING id",
+    [tenantB.rows[0]!.id],
+  );
+  const unidadA = await superusuario.query<{ id: string }>(
+    "INSERT INTO unidad (propiedad_id, owner_id, nombre) VALUES ($1, $2, 'Unidad A1') RETURNING id",
+    [propiedadA.rows[0]!.id, ownerA.rows[0]!.id],
+  );
+  const unidadB = await superusuario.query<{ id: string }>(
+    "INSERT INTO unidad (propiedad_id, nombre) VALUES ($1, 'Unidad B1') RETURNING id",
+    [propiedadB.rows[0]!.id],
+  );
+
+  async function crearUsuario(
+    tenantId: string | null,
+    email: string,
+    rol: string,
+    colaboradorNivel: string | null,
+    ownerId: string | null,
+  ): Promise<string> {
+    const resultado = await superusuario.query<{ id: string }>(
+      `INSERT INTO usuario (tenant_id, email, rol, colaborador_nivel, owner_id, password_hash)
+       VALUES ($1, $2, $3, $4, $5, 'x') RETURNING id`,
+      [tenantId, email, rol, colaboradorNivel, ownerId],
+    );
+    return resultado.rows[0]!.id;
+  }
+
+  ids = {
+    tenantA: tenantA.rows[0]!.id,
+    tenantB: tenantB.rows[0]!.id,
+    propiedadA: propiedadA.rows[0]!.id,
+    propiedadB: propiedadB.rows[0]!.id,
+    unidadA: unidadA.rows[0]!.id,
+    unidadB: unidadB.rows[0]!.id,
+    ownerA: ownerA.rows[0]!.id,
+    egA: egA.rows[0]!.id,
+    adminA: await crearUsuario(tenantA.rows[0]!.id, "admin.a@test.local", "admin_gestora", null, null),
+    operadorAccesoTotal: await crearUsuario(
+      tenantA.rows[0]!.id,
+      "operador.total.a@test.local",
+      "operador",
+      "acceso_total",
+      null,
+    ),
+    operadorSoloCalendario: await crearUsuario(
+      tenantA.rows[0]!.id,
+      "operador.solo.a@test.local",
+      "operador",
+      "solo_calendario",
+      null,
+    ),
+    propietarioA: await crearUsuario(
+      tenantA.rows[0]!.id,
+      "propietario.a@test.local",
+      "propietario",
+      null,
+      ownerA.rows[0]!.id,
+    ),
+    contadorA: await crearUsuario(tenantA.rows[0]!.id, "contador.a@test.local", "contador", null, null),
+    limpiezaA: await crearUsuario(tenantA.rows[0]!.id, "limpieza.a@test.local", "limpieza", null, null),
+    superadmin: await crearUsuario(null, "superadmin@test.local", "superadmin", null, null),
+    adminB: await crearUsuario(tenantB.rows[0]!.id, "admin.b@test.local", "admin_gestora", null, null),
+  };
+}, 120_000);
+
+afterAll(async () => {
+  await Promise.all(conexionesAppRv.map((c) => c.end().catch(() => undefined)));
+  await superusuario.end().catch(() => undefined);
+  await servidor.stop().catch(() => undefined);
+  await rm(databaseDir, { recursive: true, force: true }).catch(() => undefined);
+});
+
+describe("H-042 / caso adversarial 18: aislamiento cross-tenant (SQL directo, rol app_rv sin BYPASSRLS)", () => {
+  it("adminA no ve la propiedad del tenant B (0 filas, sin error)", async () => {
+    const cliente = await comoUsuario(ids.adminA, ids.tenantA, "admin_gestora");
+    const resultado = await cliente.query("SELECT * FROM propiedad WHERE id = $1", [ids.propiedadB]);
+    expect(resultado.rowCount).toBe(0);
+  });
+
+  it("adminA no ve la unidad ni el calendario del tenant B", async () => {
+    const cliente = await comoUsuario(ids.adminA, ids.tenantA, "admin_gestora");
+    const unidad = await cliente.query("SELECT * FROM unidad WHERE id = $1", [ids.unidadB]);
+    expect(unidad.rowCount).toBe(0);
+
+    await superusuario.query(
+      `INSERT INTO ocupacion_unidad (unidad_id, rango, capa, razon, estado, bloqueante)
+       VALUES ($1, daterange('2026-06-01','2026-06-05','[)'), 'reserva', 'RESERVA_CANAL', 'confirmado', true)`,
+      [ids.unidadB],
+    );
+    const ocupacion = await cliente.query("SELECT * FROM ocupacion_unidad WHERE unidad_id = $1", [ids.unidadB]);
+    expect(ocupacion.rowCount).toBe(0);
+  });
+
+  it("adminA no puede modificar (UPDATE) la propiedad del tenant B — 0 filas afectadas, dato intacto", async () => {
+    const cliente = await comoUsuario(ids.adminA, ids.tenantA, "admin_gestora");
+    const resultado = await cliente.query("UPDATE propiedad SET nombre = 'hackeado' WHERE id = $1", [
+      ids.propiedadB,
+    ]);
+    expect(resultado.rowCount).toBe(0);
+
+    const verificacion = await superusuario.query("SELECT nombre FROM propiedad WHERE id = $1", [ids.propiedadB]);
+    expect(verificacion.rows[0]!.nombre).toBe("Prop B");
+  });
+
+  it("adminA no puede insertar un bloqueo en la unidad del tenant B (rechazado por RLS, no por la app)", async () => {
+    const cliente = await comoUsuario(ids.adminA, ids.tenantA, "admin_gestora");
+    await expect(
+      cliente.query(
+        `INSERT INTO ocupacion_unidad (unidad_id, rango, capa, razon, estado, bloqueante)
+         VALUES ($1, daterange('2026-07-01','2026-07-02','[)'), 'bloqueo', 'MANTENIMIENTO', 'confirmado', true)`,
+        [ids.unidadB],
+      ),
+    ).rejects.toMatchObject({ code: "42501" }); // insufficient_privilege (RLS WITH CHECK)
+  });
+
+  it("§Roles-4: adminB (tenant B) no ve el owner del tenant A", async () => {
+    const cliente = await comoUsuario(ids.adminB, ids.tenantB, "admin_gestora");
+    const resultado = await cliente.query("SELECT * FROM owner WHERE id = $1", [ids.ownerA]);
+    expect(resultado.rowCount).toBe(0);
+  });
+
+  it("un superadmin SÍ puede leer datos de cualquier tenant (acceso 'romper cristal' por diseño, D-020)", async () => {
+    const cliente = await comoUsuario(ids.superadmin, null, "superadmin");
+    const propA = await cliente.query("SELECT * FROM propiedad WHERE id = $1", [ids.propiedadA]);
+    const propB = await cliente.query("SELECT * FROM propiedad WHERE id = $1", [ids.propiedadB]);
+    expect(propA.rowCount).toBe(1);
+    expect(propB.rowCount).toBe(1);
+  });
+});
+
+describe("H-044 / caso adversarial 19: escalada de privilegios rechazada por RLS (no solo por la UI)", () => {
+  it("un operador 'solo_calendario' no puede crear un bloqueo (rechazado por RLS)", async () => {
+    const cliente = await comoUsuario(ids.operadorSoloCalendario, ids.tenantA, "operador", "solo_calendario");
+    await expect(
+      cliente.query(
+        `INSERT INTO ocupacion_unidad (unidad_id, rango, capa, razon, estado, bloqueante)
+         VALUES ($1, daterange('2026-08-01','2026-08-02','[)'), 'bloqueo', 'MANTENIMIENTO', 'confirmado', true)`,
+        [ids.unidadA],
+      ),
+    ).rejects.toMatchObject({ code: "42501" });
+  });
+
+  it("un operador 'acceso_total' SÍ puede crear un bloqueo en su propio tenant", async () => {
+    const cliente = await comoUsuario(ids.operadorAccesoTotal, ids.tenantA, "operador", "acceso_total");
+    const resultado = await cliente.query(
+      `INSERT INTO ocupacion_unidad (unidad_id, rango, capa, razon, estado, bloqueante)
+       VALUES ($1, daterange('2026-08-10','2026-08-11','[)'), 'bloqueo', 'MANTENIMIENTO', 'confirmado', true)
+       RETURNING id`,
+      [ids.unidadA],
+    );
+    expect(resultado.rowCount).toBe(1);
+  });
+
+  it("un operador no puede auto-promoverse a admin_gestora (UPDATE usuario rechazado)", async () => {
+    const cliente = await comoUsuario(ids.operadorAccesoTotal, ids.tenantA, "operador", "acceso_total");
+    const resultado = await cliente.query("UPDATE usuario SET rol = 'admin_gestora' WHERE id = $1", [
+      ids.operadorAccesoTotal,
+    ]);
+    expect(resultado.rowCount).toBe(0);
+
+    const verificacion = await superusuario.query("SELECT rol FROM usuario WHERE id = $1", [
+      ids.operadorAccesoTotal,
+    ]);
+    expect(verificacion.rows[0]!.rol).toBe("operador");
+  });
+
+  it("un contador no ve ninguna fila operativa de calendario (propiedad/unidad/ocupacion)", async () => {
+    const cliente = await comoUsuario(ids.contadorA, ids.tenantA, "contador");
+    const propiedades = await cliente.query("SELECT * FROM propiedad WHERE tenant_id = $1", [ids.tenantA]);
+    const unidades = await cliente.query("SELECT * FROM unidad WHERE id = $1", [ids.unidadA]);
+    expect(propiedades.rowCount).toBe(0);
+    expect(unidades.rowCount).toBe(0);
+  });
+
+  it("limpieza no ve ninguna fila operativa de calendario (brecha documentada: sin tabla de tareas aún, Lote 5)", async () => {
+    const cliente = await comoUsuario(ids.limpiezaA, ids.tenantA, "limpieza");
+    const unidades = await cliente.query("SELECT * FROM unidad WHERE id = $1", [ids.unidadA]);
+    expect(unidades.rowCount).toBe(0);
+  });
+});
+
+describe("§Roles-1/§Roles-4: propietario limitado a sus propias unidades", () => {
+  it("propietarioA ve su propia unidad pero no vería la de otro owner del mismo tenant", async () => {
+    const cliente = await comoUsuario(ids.propietarioA, ids.tenantA, "propietario");
+    const propia = await cliente.query("SELECT * FROM unidad WHERE id = $1", [ids.unidadA]);
+    expect(propia.rowCount).toBe(1);
+
+    // Segunda unidad del MISMO tenant, de un owner distinto — nunca visible.
+    // (empresa_gestora tiene UNIQUE(tenant_id): se reutiliza la misma EG del
+    // tenant A, un segundo owner bajo esa misma EG es suficiente para
+    // probar el aislamiento por owner_id, no hace falta una EG nueva.)
+    const otroOwner = await superusuario.query<{ id: string }>(
+      "INSERT INTO owner (empresa_gestora_id, nombre) VALUES ($1, 'Owner A2') RETURNING id",
+      [ids.egA],
+    );
+    const otraUnidad = await superusuario.query<{ id: string }>(
+      "INSERT INTO unidad (propiedad_id, owner_id, nombre) VALUES ($1, $2, 'Unidad A2') RETURNING id",
+      [ids.propiedadA, otroOwner.rows[0]!.id],
+    );
+
+    const ajena = await cliente.query("SELECT * FROM unidad WHERE id = $1", [otraUnidad.rows[0]!.id]);
+    expect(ajena.rowCount).toBe(0);
+  });
+
+  it("propietarioA no ve el registro owner de otro propietario", async () => {
+    const cliente = await comoUsuario(ids.propietarioA, ids.tenantA, "propietario");
+    const otroOwner = await superusuario.query<{ id: string }>(
+      "INSERT INTO owner (empresa_gestora_id, nombre) VALUES ($1, 'Owner A3') RETURNING id",
+      [ids.egA],
+    );
+    const resultado = await cliente.query("SELECT * FROM owner WHERE id = $1", [otroOwner.rows[0]!.id]);
+    expect(resultado.rowCount).toBe(0);
+  });
+});
