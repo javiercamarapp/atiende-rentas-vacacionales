@@ -316,6 +316,65 @@ export function crearRutasFacturacion(deps: DependenciasFacturacion): Hono {
     return c.json({ ok: true });
   });
 
+  // GET /facturacion/mrr — Superadmin: MRR ESTIMADO (RV16: nunca se
+  // presenta como una cifra financiera cerrada — el propio campo
+  // `etiqueta` de la respuesta dice "estimacion", y `apps/web` debe
+  // mostrarlo siempre con esa palabra visible, nunca como "ingreso
+  // mensual" a secas). Calculado en el momento, sin caché ni tabla
+  // agregada — el número de tenants activos en un piloto es pequeño.
+  rutasAutenticadas.get("/mrr", async (c) => {
+    const auth = c.get("auth");
+    exigirRol(auth, ...ROLES_SUPERADMIN);
+
+    // `facturacion_listar_activas_para_mrr()` (migración 0126), NO un
+    // SELECT directo sobre `suscripcion_tenant` — hallazgo real de una
+    // prueba de integración: desde el Lote 8 (H-075/H-076, migración
+    // 0061_acceso_romper_cristal.ts), superadmin YA NO es "miembro
+    // honorario" incondicional de cualquier tenant en `is_tenant_member`
+    // — necesita una concesión "romper cristal" auditada POR TENANT. Un
+    // SELECT normal (incluso dentro de `conSesion` con sesión de
+    // superadmin) devuelve 0 filas EN SILENCIO sin esa concesión. Exigir
+    // una concesión por tenant solo para sumar un agregado de plataforma
+    // sería absurdo (mismo razonamiento que ya usa la política `tenant_
+    // select_superadmin_directorio` de 0061) — la función SECURITY
+    // DEFINER expone solo lo mínimo para el agregado (nunca datos de
+    // negocio) y revalida el rol dentro de sí misma.
+    const { rows: suscripciones } = await pool.query<{
+      tenant_id: string;
+      plan_codigo: string;
+      add_ons_activos: string[];
+      unidades_activas: number;
+    }>("SELECT * FROM facturacion_listar_activas_para_mrr()");
+
+    const { rows: planesFilas } = await pool.query<FilaPlan>(
+      "SELECT codigo, nombre, descripcion, escalones, add_ons, limite_unidades_activas, limite_mensajes_ia_mes, limite_cuentas_canal, dias_prueba, moneda, etiqueta_precio, activo FROM plan_facturacion",
+    );
+    const planesPorCodigo = new Map(planesFilas.map((f) => [f.codigo, planDesdeFila(f)]));
+
+    let mrrCentavos = 0;
+    let tenantsActivosContados = 0;
+    for (const sus of suscripciones) {
+      const plan = planesPorCodigo.get(sus.plan_codigo);
+      if (!plan) continue; // plan borrado después de que el tenant lo contratara — se excluye de la suma, no se revienta.
+      const desglose = calcularDesgloseSuscripcion({
+        plan,
+        unidadesActivas: sus.unidades_activas,
+        addOnsActivos: sus.add_ons_activos,
+      });
+      mrrCentavos += desglose.totalCentavos;
+      tenantsActivosContados += 1;
+    }
+    const resultado = { mrrCentavos, tenantsActivosContados };
+
+    return c.json({
+      etiqueta: "estimacion",
+      mrrCentavos: resultado.mrrCentavos,
+      moneda: "USD",
+      tenantsActivosContados: resultado.tenantsActivosContados,
+      calculadoEn: new Date().toISOString(),
+    });
+  });
+
   // POST /facturacion/webhooks/stripe — PÚBLICA por diseño (sin sesión;
   // la ÚNICA credencial es la firma HMAC verificada abajo). Monta esta
   // ruta SIEMPRE (incluso con PagosSimulado activo) para responder 503

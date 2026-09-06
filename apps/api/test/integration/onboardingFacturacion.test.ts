@@ -324,4 +324,41 @@ describe("POST /facturacion/webhooks/stripe — firma HMAC verificada de punta a
     const body = await json<{ error: { codigo: string } }>(res);
     expect(body.error.codigo).toBe("validacion");
   });
+
+  it("GET /facturacion/mrr (Superadmin) suma el tenant recién activado por el webhook — etiquetado 'estimacion'", async () => {
+    const { hashContrasena } = await import("../../src/seguridad/contrasenas.js");
+    const passwordSuper = "clave-super-admin-mrr-test-1234";
+    await superusuario.query(
+      "INSERT INTO usuario (tenant_id, email, rol, password_hash) VALUES (NULL, 'super@mrr-test.local', 'superadmin', $1)",
+      [await hashContrasena(passwordSuper)],
+    );
+    const loginRes = await app.request("/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "super@mrr-test.local", password: passwordSuper }),
+    });
+    const { accessToken } = await json<{ accessToken: string }>(loginRes);
+
+    const res = await app.request("/facturacion/mrr", { headers: { authorization: `Bearer ${accessToken}` } });
+    expect(res.status).toBe(200);
+    const body = await json<{ etiqueta: string; mrrCentavos: number; tenantsActivosContados: number }>(res);
+    expect(body.etiqueta).toBe("estimacion");
+    // El tenant "Webhook E2E" quedó 'activa' en el plan 'esencial' sin
+    // unidades (0 unidades activas) — su aporte al MRR es 0, pero SÍ debe
+    // contarse como tenant activo (>= 1), confirmando que la consulta
+    // atraviesa RLS correctamente en vez de devolver 0 filas en silencio.
+    expect(body.tenantsActivosContados).toBeGreaterThanOrEqual(1);
+    expect(body.mrrCentavos).toBeGreaterThanOrEqual(0);
+  });
+
+  it("GET /facturacion/mrr rechaza a un admin_gestora (403 rol_forbidden)", async () => {
+    const loginRes = await app.request("/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "admin@onboarding-e2e.example", password: "clave-super-secreta-onboarding-1" }),
+    });
+    const { accessToken } = await json<{ accessToken: string }>(loginRes);
+    const res = await app.request("/facturacion/mrr", { headers: { authorization: `Bearer ${accessToken}` } });
+    expect(res.status).toBe(403);
+  });
 });
