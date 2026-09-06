@@ -179,16 +179,25 @@ async function upsertEventoImportado(
   }
 }
 
+// D-DSD-04: SIN filtro por canal a propósito — un bloqueo que exportamos a
+// un canal puede regresarnos reflejado a través de un canal DISTINTO
+// (D-004: "...o de otro canal a través de él"), así que la comparación de
+// anti-eco por hash debe cubrir todo lo que exportamos para esta unidad,
+// sin importar a qué canal.
 async function hashesExportadosRecientes(ctx: ContextoSincronizacion): Promise<string[]> {
   const fila = await ctx.ejecutor.query<{ hash_contenido: string }>(
     `SELECT be.hash_contenido FROM bloqueo_exportado be
      JOIN ocupacion_unidad ou ON ou.id = be.ocupacion_unidad_id
-     WHERE ou.unidad_id = $1 AND be.canal_id = $2`,
-    [ctx.unidadId, ctx.canalId],
+     WHERE ou.unidad_id = $1`,
+    [ctx.unidadId],
   );
   return fila.rows.map((r) => r.hash_contenido);
 }
 
+// Ya devuelve TODOS los canales a los que se exportó el rango coincidente
+// (sin filtrar por `ctx.canalId`) — `detectarEco` (D-DSD-04) solo necesita
+// saber si la lista es no vacía (se exportó a algún canal), no si incluye
+// el canal actual.
 async function canalesExportadosDeRango(
   ctx: ContextoSincronizacion,
   rango: RangoFechas,
@@ -293,7 +302,6 @@ export async function ejecutarCicloImport(
     const eco = detectarEco({
       uidEntrante: evento.uid,
       hashContenidoEntrante: hash,
-      canalId: ctx.canalId,
       hashesExportadosRecientes: hashesRecientes,
       canalesExportadosDeRangoCoincidente: canalesExportados,
     });
