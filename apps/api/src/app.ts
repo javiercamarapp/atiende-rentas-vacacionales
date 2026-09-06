@@ -9,6 +9,14 @@ import { cabecerasSeguridad } from "./seguridad/cabeceras.js";
 import { KeyringCifradoCanal } from "./seguridad/cifrado.js";
 import { crearRateLimit } from "./seguridad/rateLimit.js";
 import { ZodError } from "zod";
+import {
+  construirExportadoresDesdeEntorno,
+  crearMiddlewareObservabilidad,
+  crearTrazador,
+  leerConfiguracionOtelEntorno,
+  RegistroMetricas,
+  rutasObservabilidad,
+} from "./workers/observabilidad/index.js";
 
 export interface OpcionesCrearApp {
   /** Pool de conexión ya construido — inyectable en pruebas para apuntar
@@ -32,6 +40,15 @@ export function crearApp(opciones: OpcionesCrearApp = {}) {
   app.use("*", cors({ origin: config.origenWeb }));
   app.use("*", crearRateLimit(config.rateLimit));
   app.use("*", crearLogger());
+
+  // Observabilidad (Lote 10, H-035/H-036): un span SERVER + métricas por
+  // request, exportadas a consola/archivo en dev y a OTLP si
+  // OTEL_EXPORTER_OTLP_ENDPOINT está configurado. `/metrics` y
+  // `/health/detallado` viven en workers/observabilidad/rutas.ts.
+  const metricas = new RegistroMetricas();
+  const trazador = crearTrazador("atiende-rv-api", construirExportadoresDesdeEntorno(leerConfiguracionOtelEntorno()));
+  app.use("*", crearMiddlewareObservabilidad(trazador, metricas));
+  app.route("/", rutasObservabilidad({ metricas, pool }));
 
   app.get("/health", (c) =>
     c.json({

@@ -16,6 +16,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@atiende-rv/adapters": "0.0.0",
     "@atiende-rv/db": "0.0.0",
     "@atiende-rv/domain": "0.0.0",
     "@hono/node-server": "^1.13.7",
