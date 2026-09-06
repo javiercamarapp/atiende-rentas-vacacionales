@@ -42,6 +42,7 @@ tags:
   - name: pricing
   - name: reportes
   - name: backoffice
+  - name: agentes
 
 paths:
   /auth/login:
@@ -1511,6 +1512,96 @@ paths:
               schema: { $ref: "#/components/schemas/RespuestaAuditoriaPaginada" }
         "403": { $ref: "#/components/responses/RolForbidden" }
 
+  # ---------------------------------------------------------------------
+  # Automatización agéntica (Lote 9, BACKLOG E14, H-077 a H-085). Ninguna
+  # tool del catálogo (`GET /agentes/tools`) declara un identificador de
+  # tenant/propiedad/huésped/reserva en su `inputSchema` (D-008,
+  # verificado en CI por packages/domain/test/agentes/catalogo.test.ts).
+  # No existe ningún path de cancelación ni de envío directo de mensaje —
+  # esas acciones no existen para ningún agente (D-006, RV18-R-03).
+  # ---------------------------------------------------------------------
+  /agentes/tools:
+    get:
+      tags: [agentes]
+      summary: Catálogo de tools disponible para el rol/nivel de la sesión actual (H-078)
+      responses:
+        "200":
+          description: Tools resueltas por la matriz rol×tool en SERVIDOR, antes de invocar cualquier modelo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tools: { type: array, items: { $ref: "#/components/schemas/ToolCatalogo" } }
+
+  /agentes/cuota:
+    get:
+      tags: [agentes]
+      summary: Presupuesto de IA del tenant — techo y restante (H-079)
+      responses:
+        "200":
+          description: Estado del presupuesto duro de IA del tenant
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CuotaAgente" }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+        "404": { description: "Tenant sin presupuesto de IA configurado (falla cerrado, nunca gasto ilimitado)" }
+
+  /agentes/trazas:
+    get:
+      tags: [agentes]
+      summary: Trazabilidad paginada de tool-calls del tenant (H-080)
+      parameters:
+        - name: pagina
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: tamano
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          description: Página de trazas (actor, rol, canal, tool, resultado, duración, modelo real, costo)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  trazas: { type: array, items: { $ref: "#/components/schemas/TrazaAgente" } }
+        "403": { $ref: "#/components/responses/RolForbidden" }
+
+  /agentes/unidades/{unidadId}/mensajes:
+    post:
+      tags: [agentes]
+      summary: Invoca una ronda de tool-calling para un mensaje de huésped sobre esta unidad (H-077 a H-083)
+      description: >-
+        `unidadId` es un parámetro de ruta normal (resuelto por el servidor
+        desde la sesión autenticada, RLS lo restringe al tenant de la
+        sesión) — nunca un argumento que el modelo elige. El texto del
+        cuerpo llega al proveedor SIEMPRE como dato no confiable
+        (RV19-R-16), nunca como instrucción de sistema.
+      parameters:
+        - name: unidadId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CuerpoInvocarAgente" }
+      responses:
+        "200":
+          description: Resultado de la ronda — lectura, propuesta pendiente de aprobación humana, o escalamiento
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ResultadoInvocacionAgente" }
+        "403":
+          description: "agentes.habilitado desactivado para este tenant (default-off, H-079)"
+        "422":
+          description: "La tool propuesta fue bloqueada (fuera de catálogo, no autorizada, o confirmación no verificada) — nunca se ejecutó"
+        "429":
+          description: "Presupuesto de IA del tenant agotado — la llamada al proveedor NUNCA se ejecutó (§Automatización-1)"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -2322,3 +2413,62 @@ components:
         permiteAutomatizacionPreReserva: { type: boolean }
         accionAntePreReservaProhibida: { type: string, enum: [bloquear, redactar] }
         fuentePolitica: { type: string }
+
+    ToolCatalogo:
+      type: object
+      description: >-
+        Una tool del catálogo de agentes (Lote 9). `nombre`/`descripcion`
+        documentan la tool; el `inputSchema` real (no expuesto aquí, ver
+        packages/domain/agentes/catalogo.ts) nunca declara un campo
+        `*_id`/`tenant*`/`propiedad*`/`huesped*`/`reserva*` (D-008).
+      properties:
+        nombre: { type: string }
+        descripcion: { type: string }
+        efecto: { type: string, enum: [lectura, propuesta_aprobacion, accion_reversible] }
+        requiereLlm: { type: boolean }
+        maxLlamadasPorConversacion: { type: integer }
+
+    CuotaAgente:
+      type: object
+      properties:
+        tenantId: { type: string, format: uuid }
+        techoTokensPeriodo: { type: integer }
+        techoLlamadasPeriodo: { type: integer }
+        tokensRestantes: { type: integer }
+        llamadasRestantes: { type: integer }
+        periodoIniciaEn: { type: string, format: date }
+
+    TrazaAgente:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        actorId: { type: string, format: uuid }
+        rolActor: { type: string }
+        conversationId: { type: string }
+        canal: { type: string, enum: [airbnb, vrbo, booking, panel] }
+        toolNombre: { type: string }
+        resultado: { type: string, enum: [exito, error, presupuesto_agotado, escalado, no_autorizado] }
+        duracionMs: { type: integer }
+        modeloReal: { type: string, nullable: true }
+        costoUsdReal: { type: number }
+        creadoEn: { type: string, format: date-time }
+
+    CuerpoInvocarAgente:
+      type: object
+      required: [texto]
+      properties:
+        texto: { type: string, minLength: 1, maxLength: 4000, description: "Texto del huésped — tratado SIEMPRE como dato no confiable, RV19-R-16" }
+        idioma: { type: string, enum: [es, en], default: es }
+        canal: { type: string, enum: [airbnb, vrbo, booking, panel], default: panel }
+        conversationId: { type: string, maxLength: 200 }
+
+    ResultadoInvocacionAgente:
+      type: object
+      properties:
+        tipo: { type: string, enum: [ok, presupuesto_agotado, bloqueado] }
+        salida: {}
+        necesitaEscalamiento: { type: boolean }
+        motivoEscalamiento:
+          type: string
+          nullable: true
+          enum: [ambiguedad_dato_faltante, escalada_emocional, monto_alto]
