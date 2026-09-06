@@ -698,3 +698,90 @@ motivo y fuente citada.
   `tests/adversarial/canales/`). Logs en `docs/logs/lote3-4-*.log`.
 - **Commits:** ver `git log --oneline --grep="canales-mx"` (13 commits,
   un canal/pieza por commit según B-007).
+
+## Lote 3.2 — cerrado (autenticación completa lista para producción, incluido Google Sign-In)
+
+Historias nuevas H-096–H-108 sobre el JWT propio + refresh/RLS de Lote 3
+(nunca reescrito, solo extendido: `CuerpoLogin`/`CuerpoRefresh`/
+`RespuestaTokens` siguen intactos, `cliente` es opcional con default
+`'api'`). Migraciones 0101-0108. Trazado a docs/REQUISITOS.md (auth/
+roles) y docs/investigacion/RV19 (OAuth/consentimiento, secretos, logs
+sin PII).
+
+| ID | Historia | Estimación | Estado |
+|---|---|---|---|
+| H-096 | Google Sign-In (Authorization Code + PKCE, `openid email profile`), validación de id_token contra JWKS real (iss/aud/nonce/exp/email_verified) | L | hecho |
+| H-097 | Proveedor OIDC simulado propio (emisor + JWKS en memoria, fail-closed fuera de dev/test) para E2E sin depender de Google | M | hecho |
+| H-098 | Vinculación de cuenta: a una cuenta YA EXISTENTE por email verificado siempre permitido; crear cuenta nueva gobernado por `tenant.politica_vinculacion_google` (invitado_solo/dominio_permitido/abierto) | M | hecho |
+| H-099 | Aceptar invitación (Lote 8) vía registro local o vía Google — completa el flujo que `backoffice/usuarios.ts` había dejado documentado como pendiente | M | hecho |
+| H-100 | Registro abierto por tenant (`tenant.permite_registro`) + verificación de correo por token de un solo uso | M | hecho |
+| H-101 | Olvidé/restablecer contraseña — el restablecimiento invalida TODAS las sesiones existentes de esa cuenta | S | hecho |
+| H-102 | Cambiar contraseña (autenticado) — revoca los refresh tokens propios | S | hecho |
+| H-103 | Bloqueo temporal de cuenta tras N intentos fallidos consecutivos (persistente, además del rate limit por IP+email de S-06) | S | hecho |
+| H-104 | Refresh rotativo con detección de reutilización: un token ya revocado presentado de nuevo revoca TODA su familia | M | hecho |
+| H-105 | Cookies httpOnly+Secure+SameSite + CSRF de doble envío para el cliente 'web'; bearer intacto para 'api' | M | hecho |
+| H-106 | MFA TOTP (RFC 6238): habilitar (QR)/confirmar/deshabilitar, códigos de recuperación de un solo uso hasheados, login de dos pasos | L | hecho |
+| H-107 | Listar/revocar sesiones activas + cerrar todas las sesiones | S | hecho |
+| H-108 | Adaptador de correo (simulado etiquetado + SMTP real vía nodemailer) y política de contraseñas (denylist + HIBP k-anonymity opcional, desactivada por defecto) | M | hecho |
+
+- **Cuentas creadas solo por Google** (sin contraseña local) usan un
+  centinela fijo de `password_hash` que NUNCA coincide con el formato
+  scrypt real — el login por contraseña queda bloqueado de forma segura
+  hasta que la cuenta configure una (`packages/db/src/migrations/
+  0106_auth_funciones_extendidas.ts`).
+- **Login federado nunca exige MFA local** (decisión documentada en
+  `apps/api/src/routes/auth.ts`, `manejarCallbackOidc`): Google ya actúa
+  como segundo factor de facto sobre esa identidad.
+- **Repros S-02/S-03/S-06/S-13 verificadas en verde** tras todo el lote
+  (`tests/auditoria-2/seguridad/*.adversarial.test.ts`, 13+27+19 pruebas)
+  — ninguna corrección de auditoría-2 se regresó.
+- **Tres defectos cruzados encontrados y corregidos al ejecutar el E2E
+  real en Chrome** (no detectables solo con `app.request()` en proceso):
+  (1) el formulario del proveedor OIDC simulado era inalcanzable desde un
+  navegador real por resolución de URL relativa (RFC 3986 §5.3); (2) un
+  barril de `packages/domain` (`@atiende-rv/domain/finanzas`, ajeno a
+  este lote pero consumido por `apps/web/src/pages/finanzas|reportes/
+  api.ts`) evaluaba `node:crypto` en el bundle del navegador y crasheaba
+  TODA la web — nuevo subpath granular `@atiende-rv/domain/finanzas/
+  redondeo`; (3) `GoogleCompletadoPage` escribía la sesión directo a
+  `localStorage` sin actualizar el estado de React de `SesionProvider`
+  (`RutaProtegida` rebotaba a /login pese a un refresh exitoso) — nuevo
+  `useSesion().establecerSesion(...)`, más un `useRef` contra la doble
+  invocación de efectos de React 18 StrictMode (disparaba dos
+  `POST /auth/refresh` casi simultáneos con el mismo token, activando la
+  detección de reutilización de H-104 contra la propia sesión recién
+  creada).
+- **Corrección de un hallazgo cruzado reportado por Lote 3.4**: el
+  formato de backup lógico (`packages/db/backup/`, Lote 10) no sabía
+  serializar columnas de ARRAY NATIVO de Postgres (`text[]`) —
+  `tenant.dominios_google_permitidos` (H-098) fue la primera columna así
+  en todo el esquema. `TablaBackup.columnasArray` (nuevo) + tag
+  `$t:"pgarray"` dedicado corrigen el round-trip; formato de backup
+  v1→v2. Prueba unitaria pura en `packages/db/test/backup/
+  serializacion.test.ts` — la integración de backup no pudo
+  re-verificarse en vivo por agotamiento de memoria compartida del
+  sistema (varios agentes concurrentes con embedded-postgres propio en la
+  misma máquina), documentado como limitación de este cierre.
+- **Docs de despliegue**: `docs/despliegue/google-oauth.md` (pasos
+  exactos en Google Cloud Console: pantalla de consentimiento, orígenes
+  JavaScript, URI de redirección, publicar la app).
+- **Pruebas**: unitarias (`test/seguridad/{oidc,totp,passwordPolicy}.test.ts`,
+  32 pruebas — id_token con JWKS de prueba: firma inválida/aud/iss/
+  nonce/expirado/email_verified=false, vector oficial de RFC 6238,
+  tolerancia de reloj, códigos de recuperación, denylist/HIBP);
+  integración HTTP contra un servidor real (`test/integration/
+  authExtendido.test.ts`, 10 pruebas: flujo OIDC completo con
+  vinculación por invitación + RLS intacta, vinculación a cuenta
+  existente, registro abierto permitido/rechazado por política,
+  reutilización de refresh → revoca familia, reset invalida sesiones,
+  bloqueo por intentos, MFA de punta a punta, sesiones); E2E Playwright
+  (`apps/web/e2e/lote3-2-google-simulado.spec.ts`, 2 pruebas, capturas
+  `docs/capturas/lote3-2-{login-google,cuenta-mfa}.png`).
+- **Requiere del usuario** (nunca en este repo): credenciales reales de
+  Google Cloud (`GOOGLE_OAUTH_CLIENT_ID/SECRET/REDIRECT_URI`) si se
+  quiere Google Sign-In real en producción — ver
+  `docs/despliegue/google-oauth.md`. Sin ellas, el botón de Google queda
+  deshabilitado con motivo, nunca un error.
+- **Commits:** ver `git log --oneline --grep="Lote 3.2"` (migraciones,
+  seguridad, API, web, OpenAPI, correcciones cruzadas — un commit por
+  bloque según B-007).
