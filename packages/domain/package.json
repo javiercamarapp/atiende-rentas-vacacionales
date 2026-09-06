@@ -13,6 +13,7 @@
   },
   "scripts": {
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "evals:agentes": "tsx src/agentes/evals/cli.ts"
   },
