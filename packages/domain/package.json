@@ -1,0 +1,20 @@
+{
+  "name": "@atiende-rv/domain",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@js-temporal/polyfill": "^0.5.1"
+  },
+  "devDependencies": {
+    "@atiende-rv/db": "0.0.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.0.5"
+  }
+}
