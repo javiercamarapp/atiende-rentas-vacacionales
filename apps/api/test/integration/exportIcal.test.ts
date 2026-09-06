@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { aplicarMigraciones, migraciones, type EjecutorSql } from "@atiende-rv/db";
 import { parsearIcs } from "@atiende-rv/adapters";
 import { crearApp } from "../../src/app.js";
-import { hashContrasena } from "../../src/seguridad/contrasenas.js";
+import { crearPropiedad, crearTenant, crearUnidad, crearUsuario } from "../soporte/fixtures.js";
 
 /**
  * Lote 11B, corrección cruzada #3: "URL de exportación iCal propia" —
@@ -72,19 +72,9 @@ beforeAll(async () => {
   };
   await aplicarMigraciones(ejecutor, migraciones);
 
-  const tenant = await superusuario.query<{ id: string }>(
-    "INSERT INTO tenant (nombre) VALUES ('T-EXPORT-ICAL') RETURNING id",
-  );
-  tenantId = tenant.rows[0]!.id;
-  const propiedad = await superusuario.query<{ id: string }>(
-    "INSERT INTO propiedad (tenant_id, nombre, zona_horaria) VALUES ($1, 'Prop Export', 'America/Cancun') RETURNING id",
-    [tenantId],
-  );
-  const unidad = await superusuario.query<{ id: string }>(
-    "INSERT INTO unidad (propiedad_id, nombre) VALUES ($1, 'Depto Export') RETURNING id",
-    [propiedad.rows[0]!.id],
-  );
-  unidadId = unidad.rows[0]!.id;
+  tenantId = await crearTenant(superusuario, "T-EXPORT-ICAL");
+  const propiedadId = await crearPropiedad(superusuario, tenantId, { nombre: "Prop Export" });
+  unidadId = await crearUnidad(superusuario, propiedadId, { nombre: "Depto Export" });
   // Una reserva confirmada (RESERVA_CANAL) para que el feed exportado
   // tenga al menos un VEVENT real que el parser propio pueda validar.
   await superusuario.query(
@@ -94,10 +84,7 @@ beforeAll(async () => {
   );
 
   const passwordAdmin = "clave-super-secreta-admin-export";
-  await superusuario.query(
-    `INSERT INTO usuario (tenant_id, email, rol, password_hash) VALUES ($1, $2, 'admin_gestora', $3)`,
-    [tenantId, "admin.export@api-test.local", await hashContrasena(passwordAdmin)],
-  );
+  await crearUsuario(superusuario, { tenantId, email: "admin.export@api-test.local", rol: "admin_gestora", password: passwordAdmin });
 
   pool = new pg.Pool({
     host: "127.0.0.1",

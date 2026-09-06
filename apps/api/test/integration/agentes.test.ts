@@ -8,7 +8,7 @@ import { aplicarMigraciones, migraciones, type EjecutorSql } from "@atiende-rv/d
 import { FLAG_AGENTES_HABILITADO } from "@atiende-rv/domain/agentes";
 import { crearApp } from "../../src/app.js";
 import { registroFlagsAgentesInstancia } from "../../src/agentes/servicio.js";
-import { hashContrasena } from "../../src/seguridad/contrasenas.js";
+import { crearPropiedad, crearTenant, crearUnidad, crearUsuario } from "../soporte/fixtures.js";
 
 /**
  * Lote 9 (BACKLOG E14, H-077 a H-085) — pruebas de integración HTTP contra
@@ -108,44 +108,32 @@ beforeAll(async () => {
   };
   await aplicarMigraciones(ejecutor, migraciones);
 
-  const tenant = await superusuario.query<{ id: string }>("INSERT INTO tenant (nombre) VALUES ('T-Lote9') RETURNING id");
-  const propiedad = await superusuario.query<{ id: string }>(
-    "INSERT INTO propiedad (tenant_id, nombre, zona_horaria) VALUES ($1, 'Casa Lote9', 'America/Cancun') RETURNING id",
-    [tenant.rows[0]!.id],
-  );
-  const unidad = await superusuario.query<{ id: string }>(
-    "INSERT INTO unidad (propiedad_id, nombre, duracion_minima_noches) VALUES ($1, 'U-Lote9', 1) RETURNING id",
-    [propiedad.rows[0]!.id],
-  );
+  const tenantId = await crearTenant(superusuario, "T-Lote9");
+  const propiedadId = await crearPropiedad(superusuario, tenantId, { nombre: "Casa Lote9" });
+  const unidadId = await crearUnidad(superusuario, propiedadId, { nombre: "U-Lote9", duracionMinimaNoches: 1 });
 
   const passwordAdmin = "clave-super-secreta-admin-lote9";
   const passwordOperador = "clave-super-secreta-operador-lote9";
   const passwordPropietario = "clave-super-secreta-propietario-lote9";
   const passwordContador = "clave-super-secreta-contador-lote9";
-  await superusuario.query(
-    `INSERT INTO usuario (tenant_id, email, rol, password_hash) VALUES ($1, $2, 'admin_gestora', $3)`,
-    [tenant.rows[0]!.id, "admin.lote9@api-test.local", await hashContrasena(passwordAdmin)],
-  );
-  await superusuario.query(
-    `INSERT INTO usuario (tenant_id, email, rol, colaborador_nivel, password_hash) VALUES ($1, $2, 'operador', 'acceso_total', $3)`,
-    [tenant.rows[0]!.id, "operador.lote9@api-test.local", await hashContrasena(passwordOperador)],
-  );
-  await superusuario.query(
-    `INSERT INTO usuario (tenant_id, email, rol, password_hash) VALUES ($1, $2, 'propietario', $3)`,
-    [tenant.rows[0]!.id, "propietario.lote9@api-test.local", await hashContrasena(passwordPropietario)],
-  );
-  await superusuario.query(
-    `INSERT INTO usuario (tenant_id, email, rol, password_hash) VALUES ($1, $2, 'contador', $3)`,
-    [tenant.rows[0]!.id, "contador.lote9@api-test.local", await hashContrasena(passwordContador)],
-  );
+  await crearUsuario(superusuario, { tenantId, email: "admin.lote9@api-test.local", rol: "admin_gestora", password: passwordAdmin });
+  await crearUsuario(superusuario, {
+    tenantId,
+    email: "operador.lote9@api-test.local",
+    rol: "operador",
+    colaboradorNivel: "acceso_total",
+    password: passwordOperador,
+  });
+  await crearUsuario(superusuario, { tenantId, email: "propietario.lote9@api-test.local", rol: "propietario", password: passwordPropietario });
+  await crearUsuario(superusuario, { tenantId, email: "contador.lote9@api-test.local", rol: "contador", password: passwordContador });
   await superusuario.query(
     `INSERT INTO agente_cuota_tenant (tenant_id, techo_tokens_periodo, techo_llamadas_periodo) VALUES ($1, 1000000, 1000)`,
-    [tenant.rows[0]!.id],
+    [tenantId],
   );
 
   fx = {
-    tenantId: tenant.rows[0]!.id,
-    unidadId: unidad.rows[0]!.id,
+    tenantId,
+    unidadId,
     emailAdmin: "admin.lote9@api-test.local",
     passwordAdmin,
     emailOperador: "operador.lote9@api-test.local",
@@ -338,37 +326,34 @@ describe("Auditoría 2, corrección P-01: GET/PATCH /agentes/flags (agentes.habi
 
 describe("presupuesto agotado (H-079, §Automatización-1)", () => {
   it("con saldo de llamadas en cero, la ronda responde 429 tipado sin invocar al proveedor", async () => {
-    const tenantAgotado = await superusuario.query<{ id: string }>("INSERT INTO tenant (nombre) VALUES ('T-Lote9-Agotado') RETURNING id");
-    const propiedad = await superusuario.query<{ id: string }>(
-      "INSERT INTO propiedad (tenant_id, nombre, zona_horaria) VALUES ($1, 'Casa Agotada', 'America/Cancun') RETURNING id",
-      [tenantAgotado.rows[0]!.id],
-    );
-    const unidad = await superusuario.query<{ id: string }>(
-      "INSERT INTO unidad (propiedad_id, nombre, duracion_minima_noches) VALUES ($1, 'U-Agotada', 1) RETURNING id",
-      [propiedad.rows[0]!.id],
-    );
+    const tenantAgotadoId = await crearTenant(superusuario, "T-Lote9-Agotado");
+    const propiedadAgotadaId = await crearPropiedad(superusuario, tenantAgotadoId, { nombre: "Casa Agotada" });
+    const unidadAgotadaId = await crearUnidad(superusuario, propiedadAgotadaId, { nombre: "U-Agotada", duracionMinimaNoches: 1 });
     const passwordOperador = "clave-super-secreta-operador-agotado";
-    await superusuario.query(
-      `INSERT INTO usuario (tenant_id, email, rol, colaborador_nivel, password_hash) VALUES ($1, $2, 'operador', 'acceso_total', $3)`,
-      [tenantAgotado.rows[0]!.id, "operador.agotado@api-test.local", await hashContrasena(passwordOperador)],
-    );
+    await crearUsuario(superusuario, {
+      tenantId: tenantAgotadoId,
+      email: "operador.agotado@api-test.local",
+      rol: "operador",
+      colaboradorNivel: "acceso_total",
+      password: passwordOperador,
+    });
     // Presupuesto ya consumido en su totalidad desde el inicio.
     await superusuario.query(
       `INSERT INTO agente_cuota_tenant (tenant_id, techo_tokens_periodo, techo_llamadas_periodo, tokens_liquidados_periodo, llamadas_liquidadas_periodo)
        VALUES ($1, 1000, 1, 1000, 1)`,
-      [tenantAgotado.rows[0]!.id],
+      [tenantAgotadoId],
     );
     registroFlagsAgentesInstancia().establecer({
       flagId: FLAG_AGENTES_HABILITADO,
       valor: true,
-      tenantId: tenantAgotado.rows[0]!.id,
+      tenantId: tenantAgotadoId,
       actor: "test-lote9",
       motivo: "habilitar para prueba de cuota agotada",
     });
 
     const { accessToken } = await login("operador.agotado@api-test.local", passwordOperador);
     const res = await app.request(
-      `/agentes/unidades/${unidad.rows[0]!.id}/mensajes`,
+      `/agentes/unidades/${unidadAgotadaId}/mensajes`,
       autenticado(accessToken!, { method: "POST", body: JSON.stringify({ texto: "¿Cuál es la clave del wifi?" }) }),
     );
     expect(res.status).toBe(429);

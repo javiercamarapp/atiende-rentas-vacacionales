@@ -6,7 +6,7 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { aplicarMigraciones, migraciones, type EjecutorSql } from "@atiende-rv/db";
 import { crearApp } from "../../src/app.js";
-import { hashContrasena } from "../../src/seguridad/contrasenas.js";
+import { crearEmpresaGestora, crearOwner, crearPropiedad, crearTenant, crearUnidad, crearUsuario } from "../soporte/fixtures.js";
 
 /**
  * Lote 6 (BACKLOG E09, mensajería con aprobación humana) — pruebas de
@@ -101,43 +101,28 @@ beforeAll(async () => {
   };
   await aplicarMigraciones(ejecutor, migraciones);
 
-  const tenant = await superusuario.query<{ id: string }>("INSERT INTO tenant (nombre) VALUES ('T-Lote6') RETURNING id");
-  const empresaGestora = await superusuario.query<{ id: string }>(
-    "INSERT INTO empresa_gestora (tenant_id, razon_social) VALUES ($1, 'Gestora Lote6') RETURNING id",
-    [tenant.rows[0]!.id],
-  );
-  const owner = await superusuario.query<{ id: string }>(
-    "INSERT INTO owner (empresa_gestora_id, nombre) VALUES ($1, 'Owner Lote6') RETURNING id",
-    [empresaGestora.rows[0]!.id],
-  );
-  const propiedad = await superusuario.query<{ id: string }>(
-    "INSERT INTO propiedad (tenant_id, nombre, zona_horaria) VALUES ($1, 'Casa Sol', 'America/Cancun') RETURNING id",
-    [tenant.rows[0]!.id],
-  );
-  const unidad = await superusuario.query<{ id: string }>(
-    "INSERT INTO unidad (propiedad_id, owner_id, nombre, duracion_minima_noches) VALUES ($1, $2, 'U-Lote6', 1) RETURNING id",
-    [propiedad.rows[0]!.id, owner.rows[0]!.id],
-  );
+  const tenantId = await crearTenant(superusuario, "T-Lote6");
+  const empresaGestoraId = await crearEmpresaGestora(superusuario, tenantId, "Gestora Lote6");
+  const ownerId = await crearOwner(superusuario, empresaGestoraId, "Owner Lote6");
+  const propiedadId = await crearPropiedad(superusuario, tenantId, { nombre: "Casa Sol" });
+  const unidadId = await crearUnidad(superusuario, propiedadId, { nombre: "U-Lote6", ownerId, duracionMinimaNoches: 1 });
 
   const passwordAdmin = "clave-super-secreta-admin-lote6";
   const passwordPropietario = "clave-super-secreta-propietario";
   const passwordLimpieza = "clave-super-secreta-limpieza";
-  await superusuario.query(
-    `INSERT INTO usuario (tenant_id, email, rol, password_hash) VALUES ($1, $2, 'admin_gestora', $3)`,
-    [tenant.rows[0]!.id, "admin.lote6@api-test.local", await hashContrasena(passwordAdmin)],
-  );
-  await superusuario.query(
-    `INSERT INTO usuario (tenant_id, email, rol, owner_id, password_hash) VALUES ($1, $2, 'propietario', $3, $4)`,
-    [tenant.rows[0]!.id, "propietario.lote6@api-test.local", owner.rows[0]!.id, await hashContrasena(passwordPropietario)],
-  );
-  await superusuario.query(
-    `INSERT INTO usuario (tenant_id, email, rol, password_hash) VALUES ($1, $2, 'limpieza', $3)`,
-    [tenant.rows[0]!.id, "limpieza.lote6@api-test.local", await hashContrasena(passwordLimpieza)],
-  );
+  await crearUsuario(superusuario, { tenantId, email: "admin.lote6@api-test.local", rol: "admin_gestora", password: passwordAdmin });
+  await crearUsuario(superusuario, {
+    tenantId,
+    email: "propietario.lote6@api-test.local",
+    rol: "propietario",
+    ownerId,
+    password: passwordPropietario,
+  });
+  await crearUsuario(superusuario, { tenantId, email: "limpieza.lote6@api-test.local", rol: "limpieza", password: passwordLimpieza });
 
   fx = {
-    tenantId: tenant.rows[0]!.id,
-    unidadId: unidad.rows[0]!.id,
+    tenantId,
+    unidadId,
     emailAdmin: "admin.lote6@api-test.local",
     passwordAdmin,
     emailPropietario: "propietario.lote6@api-test.local",

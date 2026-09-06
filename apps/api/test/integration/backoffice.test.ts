@@ -6,7 +6,7 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { aplicarMigraciones, migraciones, type EjecutorSql } from "@atiende-rv/db";
 import { crearApp } from "../../src/app.js";
-import { hashContrasena } from "../../src/seguridad/contrasenas.js";
+import { crearPropiedad, crearTenant, crearUsuario } from "../soporte/fixtures.js";
 
 /**
  * Pruebas de integración del back office / superadmin (Lote 8, BACKLOG
@@ -113,32 +113,19 @@ beforeAll(async () => {
   };
   await aplicarMigraciones(ejecutor, migraciones);
 
-  const tenantA = await superusuario.query<{ id: string }>(
-    "INSERT INTO tenant (nombre) VALUES ('Backoffice Tenant A') RETURNING id",
-  );
-  const tenantB = await superusuario.query<{ id: string }>(
-    "INSERT INTO tenant (nombre) VALUES ('Backoffice Tenant B') RETURNING id",
-  );
-  const propiedadA = await superusuario.query<{ id: string }>(
-    "INSERT INTO propiedad (tenant_id, nombre, zona_horaria) VALUES ($1, 'Prop A', 'America/Cancun') RETURNING id",
-    [tenantA.rows[0]!.id],
-  );
+  const tenantAId = await crearTenant(superusuario, "Backoffice Tenant A");
+  const tenantBId = await crearTenant(superusuario, "Backoffice Tenant B");
+  const propiedadAId = await crearPropiedad(superusuario, tenantAId, { nombre: "Prop A" });
 
   const passwordSuperadmin = "clave-super-secreta-superadmin";
   const passwordAdminA = "clave-super-secreta-admin-a";
-  await superusuario.query(
-    `INSERT INTO usuario (tenant_id, email, rol, password_hash) VALUES (NULL, $1, 'superadmin', $2)`,
-    ["superadmin@backoffice-test.local", await hashContrasena(passwordSuperadmin)],
-  );
-  await superusuario.query(
-    `INSERT INTO usuario (tenant_id, email, rol, password_hash) VALUES ($1, $2, 'admin_gestora', $3)`,
-    [tenantA.rows[0]!.id, "admin.a@backoffice-test.local", await hashContrasena(passwordAdminA)],
-  );
+  await crearUsuario(superusuario, { tenantId: null, email: "superadmin@backoffice-test.local", rol: "superadmin", password: passwordSuperadmin });
+  await crearUsuario(superusuario, { tenantId: tenantAId, email: "admin.a@backoffice-test.local", rol: "admin_gestora", password: passwordAdminA });
 
   fx = {
-    tenantA: tenantA.rows[0]!.id,
-    tenantB: tenantB.rows[0]!.id,
-    propiedadA: propiedadA.rows[0]!.id,
+    tenantA: tenantAId,
+    tenantB: tenantBId,
+    propiedadA: propiedadAId,
     emailSuperadmin: "superadmin@backoffice-test.local",
     passwordSuperadmin,
     emailAdminA: "admin.a@backoffice-test.local",

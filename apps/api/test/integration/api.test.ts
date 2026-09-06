@@ -6,7 +6,7 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { aplicarMigraciones, migraciones, type EjecutorSql } from "@atiende-rv/db";
 import { crearApp } from "../../src/app.js";
-import { hashContrasena } from "../../src/seguridad/contrasenas.js";
+import { crearPropiedad, crearTenant, crearUnidad, crearUsuario } from "../soporte/fixtures.js";
 
 /**
  * Pruebas de contrato HTTP (LOTES.md Lote 3: "pruebas HTTP de cada
@@ -93,42 +93,29 @@ beforeAll(async () => {
   };
   await aplicarMigraciones(ejecutor, migraciones);
 
-  const tenantA = await superusuario.query<{ id: string }>("INSERT INTO tenant (nombre) VALUES ('T-API-A') RETURNING id");
-  const tenantB = await superusuario.query<{ id: string }>("INSERT INTO tenant (nombre) VALUES ('T-API-B') RETURNING id");
-  const propA = await superusuario.query<{ id: string }>(
-    "INSERT INTO propiedad (tenant_id, nombre, zona_horaria) VALUES ($1, 'Prop A', 'America/Cancun') RETURNING id",
-    [tenantA.rows[0]!.id],
-  );
-  const propB = await superusuario.query<{ id: string }>(
-    "INSERT INTO propiedad (tenant_id, nombre, zona_horaria) VALUES ($1, 'Prop B', 'America/Cancun') RETURNING id",
-    [tenantB.rows[0]!.id],
-  );
-  const unidadA = await superusuario.query<{ id: string }>(
-    "INSERT INTO unidad (propiedad_id, nombre, duracion_minima_noches) VALUES ($1, 'U-A', 1) RETURNING id",
-    [propA.rows[0]!.id],
-  );
-  const unidadB = await superusuario.query<{ id: string }>(
-    "INSERT INTO unidad (propiedad_id, nombre) VALUES ($1, 'U-B') RETURNING id",
-    [propB.rows[0]!.id],
-  );
+  const tenantAId = await crearTenant(superusuario, "T-API-A");
+  const tenantBId = await crearTenant(superusuario, "T-API-B");
+  const propAId = await crearPropiedad(superusuario, tenantAId, { nombre: "Prop A" });
+  const propBId = await crearPropiedad(superusuario, tenantBId, { nombre: "Prop B" });
+  const unidadAId = await crearUnidad(superusuario, propAId, { nombre: "U-A", duracionMinimaNoches: 1 });
+  const unidadBId = await crearUnidad(superusuario, propBId, { nombre: "U-B" });
 
   const passwordAdminA = "clave-super-secreta-admin";
   const passwordOperadorSolo = "clave-super-secreta-operador";
-  await superusuario.query(
-    `INSERT INTO usuario (tenant_id, email, rol, password_hash) VALUES ($1, $2, 'admin_gestora', $3)`,
-    [tenantA.rows[0]!.id, "admin.a@api-test.local", await hashContrasena(passwordAdminA)],
-  );
-  await superusuario.query(
-    `INSERT INTO usuario (tenant_id, email, rol, colaborador_nivel, password_hash)
-     VALUES ($1, $2, 'operador', 'solo_calendario', $3)`,
-    [tenantA.rows[0]!.id, "operador.solo@api-test.local", await hashContrasena(passwordOperadorSolo)],
-  );
+  await crearUsuario(superusuario, { tenantId: tenantAId, email: "admin.a@api-test.local", rol: "admin_gestora", password: passwordAdminA });
+  await crearUsuario(superusuario, {
+    tenantId: tenantAId,
+    email: "operador.solo@api-test.local",
+    rol: "operador",
+    colaboradorNivel: "solo_calendario",
+    password: passwordOperadorSolo,
+  });
 
   fx = {
-    tenantA: tenantA.rows[0]!.id,
-    tenantB: tenantB.rows[0]!.id,
-    unidadA: unidadA.rows[0]!.id,
-    unidadB: unidadB.rows[0]!.id,
+    tenantA: tenantAId,
+    tenantB: tenantBId,
+    unidadA: unidadAId,
+    unidadB: unidadBId,
     emailAdminA: "admin.a@api-test.local",
     passwordAdminA,
     emailOperadorSolo: "operador.solo@api-test.local",

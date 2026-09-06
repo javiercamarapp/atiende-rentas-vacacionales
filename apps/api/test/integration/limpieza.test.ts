@@ -6,7 +6,7 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { aplicarMigraciones, migraciones, type EjecutorSql } from "@atiende-rv/db";
 import { crearApp } from "../../src/app.js";
-import { hashContrasena } from "../../src/seguridad/contrasenas.js";
+import { crearEmpresaGestora, crearOwner, crearPropiedad, crearTenant, crearUnidad, crearUsuario } from "../soporte/fixtures.js";
 
 /**
  * Pruebas de integración de Lote 5 (E08, H-049 a H-055) contra
@@ -98,23 +98,11 @@ beforeAll(async () => {
   };
   await aplicarMigraciones(ejecutor, migraciones);
 
-  const tenantA = await superusuario.query<{ id: string }>("INSERT INTO tenant (nombre) VALUES ('T-LIMPIEZA-A') RETURNING id");
-  const egA = await superusuario.query<{ id: string }>(
-    "INSERT INTO empresa_gestora (tenant_id, razon_social) VALUES ($1, 'EG Limpieza A') RETURNING id",
-    [tenantA.rows[0]!.id],
-  );
-  const ownerA = await superusuario.query<{ id: string }>(
-    "INSERT INTO owner (empresa_gestora_id, nombre) VALUES ($1, 'Owner Limpieza A') RETURNING id",
-    [egA.rows[0]!.id],
-  );
-  const propA = await superusuario.query<{ id: string }>(
-    "INSERT INTO propiedad (tenant_id, nombre, zona_horaria) VALUES ($1, 'Prop Limpieza A', 'America/Cancun') RETURNING id",
-    [tenantA.rows[0]!.id],
-  );
-  const unidadA = await superusuario.query<{ id: string }>(
-    "INSERT INTO unidad (propiedad_id, owner_id, nombre, duracion_minima_noches) VALUES ($1, $2, 'U-Limpieza-A', 1) RETURNING id",
-    [propA.rows[0]!.id, ownerA.rows[0]!.id],
-  );
+  const tenantAId = await crearTenant(superusuario, "T-LIMPIEZA-A");
+  const egAId = await crearEmpresaGestora(superusuario, tenantAId, "EG Limpieza A");
+  const ownerAId = await crearOwner(superusuario, egAId, "Owner Limpieza A");
+  const propAId = await crearPropiedad(superusuario, tenantAId, { nombre: "Prop Limpieza A" });
+  const unidadAId = await crearUnidad(superusuario, propAId, { nombre: "U-Limpieza-A", ownerId: ownerAId, duracionMinimaNoches: 1 });
 
   const passwordAdminA = "clave-super-secreta-admin-l5";
   const passwordLimpiezaAsignada = "clave-limpieza-asignada-l5";
@@ -122,36 +110,43 @@ beforeAll(async () => {
   const passwordPropietarioA = "clave-propietario-a-l5";
   const passwordOperadorSolo = "clave-operador-solo-l5";
 
-  await superusuario.query(
-    `INSERT INTO usuario (tenant_id, email, rol, password_hash) VALUES ($1, $2, 'admin_gestora', $3)`,
-    [tenantA.rows[0]!.id, "admin.a@limpieza-test.local", await hashContrasena(passwordAdminA)],
-  );
-  const limpiezaAsignada = await superusuario.query<{ id: string }>(
-    `INSERT INTO usuario (tenant_id, email, rol, password_hash) VALUES ($1, $2, 'limpieza', $3) RETURNING id`,
-    [tenantA.rows[0]!.id, "limpieza.asignada@limpieza-test.local", await hashContrasena(passwordLimpiezaAsignada)],
-  );
-  await superusuario.query(
-    `INSERT INTO usuario (tenant_id, email, rol, password_hash) VALUES ($1, $2, 'limpieza', $3)`,
-    [tenantA.rows[0]!.id, "limpieza.otra@limpieza-test.local", await hashContrasena(passwordLimpiezaOtra)],
-  );
-  await superusuario.query(
-    `INSERT INTO usuario (tenant_id, email, rol, owner_id, password_hash) VALUES ($1, $2, 'propietario', $3, $4)`,
-    [tenantA.rows[0]!.id, "propietario.a@limpieza-test.local", ownerA.rows[0]!.id, await hashContrasena(passwordPropietarioA)],
-  );
-  await superusuario.query(
-    `INSERT INTO usuario (tenant_id, email, rol, colaborador_nivel, password_hash) VALUES ($1, $2, 'operador', 'solo_calendario', $3)`,
-    [tenantA.rows[0]!.id, "operador.solo@limpieza-test.local", await hashContrasena(passwordOperadorSolo)],
-  );
+  await crearUsuario(superusuario, { tenantId: tenantAId, email: "admin.a@limpieza-test.local", rol: "admin_gestora", password: passwordAdminA });
+  const usuarioLimpiezaAsignadaId = await crearUsuario(superusuario, {
+    tenantId: tenantAId,
+    email: "limpieza.asignada@limpieza-test.local",
+    rol: "limpieza",
+    password: passwordLimpiezaAsignada,
+  });
+  await crearUsuario(superusuario, {
+    tenantId: tenantAId,
+    email: "limpieza.otra@limpieza-test.local",
+    rol: "limpieza",
+    password: passwordLimpiezaOtra,
+  });
+  await crearUsuario(superusuario, {
+    tenantId: tenantAId,
+    email: "propietario.a@limpieza-test.local",
+    rol: "propietario",
+    ownerId: ownerAId,
+    password: passwordPropietarioA,
+  });
+  await crearUsuario(superusuario, {
+    tenantId: tenantAId,
+    email: "operador.solo@limpieza-test.local",
+    rol: "operador",
+    colaboradorNivel: "solo_calendario",
+    password: passwordOperadorSolo,
+  });
 
   fx = {
-    tenantA: tenantA.rows[0]!.id,
-    unidadA: unidadA.rows[0]!.id,
-    ownerA: ownerA.rows[0]!.id,
+    tenantA: tenantAId,
+    unidadA: unidadAId,
+    ownerA: ownerAId,
     emailAdminA: "admin.a@limpieza-test.local",
     passwordAdminA,
     emailLimpiezaAsignada: "limpieza.asignada@limpieza-test.local",
     passwordLimpiezaAsignada,
-    usuarioLimpiezaAsignadaId: limpiezaAsignada.rows[0]!.id,
+    usuarioLimpiezaAsignadaId,
     emailLimpiezaOtra: "limpieza.otra@limpieza-test.local",
     passwordLimpiezaOtra,
     emailPropietarioA: "propietario.a@limpieza-test.local",

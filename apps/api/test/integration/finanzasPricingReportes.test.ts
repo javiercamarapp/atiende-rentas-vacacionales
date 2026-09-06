@@ -6,7 +6,7 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { aplicarMigraciones, migraciones, type EjecutorSql } from "@atiende-rv/db";
 import { crearApp } from "../../src/app.js";
-import { hashContrasena } from "../../src/seguridad/contrasenas.js";
+import { crearEmpresaGestora, crearOwner, crearPropiedad, crearTenant, crearUnidad, crearUsuario } from "../soporte/fixtures.js";
 
 /**
  * Lote 7 — pruebas de integración HTTP de finanzas/pricing/reportes contra
@@ -96,60 +96,48 @@ beforeAll(async () => {
   };
   await aplicarMigraciones(ejecutor, migraciones);
 
-  const tenant = await superusuario.query<{ id: string }>("INSERT INTO tenant (nombre) VALUES ('T-Lote7') RETURNING id");
-  const eg = await superusuario.query<{ id: string }>(
-    "INSERT INTO empresa_gestora (tenant_id, razon_social) VALUES ($1, 'EG Lote7') RETURNING id",
-    [tenant.rows[0]!.id],
-  );
-  const owner = await superusuario.query<{ id: string }>(
-    "INSERT INTO owner (empresa_gestora_id, nombre) VALUES ($1, 'Owner Lote7') RETURNING id",
-    [eg.rows[0]!.id],
-  );
-  const propiedad = await superusuario.query<{ id: string }>(
-    "INSERT INTO propiedad (tenant_id, nombre, zona_horaria, moneda) VALUES ($1, 'Prop Lote7', 'America/Cancun', 'MXN') RETURNING id",
-    [tenant.rows[0]!.id],
-  );
-  const unidad = await superusuario.query<{ id: string }>(
-    "INSERT INTO unidad (propiedad_id, owner_id, nombre) VALUES ($1, $2, 'Unidad Lote7') RETURNING id",
-    [propiedad.rows[0]!.id, owner.rows[0]!.id],
-  );
+  const tenantId = await crearTenant(superusuario, "T-Lote7");
+  const egId = await crearEmpresaGestora(superusuario, tenantId, "EG Lote7");
+  const ownerId = await crearOwner(superusuario, egId, "Owner Lote7");
+  const propiedadId = await crearPropiedad(superusuario, tenantId, { nombre: "Prop Lote7", moneda: "MXN" });
+  const unidadId = await crearUnidad(superusuario, propiedadId, { nombre: "Unidad Lote7", ownerId });
   const canalAirbnb = await superusuario.query<{ id: string }>("SELECT id FROM canal WHERE codigo = 'airbnb'");
   const ocupacionAirbnb = await superusuario.query<{ id: string }>(
     `INSERT INTO ocupacion_unidad (unidad_id, rango, capa, razon, estado, bloqueante, canal_origen_id, external_id)
      VALUES ($1, daterange('2026-10-01', '2026-10-05', '[)'), 'reserva', 'RESERVA_CANAL', 'confirmado', true, $2, 'AIRBNB-EXT-1')
      RETURNING id`,
-    [unidad.rows[0]!.id, canalAirbnb.rows[0]!.id],
+    [unidadId, canalAirbnb.rows[0]!.id],
   );
 
   const passwordAdmin = "clave-super-secreta-lote7-admin";
   const passwordPropietario = "clave-super-secreta-lote7-owner";
   const passwordContador = "clave-super-secreta-lote7-cont";
   const passwordOperador = "clave-super-secreta-lote7-operador";
-  await superusuario.query(
-    `INSERT INTO usuario (tenant_id, email, rol, password_hash) VALUES ($1, $2, 'admin_gestora', $3)`,
-    [tenant.rows[0]!.id, "admin.lote7@test.local", await hashContrasena(passwordAdmin)],
-  );
-  await superusuario.query(
-    `INSERT INTO usuario (tenant_id, email, rol, owner_id, password_hash) VALUES ($1, $2, 'propietario', $3, $4)`,
-    [tenant.rows[0]!.id, "owner.lote7@test.local", owner.rows[0]!.id, await hashContrasena(passwordPropietario)],
-  );
-  await superusuario.query(
-    `INSERT INTO usuario (tenant_id, email, rol, password_hash) VALUES ($1, $2, 'contador', $3)`,
-    [tenant.rows[0]!.id, "contador.lote7@test.local", await hashContrasena(passwordContador)],
-  );
+  await crearUsuario(superusuario, { tenantId, email: "admin.lote7@test.local", rol: "admin_gestora", password: passwordAdmin });
+  await crearUsuario(superusuario, {
+    tenantId,
+    email: "owner.lote7@test.local",
+    rol: "propietario",
+    ownerId,
+    password: passwordPropietario,
+  });
+  await crearUsuario(superusuario, { tenantId, email: "contador.lote7@test.local", rol: "contador", password: passwordContador });
   // Auditoría 2, corrección P-04/Q-11: rol SIN acceso a finanzas, para
   // probar que `exigirRol` en GET /statements lo bloquea en la capa HTTP
   // (antes dependía enteramente de RLS).
-  await superusuario.query(
-    `INSERT INTO usuario (tenant_id, email, rol, colaborador_nivel, password_hash) VALUES ($1, $2, 'operador', 'acceso_total', $3)`,
-    [tenant.rows[0]!.id, "operador.lote7@test.local", await hashContrasena(passwordOperador)],
-  );
+  await crearUsuario(superusuario, {
+    tenantId,
+    email: "operador.lote7@test.local",
+    rol: "operador",
+    colaboradorNivel: "acceso_total",
+    password: passwordOperador,
+  });
 
   fx = {
-    tenantId: tenant.rows[0]!.id,
-    propiedadId: propiedad.rows[0]!.id,
-    unidadId: unidad.rows[0]!.id,
-    ownerId: owner.rows[0]!.id,
+    tenantId,
+    propiedadId,
+    unidadId,
+    ownerId,
     ocupacionAirbnbId: ocupacionAirbnb.rows[0]!.id,
     emailAdmin: "admin.lote7@test.local",
     passwordAdmin,
