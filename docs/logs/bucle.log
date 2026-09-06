@@ -31,3 +31,37 @@
 2026-09-05 20:17:35 | AGENTE | ronda final completa; reanudando #19 para confirmar cierre
 2026-09-05 20:25:31 | FASE1 | CIERRE APROBADO; regenerando PDF; iniciando Fase 2
 2026-09-05 20:26:49 | FASE2 | planificador #22:   15 "model":"claude-sonnet-5" 
+2026-09-05 20:35:33 | FASE2 | plan listo; despachando Lote 0
+2026-09-05 20:36:27 | FASE2 | Lote 0 #23:   12 "model":"claude-sonnet-5" 
+2026-09-05 20:49:48 | LATIDO-CRON 71e0bad6 | bucle dinámico vivo (wakeup 21:02); agente #23 Lote 0 en curso; sin acción
+2026-09-05 20:55:07 | FASE2 | Lote 0 verificado; despachando Lote 1
+2026-09-05 20:56:09 | FASE2 | Lote 1 #24:   11 "model":"claude-sonnet-5" 
+2026-09-05 21:21:11 | DESPERTAR | Lote 1 #24 sigue en curso (transcript activo); sin acción
+2026-09-05 21:30:27 | FASE2 | Lote 1 verificado; despachando Lotes 2 y 3
+2026-09-05 21:32:16 | FASE2 | Lotes 2 (#25) y 3 (#26) en paralelo
+2026-09-06 00:50:25 | LATIDO-CRON+DESPERTAR | 429 en #25/#26 (B-006); límite reseteado; reanudando ambos
+2026-09-06 00:59:56 | FASE2 | Lote 2 completo; #26 Lote 3 en curso
+2026-09-06 01:06:53 | FASE2 | Lote 3 verificado; despachando Lotes 4,5,7,10
+2026-09-06 01:09:13 | FASE2 | Lotes 4 (#27), 5 (#28), 7 (#29), 10 (#30) en paralelo; pendientes 6, 8, 9, 11
+2026-09-06 01:39:16 | DESPERTAR | Lotes 4/5/7/10 en curso; sin acción
+2026-09-06 01:46:12 | FASE2 | Lote 4 completo; 5, 7, 10 en curso
+2026-09-06 01:59:01 | REANUDACION | #28 #29 #30 tras 429; despacho Lote 6
+2026-09-06 02:00:22 | DESPACHO | Lote 6 #31 lanzado tras rate limit; wakeup 02:31; en curso #28 #29 #30 #31
+2026-09-06 02:13:01 | 429 SOSTENIDO | #28 #31 caídos de nuevo, #30 reanudado; reanudación escalonada: 10 → 5 → 6
+2026-09-06 02:31:17 | DESPERTAR | 429 sostenido dejó caídos #28 #29 #30 #31; reanudación de uno en uno: 10 primero
+2026-09-06 02:31:37 | REANUDACION | #30 y #29 reanudados; #28 #31 en espera escalonada
+2026-09-06 02:42:24 | DESPERTAR | #28 #29 #30 vivos; #31 Lote 6 reanudado
+2026-09-06 02:47:21 | FASE2 | Lote 10 completo; en curso #28 L5, #29 L7, #31 L6
+2026-09-06 02:49:12 | DESPACHO | Lote 8 #32 (  25 "model":"claude-sonnet-5" ); Lote 9 #33
+2026-09-06 02:49:48 | LATIDO-CRON 71e0bad6 | bucle dinámico vivo (wakeup 03:15); Lotes 5,6,7,8,9 en curso; sin acción
+2026-09-06 02:50:28 | FASE2 | Lote 7 completo; en curso 5, 6, 8, 9
+2026-09-06 02:52:51 | FASE2 | Lote 5 completo; B-007; en curso 6, 8, 9
+2026-09-06 03:19:29 | DESPERTAR | comprobando 6, 8, 9
+2026-09-06 03:24:18 | FASE2 | Lote 6 completo; en curso 8, 9
+2026-09-06 03:31:57 | FASE2 | Lote 9 completo; en curso 8
+2026-09-06 04:23:17 | FASE2 | Lotes 0–10 cerrados; despachando Lote 11
+2026-09-06 04:25:03 | FASE2 | verificación global verde; despachando Lote 11A (adversarial+carga) y 11B (correcciones cruzadas + atribución)
+2026-09-06 04:26:34 | DESPACHO | 11A #34, 11B #35
+2026-09-06 04:49:47 | LATIDO-CRON 71e0bad6 | bucle vivo (wakeup 04:57); 11A #34 y 11B #35 en curso; sin acción
+2026-09-06 04:53:27 | FASE2 | 11A completo; D-ADV-01 abierto; 11B en curso
+2026-09-06 04:55:57 | AGENTE | 11B: D-ADV-01 resuelto (e976d99); sigue atribución + gates
