@@ -414,6 +414,18 @@ export function crearRutasFinanzas(pool: pg.Pool, jwtSecret: string): Hono {
 
   app.get("/statements", async (c) => {
     const auth = c.get("auth");
+    // Auditoría 2, corrección P-04/Q-11 (producto-ux-operacion.md /
+    // calidad-codigo.md): este era el único endpoint de lectura de
+    // `finanzas.ts` sin `exigirRol` — el aislamiento por rol dependía
+    // ENTERAMENTE de la política RLS `owner_statement_select`
+    // (packages/db/src/migrations/0054_finanzas_pricing_rls.ts:152-159),
+    // sin una segunda capa en la ruta HTTP como el resto del archivo.
+    // Los 4 roles listados aquí son exactamente los que esa política RLS
+    // ya permite a nivel de fila (superadmin/admin_gestora/contador ven
+    // todo el tenant; propietario solo lo suyo, filtrado por RLS con
+    // `owner_actual()`) — `operador`/`limpieza` quedan bloqueados en esta
+    // capa, antes de tocar la base de datos.
+    exigirRol(auth, "superadmin", "admin_gestora", "contador", "propietario");
     const ownerId = c.req.query("ownerId");
     const filas = await conSesion(pool, sesionDeAuth(auth), async (cliente) => {
       const { rows } = await cliente.query(

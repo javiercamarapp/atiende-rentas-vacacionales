@@ -42,6 +42,8 @@ interface Fixture {
   passwordPropietario: string;
   emailContador: string;
   passwordContador: string;
+  emailOperador: string;
+  passwordOperador: string;
 }
 let fx: Fixture;
 
@@ -122,6 +124,7 @@ beforeAll(async () => {
   const passwordAdmin = "clave-super-secreta-lote7-admin";
   const passwordPropietario = "clave-super-secreta-lote7-owner";
   const passwordContador = "clave-super-secreta-lote7-cont";
+  const passwordOperador = "clave-super-secreta-lote7-operador";
   await superusuario.query(
     `INSERT INTO usuario (tenant_id, email, rol, password_hash) VALUES ($1, $2, 'admin_gestora', $3)`,
     [tenant.rows[0]!.id, "admin.lote7@test.local", await hashContrasena(passwordAdmin)],
@@ -133,6 +136,13 @@ beforeAll(async () => {
   await superusuario.query(
     `INSERT INTO usuario (tenant_id, email, rol, password_hash) VALUES ($1, $2, 'contador', $3)`,
     [tenant.rows[0]!.id, "contador.lote7@test.local", await hashContrasena(passwordContador)],
+  );
+  // Auditoría 2, corrección P-04/Q-11: rol SIN acceso a finanzas, para
+  // probar que `exigirRol` en GET /statements lo bloquea en la capa HTTP
+  // (antes dependía enteramente de RLS).
+  await superusuario.query(
+    `INSERT INTO usuario (tenant_id, email, rol, colaborador_nivel, password_hash) VALUES ($1, $2, 'operador', 'acceso_total', $3)`,
+    [tenant.rows[0]!.id, "operador.lote7@test.local", await hashContrasena(passwordOperador)],
   );
 
   fx = {
@@ -147,6 +157,8 @@ beforeAll(async () => {
     passwordPropietario,
     emailContador: "contador.lote7@test.local",
     passwordContador,
+    emailOperador: "operador.lote7@test.local",
+    passwordOperador,
   };
 
   pool = new pg.Pool({ host: "127.0.0.1", port: puerto, database: "atiende_rv_lote7_test", user: USUARIO_APP, password: PASSWORD_APP });
@@ -256,6 +268,26 @@ describe("Finanzas — H-062/H-063: sin doble descuento de comisión (entregable
     expect(res.status).toBe(200);
     const { statements } = (await res.json()) as { statements: unknown[] };
     expect(statements.length).toBeGreaterThan(0);
+  });
+
+  it("Auditoría 2, P-04/Q-11: GET /statements exige rol en la capa HTTP, no solo RLS — operador recibe 403", async () => {
+    const token = await login(fx.emailOperador, fx.passwordOperador);
+    const res = await app.request(`/finanzas/statements?ownerId=${fx.ownerId}`, autenticado(token));
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { error: { codigo: string } };
+    expect(body.error.codigo).toBe("rol_forbidden");
+  });
+
+  it("Auditoría 2, P-04/Q-11: superadmin/admin_gestora/contador/propietario siguen viendo GET /statements sin cambios", async () => {
+    for (const [email, password] of [
+      [fx.emailAdmin, fx.passwordAdmin],
+      [fx.emailContador, fx.passwordContador],
+      [fx.emailPropietario, fx.passwordPropietario],
+    ] as const) {
+      const token = await login(email, password);
+      const res = await app.request(`/finanzas/statements?ownerId=${fx.ownerId}`, autenticado(token));
+      expect(res.status).toBe(200);
+    }
   });
 
   it("contador puede leer finanzas pero no puede escribir un movimiento", async () => {
