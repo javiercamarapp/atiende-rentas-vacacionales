@@ -24,9 +24,30 @@ describe("AdminSidebar", () => {
   });
 
   it("las secciones de otros lotes aparecen deshabilitadas con etiqueta 'Pronto', no como si funcionaran", () => {
-    renderSidebar();
-    expect(screen.getAllByText("Pronto").length).toBeGreaterThan(0);
-    expect(screen.queryByRole("link", { name: /Limpieza/i })).not.toBeInTheDocument();
+    // Lote 8: los lotes 5/6 (limpieza/mensajería) y este mismo lote ya
+    // completaron sus items — el único placeholder restante (Lote 9,
+    // automatización agéntica) vive en el grupo "PLATAFORMA", que (a)
+    // está detrás de `soloAdmin` (invisible sin sesión de admin/
+    // superadmin) y (b) es un acordeón colapsado por defecto (solo
+    // "ANÁLISIS" es `siempreAbierto`). Se simula una sesión de superadmin
+    // y se fuerza el grupo abierto (mismas claves de localStorage que usan
+    // `SesionProvider`/`AdminSidebar`) para verificar que ESE placeholder
+    // sigue mostrando "Pronto" y no un enlace roto.
+    localStorage.setItem("atiende-rv-access-token", "token-de-prueba");
+    localStorage.setItem(
+      "atiende-rv-usuario-sesion",
+      JSON.stringify({ id: "u1", tenantId: null, rol: "superadmin", colaboradorNivel: null }),
+    );
+    localStorage.setItem("atiende-rv-sidebar-grupo-abierto", "PLATAFORMA");
+    try {
+      renderSidebar();
+      expect(screen.getAllByText("Pronto").length).toBeGreaterThan(0);
+      expect(screen.queryByRole("link", { name: /Automatización agéntica/i })).not.toBeInTheDocument();
+    } finally {
+      localStorage.removeItem("atiende-rv-access-token");
+      localStorage.removeItem("atiende-rv-usuario-sesion");
+      localStorage.removeItem("atiende-rv-sidebar-grupo-abierto");
+    }
   });
 
   it("no tiene violaciones críticas de accesibilidad (axe-core)", async () => {
