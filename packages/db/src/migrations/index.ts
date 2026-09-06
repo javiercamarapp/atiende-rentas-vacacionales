@@ -15,6 +15,8 @@ import { migracion0015RlsPoliticas } from "./0015_rls_politicas.js";
 import { migracion0016RlsFuncionesAutenticacion } from "./0016_rls_funciones_autenticacion.js";
 import { migracion0020CuentaCanal } from "./0020_cuenta_canal.js";
 import { migracion0021SincronizacionCanal } from "./0021_sincronizacion_canal.js";
+import { migracion0080OutboxConsumidoObservabilidad } from "./0080_outbox_consumido_observabilidad.js";
+import { migracion0081Alerta } from "./0081_alerta.js";
 import { migracion0090CuentaCanalCifrado } from "./0090_cuenta_canal_cifrado.js";
 import { migracion0091AuditoriaTriggerCuentaCanal } from "./0091_auditoria_trigger_cuenta_canal.js";
 import { migracion0092RlsTablasCanalLote2 } from "./0092_rls_tablas_canal_lote2.js";
@@ -29,7 +31,10 @@ import { migracion0092RlsTablasCanalLote2 } from "./0092_rls_tablas_canal_lote2.
 // credenciales + RLS de cuenta_canal/unidad_canal_feed/etc.) — numeradas
 // lejos de 0022+ para minimizar colisión de nombre de archivo con
 // migraciones futuras de Lote 2; ver comentario de cabecera en
-// 0090_cuenta_canal_cifrado.ts.
+// 0090_cuenta_canal_cifrado.ts. Rango 0080-0089 reservado a Lote 10
+// (observabilidad/recuperación, E15) — ledger propio de idempotencia
+// del worker de outbox y tabla de alertas, mismo patrón de "tabla de
+// seguimiento propia" que ya usa Lote 5 (ver 0035_outbox_consumido_limpieza.ts).
 export const migraciones: Migracion[] = [
   migracion0001Extensiones,
   migracion0002TenantEmpresaOwner,
@@ -47,6 +52,8 @@ export const migraciones: Migracion[] = [
   migracion0016RlsFuncionesAutenticacion,
   migracion0020CuentaCanal,
   migracion0021SincronizacionCanal,
+  migracion0080OutboxConsumidoObservabilidad,
+  migracion0081Alerta,
   migracion0090CuentaCanalCifrado,
   migracion0091AuditoriaTriggerCuentaCanal,
   migracion0092RlsTablasCanalLote2,
