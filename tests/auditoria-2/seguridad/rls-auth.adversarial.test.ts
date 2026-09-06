@@ -247,11 +247,11 @@ describe("H-AUD2-01: set_config(..., false) de contexto de tenant + pool reutili
 // ============================================================================
 // SUITE 2 — IDOR cross-tenant vía huesped_minimo (mensajería): tabla sin RLS
 // ============================================================================
-describe("H-AUD2-02: huesped_minimo no tiene tenant_id ni RLS — POST /mensajeria/conversaciones no valida propiedad de huespedMinimoId", () => {
+describe("[CORREGIDO S-05] H-AUD2-02: huesped_minimo ahora tiene tenant_id + RLS — POST /mensajeria/conversaciones valida propiedad de huespedMinimoId", () => {
   let ctx: Contexto;
   let pool: pg.Pool;
   let app: ReturnType<typeof crearApp>;
-  let tenantA: string, unidadA: string;
+  let tenantA: string, tenantB: string, unidadA: string;
   let huespedIdTenantB: string;
   const emailAdminA = "admin.a@aud2-idor.local";
   const passAdminA = "clave-idor-admin-a-1";
@@ -267,6 +267,7 @@ describe("H-AUD2-02: huesped_minimo no tiene tenant_id ni RLS — POST /mensajer
       "INSERT INTO tenant (nombre) VALUES ('AUD2-IDOR-B') RETURNING id",
     );
     tenantA = tA.rows[0]!.id;
+    tenantB = tB.rows[0]!.id;
     const pA = await ctx.superusuario.query<{ id: string }>(
       "INSERT INTO propiedad (tenant_id, nombre, zona_horaria) VALUES ($1, 'Prop A', 'America/Mexico_City') RETURNING id",
       [tenantA],
@@ -282,22 +283,16 @@ describe("H-AUD2-02: huesped_minimo no tiene tenant_id ni RLS — POST /mensajer
       [tenantA, emailAdminA, await hashContrasena(passAdminA)],
     );
 
-    // Fila real de huesped_minimo "perteneciente" (por uso, no por FK) a
-    // una reserva del tenant B — simula el caso real: cualquier
-    // reservación con huésped en CUALQUIER tenant crea una fila así vía
-    // POST /reservas (apps/api/src/routes/reservas.ts línea ~76). El ID
-    // en sí nunca se devuelve al cliente por ningún endpoint de lectura
-    // (verificado: grep de huesped_minimo_id/huespedMinimoId en
-    // apps/api/src/routes muestra solo escritura, nunca en un SELECT
-    // expuesto), así que asumimos aquí el escenario "el atacante ya
-    // obtuvo el UUID por otra vía" (fuga previa, log, error verboso,
-    // fuerza bruta con recursos, insider) — el punto de esta prueba es
-    // demostrar que, SI eso ocurre, no hay NINGUNA segunda barrera (ni
-    // RLS ni validación de aplicación) que lo detenga.
+    // [CORREGIDO S-05] huesped_minimo AHORA exige tenant_id NOT NULL
+    // (migración 0093) — la fila ya no puede crearse "huérfana" como
+    // antes de la corrección. Simula el caso real: cualquier reservación
+    // con huésped del tenant B crea una fila así vía POST /reservas
+    // (apps/api/src/routes/reservas.ts), que ahora deriva tenant_id de
+    // unidad_tenant_id() en vez de dejarlo fuera del esquema.
     huespedIdTenantB = (
       await ctx.superusuario.query<{ id: string }>(
-        `INSERT INTO huesped_minimo (nombre, contacto) VALUES ($1, 'tel:+52-555-0000-secreto') RETURNING id`,
-        [NOMBRE_HUESPED_B_SECRETO],
+        `INSERT INTO huesped_minimo (nombre, contacto, tenant_id) VALUES ($1, 'tel:+52-555-0000-secreto', $2) RETURNING id`,
+        [NOMBRE_HUESPED_B_SECRETO, tenantB],
       )
     ).rows[0]!.id;
 
@@ -316,19 +311,19 @@ describe("H-AUD2-02: huesped_minimo no tiene tenant_id ni RLS — POST /mensajer
     await apagarCluster(ctx);
   });
 
-  it("cita de código: huesped_minimo (packages/db/src/migrations/0005_ocupacion_unidad.ts) no tiene columna tenant_id ni ENABLE/FORCE ROW LEVEL SECURITY en ninguna migración", async () => {
+  it("[CORREGIDO S-05] cita de código: huesped_minimo (packages/db/src/migrations/0093_huesped_minimo_tenant_rls.ts) SÍ tiene columna tenant_id y ENABLE/FORCE ROW LEVEL SECURITY", async () => {
     const rls = await ctx.superusuario.query<{ relrowsecurity: boolean; relforcerowsecurity: boolean }>(
       `SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE relname = 'huesped_minimo'`,
     );
-    expect(rls.rows[0]!.relrowsecurity).toBe(false);
-    expect(rls.rows[0]!.relforcerowsecurity).toBe(false);
+    expect(rls.rows[0]!.relrowsecurity).toBe(true);
+    expect(rls.rows[0]!.relforcerowsecurity).toBe(true);
     const columnas = await ctx.superusuario.query<{ column_name: string }>(
       `SELECT column_name FROM information_schema.columns WHERE table_name = 'huesped_minimo'`,
     );
-    expect(columnas.rows.map((r) => r.column_name)).not.toContain("tenant_id");
+    expect(columnas.rows.map((r) => r.column_name)).toContain("tenant_id");
   });
 
-  it("REPRODUCCION: admin de tenant A adjunta huespedMinimoId de OTRO tenant a una conversación propia sin ningún rechazo", async () => {
+  it("[CORREGIDO S-05] REPRODUCCION: admin de tenant A ya NO puede adjuntar huespedMinimoId de OTRO tenant a una conversación propia — 404 recurso_no_encontrado", async () => {
     const login = await app.request("/auth/login", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -342,35 +337,54 @@ describe("H-AUD2-02: huesped_minimo no tiene tenant_id ni RLS — POST /mensajer
       body: JSON.stringify({
         unidadId: unidadA, // unidad PROPIA de tenant A — pasa RLS/WITH CHECK sin problema
         canalCodigo: "airbnb",
-        huespedMinimoId: huespedIdTenantB, // huésped de OTRO tenant — nunca validado
+        huespedMinimoId: huespedIdTenantB, // huésped de OTRO tenant — AHORA sí se valida
         idioma: "es",
       }),
     });
-    const cuerpo = (await res.json()) as { id?: string; error?: unknown };
-    console.log(`[H-AUD2-02] POST /mensajeria/conversaciones cross-tenant huespedMinimoId -> status=${res.status}`);
-    // CRITERIO DE RUPTURA: la API acepta (201) una conversación que
-    // vincula el huésped de OTRO tenant sin ningún error de validación ni
-    // de RLS. Si esto llegara a devolver un error, el hallazgo estaría
-    // mitigado — documentamos el resultado real observado.
-    expect(res.status).toBe(201);
-    const conversacionId = cuerpo.id as string;
+    const cuerpo = (await res.json()) as { id?: string; error?: { codigo?: string } };
+    console.log(`[H-AUD2-02 corregido] POST /mensajeria/conversaciones cross-tenant huespedMinimoId -> status=${res.status}`);
+    // Antes de la corrección: la API aceptaba (201) una conversación que
+    // vinculaba el huésped de OTRO tenant sin ningún error. Ahora el
+    // chequeo explícito en conversaciones.ts (WHERE tenant_id =
+    // unidad_tenant_id($2)) rechaza con 404 ANTES de crear la fila.
+    expect(res.status).toBe(404);
+    expect(cuerpo.error?.codigo).toBe("recurso_no_encontrado");
+  });
 
-    // Generar un borrador (sin mensaje entrante -> plantilla por defecto,
-    // packages/domain/src/mensajeria/borrador.ts `mensajePorDefecto`)
-    // expone literalmente `ctx.nombreHuesped` en el texto de salida.
-    const resBorrador = await app.request(`/mensajeria/conversaciones/${conversacionId}/borradores`, {
+  it("[CORREGIDO S-05] control positivo: un huespedMinimoId del MISMO tenant SÍ se acepta y el borrador generado expone su nombre con normalidad", async () => {
+    const login = await app.request("/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: emailAdminA, password: passAdminA }),
+    });
+    const { accessToken } = (await login.json()) as { accessToken: string };
+
+    const huespedPropio = await ctx.superusuario.query<{ id: string }>(
+      `INSERT INTO huesped_minimo (nombre, contacto, tenant_id) VALUES ('Huesped Propio Tenant A', 'tel:+52-555-1111', $1) RETURNING id`,
+      [tenantA],
+    );
+
+    const res = await app.request("/mensajeria/conversaciones", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({
+        unidadId: unidadA,
+        canalCodigo: "airbnb",
+        huespedMinimoId: huespedPropio.rows[0]!.id,
+        idioma: "es",
+      }),
+    });
+    expect(res.status).toBe(201);
+    const cuerpo = (await res.json()) as { id: string };
+
+    const resBorrador = await app.request(`/mensajeria/conversaciones/${cuerpo.id}/borradores`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${accessToken}` },
       body: JSON.stringify({}),
     });
-    const cuerpoBorrador = (await resBorrador.json()) as { texto?: string };
-    console.log(
-      `[H-AUD2-02] borrador generado (status=${resBorrador.status}): "${cuerpoBorrador.texto ?? ""}"`,
-    );
     expect(resBorrador.status).toBe(201);
-    // FUGA CONFIRMADA: el nombre del huésped del tenant B aparece
-    // literalmente en la respuesta que recibe un admin del tenant A.
-    expect(cuerpoBorrador.texto).toContain(NOMBRE_HUESPED_B_SECRETO);
+    const cuerpoBorrador = (await resBorrador.json()) as { texto?: string };
+    expect(cuerpoBorrador.texto).toContain("Huesped Propio Tenant A");
   });
 });
 

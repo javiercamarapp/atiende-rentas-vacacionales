@@ -59,6 +59,26 @@ export function crearRutasConversaciones(pool: pg.Pool, jwtSecret: string): Hono
         cuerpo.canalCodigo,
       ]);
       if (canal.rows.length === 0) throw new ErrorDominio("validacion", "Canal desconocido");
+
+      // S-05 (IDOR cross-tenant): `huespedMinimoId` viene del cliente y
+      // `huesped_minimo` no tiene ninguna relación de FOREIGN KEY que por
+      // sí sola lo impida (Postgres hace bypass de RLS al validar FKs) —
+      // sin este chequeo explícito, cualquier UUID de huésped de OTRO
+      // tenant se aceptaba sin error y terminaba expuesto en el borrador
+      // generado para esta conversación (H-AUD2-02). Se valida
+      // pertenencia al MISMO tenant que la unidad de la conversación,
+      // usando la misma función unidad_tenant_id() que ya protege
+      // ocupacion_unidad/conversacion.
+      if (cuerpo.huespedMinimoId) {
+        const huesped = await cliente.query<{ id: string }>(
+          `SELECT id FROM huesped_minimo WHERE id = $1 AND tenant_id = unidad_tenant_id($2)`,
+          [cuerpo.huespedMinimoId, cuerpo.unidadId],
+        );
+        if (huesped.rows.length === 0) {
+          throw new ErrorDominio("recurso_no_encontrado", "Huésped no encontrado para esta unidad");
+        }
+      }
+
       const insertado = await cliente.query<{ id: string }>(
         `INSERT INTO conversacion (unidad_id, ocupacion_unidad_id, canal_id, huesped_minimo_id, idioma)
          VALUES ($1, $2, $3, $4, $5) RETURNING id`,

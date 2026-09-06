@@ -73,9 +73,13 @@ export function crearRutasReservas(pool: pg.Pool, jwtSecret: string): Hono {
       }
 
       if (cuerpo.huespedNombre || cuerpo.huespedContacto) {
+        // S-05: tenant_id se deriva SIEMPRE de la unidad reservada
+        // (unidad_tenant_id, SECURITY DEFINER), nunca de un valor
+        // declarado por el cliente — huesped_minimo tiene RLS FORCE desde
+        // la migración 0093 y exige tenant_id NOT NULL.
         const huesped = await cliente.query<{ id: string }>(
-          "INSERT INTO huesped_minimo (nombre, contacto) VALUES ($1, $2) RETURNING id",
-          [cuerpo.huespedNombre ?? null, cuerpo.huespedContacto ?? null],
+          "INSERT INTO huesped_minimo (nombre, contacto, tenant_id) VALUES ($1, $2, unidad_tenant_id($3)) RETURNING id",
+          [cuerpo.huespedNombre ?? null, cuerpo.huespedContacto ?? null, cuerpo.unidadId],
         );
         await cliente.query("UPDATE ocupacion_unidad SET huesped_minimo_id = $1 WHERE id = $2", [
           huesped.rows[0]!.id,
