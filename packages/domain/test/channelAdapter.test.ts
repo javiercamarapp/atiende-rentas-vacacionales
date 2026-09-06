@@ -87,4 +87,53 @@ describe("evaluarEstadoConexion (H-014, D-017) — nunca 'produccion' sin eviden
       ),
     ).toBe("produccion");
   });
+
+  describe("D-DSD-13 (regresión): tipoConexion='ical' nunca pasa por la rama de aprobación de partner", () => {
+    it("credenciales presentes, sync reciente, partner_aprobado=false (default real de una cuenta ical) → 'ical', nunca 'partner_pendiente'", () => {
+      const resultado = evaluarEstadoConexion(
+        evidencia({
+          credencialesPresentes: true,
+          partnerAprobado: false,
+          ultimaSincronizacionExitosaEn: new Date().toISOString(),
+          tipoConexion: "ical",
+        }),
+      );
+      expect(resultado).toBe("ical");
+    });
+
+    it("credenciales presentes pero SIN sync reciente → 'no_conectado', nunca 'ical' ni 'produccion'", () => {
+      const resultado = evaluarEstadoConexion(
+        evidencia({
+          credencialesPresentes: true,
+          partnerAprobado: false,
+          ultimaSincronizacionExitosaEn: null,
+          tipoConexion: "ical",
+        }),
+      );
+      expect(resultado).toBe("no_conectado");
+    });
+
+    it("un simulador tipo_conexion='ical' sigue reportándose como 'simulador' (D-019 gana siempre)", () => {
+      const resultado = evaluarEstadoConexion(
+        evidencia({
+          esSimulador: true,
+          credencialesPresentes: true,
+          ultimaSincronizacionExitosaEn: new Date().toISOString(),
+          tipoConexion: "ical",
+        }),
+      );
+      expect(resultado).toBe("simulador");
+    });
+
+    it("sin tipoConexion (evidencia existente sin actualizar) conserva el comportamiento anterior: partner_pendiente", () => {
+      const resultado = evaluarEstadoConexion(
+        evidencia({
+          credencialesPresentes: true,
+          partnerAprobado: false,
+          ultimaSincronizacionExitosaEn: new Date().toISOString(),
+        }),
+      );
+      expect(resultado).toBe("partner_pendiente");
+    });
+  });
 });

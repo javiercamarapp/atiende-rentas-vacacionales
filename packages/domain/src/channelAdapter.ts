@@ -52,11 +52,21 @@ export interface EvidenciaConexionCanal {
   ventanaMaximaMs: number;
   /** El canal ya confirmó el acceso de partner (aprobación externa,
    * D-011); sin esto, el máximo estado alcanzable es `partner_pendiente` o
-   * `sandbox`, nunca `produccion`. */
+   * `sandbox`, nunca `produccion`. Irrelevante cuando `tipoConexion ===
+   * "ical"` (D-DSD-13): iCal no tiene ningún paso de aprobación de
+   * partner, así que nunca debería pasar por esa rama. */
   partnerAprobado: boolean;
   /** El acceso confirmado es contra el entorno de pruebas del partner, no
    * el real. */
   esSandbox: boolean;
+  /** D-DSD-13: tipo de conexión real de la cuenta de canal
+   * (`cuenta_canal.tipo_conexion`, migración 0064). `"ical"` es la vía
+   * "iCal primero" de D-011 (Etapa 1) y NUNCA pasa por aprobación de
+   * partner ni por `sandbox`/`producción` (esos estados solo aplican a
+   * integraciones API certificadas). Opcional y por defecto tratado como
+   * `"api"` (comportamiento anterior sin cambios) para no romper
+   * evidencia ya existente que todavía no distingue tipo de conexión. */
+  tipoConexion?: "ical" | "api";
 }
 
 /**
@@ -67,11 +77,24 @@ export interface EvidenciaConexionCanal {
 export function evaluarEstadoConexion(evidencia: EvidenciaConexionCanal): EstadoConexionCanal {
   if (evidencia.esSimulador) return "simulador";
   if (!evidencia.credencialesPresentes) return "no_conectado";
-  if (!evidencia.partnerAprobado) return "partner_pendiente";
 
   const huboSincronizacionReciente =
     evidencia.ultimaSincronizacionExitosaEn !== null &&
     Date.now() - Date.parse(evidencia.ultimaSincronizacionExitosaEn) <= evidencia.ventanaMaximaMs;
+
+  // D-DSD-13: iCal (D-011, "iCal primero") no tiene ningún paso de
+  // aprobación de partner ni de sandbox/producción certificada — esos
+  // conceptos solo existen para integraciones API. Evaluar esta rama
+  // ANTES de `partnerAprobado` evita que una cuenta iCal sana (sync
+  // reciente y exitoso) se reporte como `partner_pendiente` solo porque
+  // `partner_aprobado` nunca se establece para ese tipo de conexión
+  // (DEFAULT false en el esquema, nunca escrito explícitamente al crear
+  // una cuenta tipo_conexion='ical').
+  if (evidencia.tipoConexion === "ical") {
+    return huboSincronizacionReciente ? "ical" : "no_conectado";
+  }
+
+  if (!evidencia.partnerAprobado) return "partner_pendiente";
 
   if (evidencia.esSandbox) return "sandbox";
   // Nunca "produccion" sin sync real exitoso y reciente, aunque el partner
