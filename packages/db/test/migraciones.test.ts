@@ -33,8 +33,18 @@ describe("runner de migraciones (up/down + tabla de versiones)", () => {
     const aplicadas = await migracionesAplicadas(motor.ejecutor);
     expect(aplicadas).toEqual(migraciones.slice(0, -1).map((m) => m.id));
 
-    // La tabla de la última migración revertida ya no existe.
-    await expect(motor.ejecutor.query(`SELECT 1 FROM auditoria_mutacion`)).rejects.toThrow();
+    // El `down` de la última migración se ejecutó realmente (no es un
+    // no-op silencioso): reaplicar el catálogo completo debe volver a
+    // ejecutar exactamente esa migración, y su `up` no debe fallar por
+    // dejar objetos a medio revertir. No se asume que el `down` de la
+    // última migración sea siempre un `DROP TABLE` — migraciones de lotes
+    // posteriores (RLS, políticas, etc.) revierten con `DROP POLICY`/
+    // `ALTER TABLE ... DISABLE ROW LEVEL SECURITY`, no con `DROP TABLE` —
+    // así este test sigue siendo válido sin importar qué migración termine
+    // siendo la última.
+    const reaplicadas = await aplicarMigraciones(motor.ejecutor, migraciones);
+    expect(reaplicadas).toEqual([migraciones[migraciones.length - 1]!.id]);
+    expect(await migracionesAplicadas(motor.ejecutor)).toEqual(migraciones.map((m) => m.id));
   });
 
   it("revertirTodas deja la base de datos sin ninguna tabla de dominio", async () => {
