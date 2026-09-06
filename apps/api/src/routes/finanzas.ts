@@ -291,6 +291,23 @@ export function crearRutasFinanzas(pool: pg.Pool, jwtSecret: string): Hono {
 
     const resultado = await conSesion(pool, sesionDeAuth(auth), async (cliente) =>
       enTransaccion(cliente, async () => {
+        // Auditoría 2, corrección D-DSD-15 (docs/auditoria-2/
+        // dominio-sync-datos.md): sin este lock, dos solicitudes
+        // concurrentes para el mismo (owner, periodo) pueden leer AMBAS
+        // "no existe versión anterior" (SELECT sin FOR UPDATE, READ
+        // COMMITTED) antes de que cualquiera haga commit, y la segunda en
+        // insertar recibe un 23505 (unique_violation) sin traducir, que
+        // se propagaría como 500 genérico. Mismo patrón que
+        // `bloquearUnidadEnTransaccion` (packages/domain/src/aplicacion/
+        // ejecutor.ts) para el calendario: un advisory lock transaccional
+        // (se libera solo al COMMIT/ROLLBACK) serializa las dos
+        // transacciones para esta clave exacta — la segunda espera a que
+        // la primera termine y entonces SÍ ve la versión ya creada,
+        // devolviendo `creado:false` en vez de fallar.
+        await cliente.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+          `owner_statement:${cuerpo.ownerId}:${cuerpo.periodoInicio}:${cuerpo.periodoFin}`,
+        ]);
+
         const owner = await cliente.query<{ id: string; tenant_id: string }>(
           `SELECT o.id, eg.tenant_id FROM owner o JOIN empresa_gestora eg ON eg.id = o.empresa_gestora_id WHERE o.id = $1`,
           [cuerpo.ownerId],

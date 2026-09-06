@@ -294,6 +294,70 @@ describe("Finanzas — H-062/H-063: sin doble descuento de comisión (entregable
   });
 });
 
+describe("Auditoría 2, D-DSD-15: dos POST /statements/generar concurrentes del mismo owner+periodo", () => {
+  // docs/auditoria-2/dominio-sync-datos.md D-DSD-15: sin lock, la
+  // transacción de POST /statements/generar (SELECT sin FOR UPDATE +
+  // INSERT con version calculada en memoria) puede dejar que dos
+  // solicitudes concurrentes lean AMBAS "no existe versión anterior" y
+  // ambas intenten insertar version=1 — una recibiría el 23505 sin
+  // traducir de la unique constraint de owner_statement, propagado como
+  // 500 genérico. La reproducción de tests/auditoria-2/dominio/
+  // statementConcurrenciaMismoOwnerPeriodo.test.ts replica esa MISMA
+  // secuencia SQL directamente contra la base (sin pasar por la ruta) y
+  // queda fuera del alcance de este corrector (tests/auditoria-2/ es del
+  // auditor de dominio); esta prueba complementaria ejercita el fix real
+  // vía 2 llamadas HTTP concurrentes contra la ruta ya corregida.
+  it("ninguna de las 2 solicitudes concurrentes falla; como máximo una versión=1 persiste", async () => {
+    const token = await login(fx.emailAdmin, fx.passwordAdmin);
+
+    const unidad = await superusuario.query<{ id: string }>(
+      "INSERT INTO unidad (propiedad_id, owner_id, nombre) VALUES ($1, $2, 'Unidad D-DSD-15') RETURNING id",
+      [fx.propiedadId, fx.ownerId],
+    );
+    const canalAirbnb = await superusuario.query<{ id: string }>("SELECT id FROM canal WHERE codigo = 'airbnb'");
+    const ocupacion = await superusuario.query<{ id: string }>(
+      `INSERT INTO ocupacion_unidad (unidad_id, rango, capa, razon, estado, bloqueante, canal_origen_id, external_id)
+       VALUES ($1, daterange('2027-01-01', '2027-01-05', '[)'), 'reserva', 'RESERVA_CANAL', 'confirmado', true, $2, 'AIRBNB-EXT-DSD15')
+       RETURNING id`,
+      [unidad.rows[0]!.id, canalAirbnb.rows[0]!.id],
+    );
+    const movimiento = await app.request(
+      `/finanzas/reservas/${ocupacion.rows[0]!.id}/movimiento`,
+      autenticado(token, {
+        method: "POST",
+        body: JSON.stringify({
+          moneda: "MXN",
+          montoBrutoCentavos: 300000,
+          comisionGestorBasisPoints: 1000,
+          comisionGestorBase: "neto_de_canal",
+          gastos: [],
+          impuestos: [],
+        }),
+      }),
+    );
+    expect(movimiento.status).toBe(201);
+
+    const periodoInicio = "2027-01-01";
+    const periodoFin = "2027-02-01";
+    const cuerpo = JSON.stringify({ ownerId: fx.ownerId, periodoInicio, periodoFin });
+
+    const [resA, resB] = await Promise.all([
+      app.request("/finanzas/statements/generar", autenticado(token, { method: "POST", body: cuerpo })),
+      app.request("/finanzas/statements/generar", autenticado(token, { method: "POST", body: cuerpo })),
+    ]);
+
+    // Ninguna de las 2 debe propagar el 500/23505 sin manejar — ambas
+    // resuelven con 200/201 (una crea, la otra reusa la versión ya creada).
+    expect([resA.status, resB.status].every((s) => s === 200 || s === 201)).toBe(true);
+
+    const { rows } = await superusuario.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM owner_statement WHERE owner_id = $1 AND periodo_inicio = $2 AND periodo_fin = $3`,
+      [fx.ownerId, periodoInicio, periodoFin],
+    );
+    expect(Number(rows[0]!.count)).toBe(1);
+  });
+});
+
 describe("Finanzas — H-064: conciliación de payout con discrepancia", () => {
   it("importa un payout con una línea conciliada y una con discrepancia", async () => {
     const token = await login(fx.emailAdmin, fx.passwordAdmin);
