@@ -64,6 +64,9 @@ import { migracion0108RefreshTokenFamiliaFuncion } from "./0108_refresh_token_fa
 // comentario de cabecera en 0110_catalogo_canales_mexico.ts.
 import { migracion0110CatalogoCanalesMexico } from "./0110_catalogo_canales_mexico.js";
 import { migracion0112CanalExpediaAgodaSiteminder } from "./0112_canal_expedia_agoda_siteminder.js";
+// 0120-0129 reservado a Lote 3.0 (Fase 3, cierre de backlog restante) —
+// 0110-0119 ya está tomado por el Lote 3.4 concurrente (RV22).
+import { migracion0120NotificacionesMulticanal } from "./0120_notificaciones_multicanal.js";
 import { migracion0111AlertaParidadPrecio } from "./0111_alerta_paridad_precio.js";
 
 // Orden fijo, nunca reordenar migraciones ya aplicadas en algún entorno
@@ -169,4 +172,5 @@ export const migraciones: Migracion[] = [
   // existente sin tocar el resto de la tabla.
   migracion0111AlertaParidadPrecio,
   migracion0112CanalExpediaAgodaSiteminder,
+  migracion0120NotificacionesMulticanal,
 ];

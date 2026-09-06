@@ -23,6 +23,8 @@ import { requiereAutenticacion } from "../middleware/autenticacion.js";
 import { exigirRol } from "../middleware/roles.js";
 import { ROLES_ADMIN } from "../rolesComunes.js";
 import { sesionDeAuth } from "../middleware/tenant.js";
+import { crearAdaptadorCorreo } from "../workers/notificaciones/adaptadorCorreo.js";
+import { despacharNotificacion } from "../workers/notificaciones/dispatcher.js";
 
 /**
  * Pricing básico (Lote 7, BACKLOG E11, RV13). Reglas no negociables:
@@ -232,6 +234,39 @@ export function crearRutasPricing(pool: pg.Pool, jwtSecret: string): Hono {
           }
         }),
       );
+
+      // H-054: además de la fila in-app ya insertada arriba, se ofrece el
+      // abanico correo/webhook al usuario que disparó la comparación —
+      // best-effort deliberado (nunca puede tumbar esta respuesta 200 ya
+      // calculada; un fallo de correo/webhook solo se ignora, no se
+      // reintenta desde aquí).
+      try {
+        const usuarioFila = await conSesion(pool, sesionDeAuth(auth), (cliente) =>
+          cliente.query<{ email: string }>("SELECT email FROM usuario WHERE id = $1", [auth.usuarioId]),
+        );
+        const email = usuarioFila.rows[0]?.email;
+        if (email) {
+          await conSesion(pool, sesionDeAuth(auth), (cliente) =>
+            despacharNotificacion(
+              { ejecutor: cliente, adaptadorCorreo: crearAdaptadorCorreo() },
+              {
+                usuarioId: auth.usuarioId,
+                usuarioEmail: email,
+                tenantId: auth.tenantId,
+                contenido: {
+                  tipoEvento: "paridad_precio",
+                  titulo: `${violaciones.length} violación(es) de paridad de precios detectada(s)`,
+                  cuerpoTexto: violaciones.map((v) => v.propuesta.mensaje).join(" · "),
+                  metadata: { unidadId, violaciones: violaciones.length },
+                },
+              },
+            ),
+          );
+        }
+      } catch {
+        // best-effort: nunca falla la respuesta HTTP por un problema de
+        // correo/webhook — la fila in-app ya quedó persistida arriba.
+      }
     }
 
     return c.json({ violaciones, alertasGeneradas: violaciones.length });
