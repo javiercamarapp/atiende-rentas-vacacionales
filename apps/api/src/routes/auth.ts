@@ -117,6 +117,7 @@ function usuarioSesionDe(usuario: FilaUsuarioAuth) {
     tenantId: usuario.tenant_id,
     rol: usuario.rol,
     colaboradorNivel: usuario.colaborador_nivel,
+    mfaHabilitado: usuario.mfa_totp_habilitado ?? false,
   };
 }
 

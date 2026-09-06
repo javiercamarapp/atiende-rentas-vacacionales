@@ -1,5 +1,11 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { LoginPage } from "./pages/auth/LoginPage";
+import { RegistroPage } from "./pages/auth/RegistroPage";
+import { VerificarCorreoPage } from "./pages/auth/VerificarCorreoPage";
+import { OlvidePasswordPage } from "./pages/auth/OlvidePasswordPage";
+import { RestablecerPasswordPage } from "./pages/auth/RestablecerPasswordPage";
+import { GoogleCompletadoPage } from "./pages/auth/GoogleCompletadoPage";
+import { CuentaPage } from "./pages/cuenta/CuentaPage";
 import { CalendarioMaestroPage } from "./pages/calendario/CalendarioMaestroPage";
 import { MatrizConectividadPage } from "./pages/conectividad/MatrizConectividadPage";
 import { MonitorSyncPage } from "./pages/monitor-sync/MonitorSyncPage";
@@ -45,6 +51,11 @@ export default function App() {
     <SesionProvider>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/registro" element={<RegistroPage />} />
+        <Route path="/verificar-correo" element={<VerificarCorreoPage />} />
+        <Route path="/olvide-password" element={<OlvidePasswordPage />} />
+        <Route path="/restablecer-password" element={<RestablecerPasswordPage />} />
+        <Route path="/auth/google/completado" element={<GoogleCompletadoPage />} />
         <Route
           path="/*"
           element={
@@ -74,6 +85,7 @@ export default function App() {
                     }
                   />
                   <Route path="/reservas" element={<Navigate to="/calendario" replace />} />
+                  <Route path="/cuenta" element={<CuentaPage />} />
                   <Route path="/operacion" element={<OperacionPage />} />
                   <Route path="/mensajes" element={<BandejaPage />} />
                   <Route path="/mensajes/plantillas" element={<PlantillasPage />} />

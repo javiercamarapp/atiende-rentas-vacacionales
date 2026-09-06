@@ -49,6 +49,10 @@ export const UsuarioSesion = z.object({
   tenantId: z.string().uuid().nullable(),
   rol: RolUsuario,
   colaboradorNivel: ColaboradorNivel.nullable(),
+  // Lote 3.2 (H-096+): opcional (no rompe consumidores viejos que no lo
+  // esperan) — permite a apps/web/src/pages/cuenta/ mostrar el estado
+  // real de MFA sin una llamada extra.
+  mfaHabilitado: z.boolean().optional(),
 });
 export type UsuarioSesion = z.infer<typeof UsuarioSesion>;
 
@@ -1092,6 +1096,50 @@ export const RespuestaConfigAuth = z.object({
   registroAbierto: z.boolean(),
 });
 export type RespuestaConfigAuth = z.infer<typeof RespuestaConfigAuth>;
+
+// ---------------------------------------------------------------------------
+// Notificaciones multicanal (H-054, BACKLOG E08/E15, REQ-117, §Limpieza-2)
+// ---------------------------------------------------------------------------
+
+const TipoEventoNotificableContrato = z.enum(["alerta_observabilidad", "paridad_precio", "tarea_limpieza"]);
+const CanalPreferenciaContrato = z.enum(["correo", "webhook"]);
+
+export const CuerpoPreferenciaNotificacion = z.object({
+  tipoEvento: TipoEventoNotificableContrato,
+  canal: CanalPreferenciaContrato,
+  activo: z.boolean(),
+});
+export type CuerpoPreferenciaNotificacion = z.infer<typeof CuerpoPreferenciaNotificacion>;
+
+export const PreferenciaNotificacionContrato = z.object({
+  tipoEvento: TipoEventoNotificableContrato,
+  canal: CanalPreferenciaContrato,
+  activo: z.boolean(),
+});
+export type PreferenciaNotificacionContrato = z.infer<typeof PreferenciaNotificacionContrato>;
+
+// El secreto HMAC en claro solo viaja en la petición de creación/rotación
+// — nunca se devuelve en ninguna respuesta (ver GET /notificaciones/webhook).
+export const CuerpoWebhookTenant = z.object({
+  url: z.string().url().refine((u) => u.startsWith("https://"), "La URL del webhook debe ser https://"),
+  activo: z.boolean().default(true),
+});
+export type CuerpoWebhookTenant = z.infer<typeof CuerpoWebhookTenant>;
+
+export const RespuestaWebhookTenant = z.object({
+  url: z.string(),
+  activo: z.boolean(),
+  configurado: z.boolean(),
+});
+export type RespuestaWebhookTenant = z.infer<typeof RespuestaWebhookTenant>;
+
+// Solo en la respuesta de POST (creación/rotación) — el secreto en claro
+// se muestra UNA vez y nunca vuelve a ser recuperable (mismo criterio que
+// una API key rotada), ni siquiera por GET /notificaciones/webhook.
+export const RespuestaWebhookTenantCreado = RespuestaWebhookTenant.extend({
+  secretoHmac: z.string(),
+});
+export type RespuestaWebhookTenantCreado = z.infer<typeof RespuestaWebhookTenantCreado>;
 
 export { CODIGOS_ERROR, ErrorDominio } from "./errores.js";
 export type { CodigoError, CuerpoErrorHttp } from "./errores.js";

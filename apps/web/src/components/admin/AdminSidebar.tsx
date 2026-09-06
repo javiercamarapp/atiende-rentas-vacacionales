@@ -287,15 +287,19 @@ export function AdminSidebar({
         <div className={cn("pt-1", collapsed ? "px-0" : "px-1")}>
           {!collapsed ? (
             <div className="flex items-center gap-2 px-2 py-1">
-              <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-medium shrink-0">
+              <NavLink
+                to="/cuenta"
+                className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-medium shrink-0"
+                title="Mi cuenta"
+              >
                 {usuario?.rol?.charAt(0).toUpperCase() ?? "A"}
-              </div>
-              <div className="flex-1 min-w-0">
+              </NavLink>
+              <NavLink to="/cuenta" className="flex-1 min-w-0">
                 <p className="text-[13px] text-sidebar-foreground truncate">{usuario?.rol ?? "Sin sesión"}</p>
                 <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-sidebar-foreground/60">
                   {usuario?.colaboradorNivel ?? "—"}
                 </p>
-              </div>
+              </NavLink>
               <button
                 type="button"
                 onClick={logout}

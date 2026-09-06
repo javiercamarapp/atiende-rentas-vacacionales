@@ -18,6 +18,17 @@ export function tokenGuardado(): string | null {
   }
 }
 
+// Lote 3.2 (H-096+): cookie CSRF de doble envío del cliente 'web' — NO
+// httpOnly a propósito (ver apps/api/src/middleware/cookiesAuth.ts), así
+// que sí es legítimo leerla desde JS para reenviarla en `X-CSRF-Token`.
+// Ausente por completo si nunca se hizo login con `cliente: 'web'` (p. ej.
+// esta misma app antes de Lote 3.2, o cualquier integración bearer-only) —
+// en ese caso simplemente no se añade la cabecera.
+function leerCookieCsrf(): string | null {
+  const match = document.cookie.match(/(?:^|;\s*)rv_csrf=([^;]*)/);
+  return match ? decodeURIComponent(match[1]!) : null;
+}
+
 export function guardarToken(token: string | null): void {
   try {
     if (token) localStorage.setItem(CLAVE_TOKEN, token);
@@ -74,13 +85,21 @@ export async function peticion<T>(ruta: string, opciones: OpcionesPeticion = {})
   const { metodo = "GET", cuerpo, query } = opciones;
   const token = tokenGuardado();
 
+  const csrf = metodo !== "GET" ? leerCookieCsrf() : null;
+
   let respuesta: Response;
   try {
     respuesta = await fetch(construirUrl(ruta, query), {
       method: metodo,
+      // Lote 3.2 (H-096+): necesario para que el navegador envíe/reciba la
+      // cookie httpOnly de refresh + la cookie CSRF del cliente 'web'
+      // (login/registro/Google) — no-op inofensivo para cualquier llamada
+      // que nunca haya recibido esas cookies (bearer-only).
+      credentials: "include",
       headers: {
         ...(cuerpo !== undefined ? { "content-type": "application/json" } : {}),
         ...(token ? { authorization: `Bearer ${token}` } : {}),
+        ...(csrf ? { "x-csrf-token": csrf } : {}),
       },
       body: cuerpo !== undefined ? JSON.stringify(cuerpo) : undefined,
     });
