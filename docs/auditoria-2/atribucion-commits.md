@@ -14,7 +14,8 @@ ya hechos.
 
 ## Veredicto
 
-**0 archivos perdidos. 0 mezclas reales sin explicar.** Las 20 coincidencias
+**0 archivos perdidos. 1 mezcla real confirmada (ver addendum abajo), sin
+impacto funcional. 0 mezclas adicionales sin explicar.** Las 20 coincidencias
 de "archivo tocado por un lote distinto al que lo creó" que el script
 encontró son, sin excepción, uno de estos tres patrones legítimos y
 documentados en el propio código/LOTES.md — verificado con `git show
@@ -67,7 +68,7 @@ lotes originales, es el trabajo esperado de Lote 11)
 | `a9f33de`, `d307336` | Lote 11B (esta sesión, ejecutada por una instancia concurrente con el mismo encargo) | Correcciones #6 y #5 — `filtrar-tests.mjs`, parser de `verificar-lotes.mjs` |
 | `35327f5` | Lote 11B (esta sesión) | Corrección #4 — truncamiento del panel de calendario |
 | `ca8252b`, `1742320`, `a707d50` | Lote 11B (esta sesión, misma instancia concurrente) | Corrección #3 — URL de export iCal con token rotable |
-| `6d4f2ae` | Lote 11A (agente separado, mismo encargo de fase, ámbito `tests/adversarial/`+`tests/load/`) | Suite adversarial (20 casos) + carga — fuera del ámbito de esta auditoría (11B) |
+| `6d4f2ae` | Lote 11A (agente separado, mismo encargo de fase, ámbito `tests/adversarial/`+`tests/load/`) | Suite adversarial (20 casos) + carga. **También incluye 3 archivos de Lote 11B** (`exportIcal.ts`/`.test.ts`, `openapi.yaml`) mezclados por índice git compartido — ver addendum abajo, sin impacto funcional |
 
 **Nota de proceso:** durante esta sesión, el encargo de Lote 11B fue
 ejecutado por dos hilos concurrentes con el mismo contexto completo (esta
@@ -80,6 +81,45 @@ en este veredicto — no se asumió su corrección sin verificar. No hubo
 pérdida de trabajo ni commits sobrescritos porque ninguno de los dos hilos
 usó `--amend`/`reset`/`rebase` (B-007): los commits de ambos simplemente
 se apilaron en orden en `main`.
+
+## Addendum verificado tras el veredicto: 1 mezcla real confirmada
+
+Revisión manual de `6d4f2ae` (`feat(lote11a): suite adversarial completa...`)
+con `git show 6d4f2ae --stat` encuentra que, además de los 11 archivos
+propios de Lote 11A (`tests/adversarial/*`, `tests/load/*`,
+`package.json` +1 línea `test:load`), el commit incluye 3 archivos que
+**no creó ni le pertenecen**: `apps/api/src/routes/exportIcal.ts`,
+`apps/api/test/integration/exportIcal.test.ts` y `apps/api/openapi.yaml`
+— la continuación del refactor de Corrección #3 (`unidadId/canalId` →
+`unidadId/canalCodigo`) de Lote 11B, que este hilo tenía en el índice sin
+commitear en el momento en que Lote 11A corrió su propio `git add`/commit
+sobre el mismo working tree (B-007: índice compartido entre constructores
+concurrentes, mismo patrón ya documentado para Lotes 5/7 en Fase 2).
+
+**Esto SÍ es una mezcla real** (no una extensión aditiva de un archivo de
+fusión declarado) — a diferencia de los 20 cruces del veredicto principal,
+`exportIcal.ts` no es un barril/contrato compartido, es un archivo
+exclusivo de una historia de Lote 11B sin relación temática con la suite
+adversarial de Lote 11A.
+
+**Impacto: ninguno funcional.** Se verificó (no se asumió):
+- El contenido de los 3 archivos en `6d4f2ae` es exactamente el que este
+  hilo había preparado y ya había revisado línea por línea antes del
+  commit ajeno (mismo diff, confirmado con `git show 6d4f2ae -- apps/api/
+  src/routes/exportIcal.ts`).
+- `npm run typecheck --workspace=@atiende-rv/api` y
+  `npx vitest run test/integration/exportIcal.test.ts --config
+  vitest.integration.config.ts` (desde `apps/api/`) verdes tras el commit
+  (4/4 pruebas, incluidas las 3 exigidas por la corrección #3: token
+  inválido → 404, feed válido parseable, rotación invalida el anterior).
+- No se perdió ningún archivo de Lote 11A ni de Lote 11B: los 11 archivos
+  propios de `tests/adversarial/`/`tests/load/` están íntegros en el
+  mismo commit junto con los 3 de `exportIcal`.
+
+**Por qué no se corrige con `--amend`/`reset`/`rebase`:** B-007 lo prohíbe
+explícitamente y el commit ya es parte de la historia compartida de
+`main`. La corrección correcta — la única compatible con la regla — es
+esta nota de atribución explícita, no una reescritura de historial.
 
 ## Verificación de "ningún archivo perdió contenido"
 
