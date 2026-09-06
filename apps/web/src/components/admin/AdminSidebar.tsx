@@ -61,7 +61,6 @@ export const MENU_SECTIONS: GrupoMenu[] = [
     titulo: "ANÁLISIS",
     siempreAbierto: true,
     items: [
-      { id: "estadisticas", etiqueta: "Estadísticas", icono: BarChart3, lote: "Lote 8" },
       { id: "monitor-sync", etiqueta: "Monitor de sincronización", icono: Activity, ruta: "/monitor-sync" },
     ],
   },
@@ -77,7 +76,7 @@ export const MENU_SECTIONS: GrupoMenu[] = [
     titulo: "OPERACIÓN",
     items: [
       { id: "limpieza", etiqueta: "Limpieza/mantenimiento", icono: Sparkles, ruta: "/operacion" },
-      { id: "mensajeria", etiqueta: "Mensajería", icono: MessageSquare, lote: "Lote 6" },
+      { id: "mensajeria", etiqueta: "Mensajería", icono: MessageSquare, ruta: "/mensajes" },
     ],
   },
   {
@@ -92,10 +91,11 @@ export const MENU_SECTIONS: GrupoMenu[] = [
     titulo: "PLATAFORMA",
     soloAdmin: true,
     items: [
-      { id: "propiedades", etiqueta: "Propiedades y unidades", icono: Building2, lote: "Lote 8" },
-      { id: "cuentas-canal", etiqueta: "Cuentas de canal", icono: Link2, lote: "Lote 8" },
+      { id: "propiedades", etiqueta: "Propiedades y unidades", icono: Building2, ruta: "/propiedades" },
+      { id: "cuentas-canal", etiqueta: "Cuentas de canal", icono: Link2, ruta: "/cuentas-canal" },
       { id: "agentes", etiqueta: "Automatización agéntica", icono: Bot, lote: "Lote 9" },
-      { id: "backoffice", etiqueta: "Back office", icono: ShieldCheck, lote: "Lote 8" },
+      { id: "backoffice", etiqueta: "Back office", icono: ShieldCheck, ruta: "/administracion" },
+      { id: "estadisticas", etiqueta: "Panel superadmin", icono: BarChart3, ruta: "/backoffice/superadmin" },
     ],
   },
 ];

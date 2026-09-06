@@ -6,13 +6,20 @@ import { MatrizConectividadPage } from "./pages/conectividad/MatrizConectividadP
 import { MonitorSyncPage } from "./pages/monitor-sync/MonitorSyncPage";
 import { ConflictosPage } from "./pages/monitor-sync/ConflictosPage";
 import { OperacionPage } from "./pages/limpieza/OperacionPage";
+import { BandejaPage } from "./pages/mensajeria/BandejaPage";
+import { HiloPage } from "./pages/mensajeria/HiloPage";
+import { PlantillasPage } from "./pages/mensajeria/PlantillasPage";
 import { FinanzasPage } from "./pages/finanzas/FinanzasPage";
 import { PricingPage } from "./pages/pricing/PricingPage";
 import { ReportesPage } from "./pages/reportes/ReportesPage";
+import { SuperadminPage } from "./pages/backoffice/SuperadminPage";
+import { PropiedadesPage } from "./pages/backoffice/PropiedadesPage";
+import { CuentasCanalPage } from "./pages/backoffice/CuentasCanalPage";
+import { AdministracionPage } from "./pages/backoffice/AdministracionPage";
 import { AdminLayout } from "./components/admin/AdminLayout";
 import { RutaProtegida } from "./components/admin/RutaProtegida";
 import { SesionProvider } from "./lib/sesion/SesionProvider";
-import { Building2, BookOpenCheck, MessageSquare, ShieldCheck } from "lucide-react";
+import { BookOpenCheck } from "lucide-react";
 
 // Router de apps/web — punto de fusión compartido documentado en
 // docs/fase2/LOTES.md (cabecera): cada lote añade sus propias rutas sin
@@ -37,26 +44,21 @@ export default function App() {
                   <Route path="/conectividad" element={<MatrizConectividadPage />} />
                   <Route path="/monitor-sync" element={<MonitorSyncPage />} />
                   <Route path="/monitor-sync/conflictos" element={<ConflictosPage />} />
-                  <Route
-                    path="/propiedades"
-                    element={<SeccionVacia titulo="Propiedades" icono={Building2} lote="Lote 8" />}
-                  />
+                  <Route path="/propiedades" element={<PropiedadesPage />} />
+                  <Route path="/cuentas-canal" element={<CuentasCanalPage />} />
                   <Route
                     path="/reservas"
                     element={<SeccionVacia titulo="Reservas" icono={BookOpenCheck} lote="Lote 3" />}
                   />
                   <Route path="/operacion" element={<OperacionPage />} />
-                  <Route
-                    path="/mensajes"
-                    element={<SeccionVacia titulo="Mensajes" icono={MessageSquare} lote="Lote 6" />}
-                  />
+                  <Route path="/mensajes" element={<BandejaPage />} />
+                  <Route path="/mensajes/plantillas" element={<PlantillasPage />} />
+                  <Route path="/mensajes/:id" element={<HiloPage />} />
                   <Route path="/finanzas" element={<FinanzasPage />} />
                   <Route path="/pricing" element={<PricingPage />} />
                   <Route path="/reportes" element={<ReportesPage />} />
-                  <Route
-                    path="/administracion"
-                    element={<SeccionVacia titulo="Administración" icono={ShieldCheck} lote="Lote 8" />}
-                  />
+                  <Route path="/administracion" element={<AdministracionPage />} />
+                  <Route path="/backoffice/superadmin" element={<SuperadminPage />} />
                   <Route path="*" element={<Navigate to="/calendario" replace />} />
                 </Routes>
               </AdminLayout>
