@@ -27,6 +27,7 @@ import {
   FileBarChart,
   Building2,
   Link2,
+  Globe2,
   Bot,
   ShieldCheck,
   ChevronDown,
@@ -72,6 +73,7 @@ export const MENU_SECTIONS: GrupoMenu[] = [
     items: [
       { id: "calendario", etiqueta: "Calendario maestro", icono: CalendarDays, ruta: "/calendario" },
       { id: "conectividad", etiqueta: "Matriz de conectividad", icono: Radio, ruta: "/conectividad" },
+      { id: "canales-mexico", etiqueta: "Canales México (RV22)", icono: Globe2, ruta: "/canales-mexico" },
       { id: "conflictos", etiqueta: "Conflictos", icono: AlertTriangle, ruta: "/monitor-sync/conflictos" },
     ],
   },

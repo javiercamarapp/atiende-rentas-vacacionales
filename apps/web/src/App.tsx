@@ -8,6 +8,8 @@ import { GoogleCompletadoPage } from "./pages/auth/GoogleCompletadoPage";
 import { CuentaPage } from "./pages/cuenta/CuentaPage";
 import { CalendarioMaestroPage } from "./pages/calendario/CalendarioMaestroPage";
 import { MatrizConectividadPage } from "./pages/conectividad/MatrizConectividadPage";
+import { MatrizCanalesPage } from "./pages/canales/MatrizCanalesPage";
+import { AsistenteConexionPage } from "./pages/canales/AsistenteConexionPage";
 import { MonitorSyncPage } from "./pages/monitor-sync/MonitorSyncPage";
 import { ConflictosPage } from "./pages/monitor-sync/ConflictosPage";
 import { AlertasPage } from "./pages/monitor-sync/AlertasPage";
@@ -65,6 +67,8 @@ export default function App() {
                   <Route path="/" element={<Navigate to="/calendario" replace />} />
                   <Route path="/calendario" element={<CalendarioMaestroPage />} />
                   <Route path="/conectividad" element={<MatrizConectividadPage />} />
+                  <Route path="/canales-mexico" element={<MatrizCanalesPage />} />
+                  <Route path="/canales-mexico/:canalCodigo" element={<AsistenteConexionPage />} />
                   <Route path="/monitor-sync" element={<MonitorSyncPage />} />
                   <Route path="/monitor-sync/conflictos" element={<ConflictosPage />} />
                   <Route path="/monitor-sync/alertas" element={<AlertasPage />} />
