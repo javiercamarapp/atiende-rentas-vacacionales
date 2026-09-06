@@ -530,3 +530,40 @@ describe("D-DSD-09/D-DSD-11 (regresión) — la reconciliación completa se comp
   });
 });
 
+describe("D-DSD-10 (regresión) — 'vacío inesperado' no se dispara para un canal que nunca tuvo eventos activos", () => {
+  // El simulador responde 304 si el cuerpo no cambia byte a byte — un
+  // discriminador fuera de cualquier VEVENT fuerza dos ciclos exito_vacio
+  // REALES (no no_modificado por caché HTTP legítima).
+  function feedVacioValido(discriminador: string): string {
+    return `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//EN\r\nX-D-DSD-10:${discriminador}\r\nEND:VCALENDAR\r\n`;
+  }
+
+  it("dos ciclos exito_vacio consecutivos en una unidad sin historial de eventos no generan alerta", async () => {
+    const unidadId = await entorno.crearUnidad("d-dsd-10-siempre-vacio");
+
+    const r1 = await ciclo(unidadId, feedVacioValido("1"));
+    expect(r1.resultado).toBe("exito_vacio");
+    expect(r1.alertaCuarentena).toBeNull();
+
+    const r2 = await ciclo(unidadId, feedVacioValido("2"));
+    expect(r2.resultado).toBe("exito_vacio");
+    expect(r2.alertaCuarentena).toBeNull();
+  });
+
+  it("un canal realmente poblado que pasa a vacío SÍ sigue alertando (no se rompió el caso positivo)", async () => {
+    const unidadId = await entorno.crearUnidad("d-dsd-10-poblado-a-vacio");
+    const uid = "d-dsd-10-poblado@canal-externo.com";
+
+    const r1 = await ciclo(
+      unidadId,
+      feedIcsDePrueba([{ uid, sequence: 1, dtstamp: "20270101T000000Z", dtstart: "20281201", dtend: "20281205", status: "CONFIRMED" }]),
+    );
+    expect(r1.resultado).toBe("exito_con_eventos");
+
+    const r2 = await ciclo(unidadId, feedVacioValido("poblado-a-vacio"));
+    expect(r2.resultado).toBe("exito_vacio");
+    expect(r2.alertaCuarentena?.tipo).toBe("vacio_inesperado");
+    expect(await contarBloqueosActivos(entorno.ejecutor(), unidadId)).toBe(1);
+  });
+});
+

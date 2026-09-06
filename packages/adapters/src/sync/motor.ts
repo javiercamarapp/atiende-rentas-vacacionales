@@ -352,9 +352,19 @@ export async function ejecutarCicloImport(
     resultadoCiclo = "fallo_red";
   }
 
+  // D-DSD-10: `huboEventosActivosPreviamente` debe reflejar "¿esta unidad
+  // tenía eventos ACTIVOS de ESTE canal antes de este ciclo?", no "¿hubo
+  // algún ciclo exitoso previo, sea cual sea su resultado?" —
+  // `ultimaSincronizacionExitosaEn` también se fija en un `exito_vacio`
+  // (cuarentena.ts), así que un canal que NUNCA tuvo una sola reserva
+  // (feed legítimamente vacío ciclo tras ciclo) disparaba una alerta
+  // "vacío inesperado" falsa a partir del segundo ciclo — fatiga de
+  // alertas para el caso más común e inocuo (unidad recién conectada).
+  const huboEventosActivosPreviamente = (await contarBloqueosActivosDelCanal(ctx)) > 0;
+
   const { estado: nuevoEstado, alerta } = aplicarResultadoCiclo(estadoPrevio, resultadoCiclo, ahoraIso, {
     umbralIntentosFallidos: 3,
-    huboEventosActivosPreviamente: estadoPrevio.ultimaSincronizacionExitosaEn !== null,
+    huboEventosActivosPreviamente,
   });
   await persistirEstadoFeed(ctx, nuevoEstado, nuevoEtag, nuevoLastModified);
 
@@ -644,6 +654,21 @@ export async function contarBloqueosActivos(
     `SELECT count(*)::text AS n FROM ocupacion_unidad
      WHERE unidad_id = $1 AND estado <> 'cancelado' AND bloqueante AND capa = 'reserva'`,
     [unidadId],
+  );
+  return Number(fila.rows[0]!.n);
+}
+
+/** D-DSD-10: igual que `contarBloqueosActivos`, pero acotado al canal de
+ * ESTE ciclo (`canal_origen_id`) — la señal correcta para
+ * `huboEventosActivosPreviamente` es "¿esta unidad tenía eventos activos
+ * DE ESTE CANAL?", no el total de la unidad (que podría tener reservas
+ * activas de otros canales sin relación con si ESTE feed está
+ * legítimamente vacío). */
+async function contarBloqueosActivosDelCanal(ctx: ContextoSincronizacion): Promise<number> {
+  const fila = await ctx.ejecutor.query<{ n: string }>(
+    `SELECT count(*)::text AS n FROM ocupacion_unidad
+     WHERE unidad_id = $1 AND canal_origen_id = $2 AND estado <> 'cancelado' AND bloqueante AND capa = 'reserva'`,
+    [ctx.unidadId, ctx.canalId],
   );
   return Number(fila.rows[0]!.n);
 }
