@@ -1,5 +1,4 @@
 import { Navigate, Route, Routes } from "react-router-dom";
-import { SeccionVacia } from "./pages/SeccionVacia";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { CalendarioMaestroPage } from "./pages/calendario/CalendarioMaestroPage";
 import { MatrizConectividadPage } from "./pages/conectividad/MatrizConectividadPage";
@@ -21,7 +20,6 @@ import { AgentesPage } from "./pages/agentes/AgentesPage";
 import { AdminLayout } from "./components/admin/AdminLayout";
 import { RutaProtegida } from "./components/admin/RutaProtegida";
 import { SesionProvider } from "./lib/sesion/SesionProvider";
-import { BookOpenCheck } from "lucide-react";
 
 // Router de apps/web — punto de fusión compartido documentado en
 // docs/fase2/LOTES.md (cabecera): cada lote añade sus propias rutas sin
@@ -30,6 +28,16 @@ import { BookOpenCheck } from "lucide-react";
 // las 3 rutas de este lote (protegidas por sesión real contra la API de
 // Lote 3); las demás secciones siguen como `SeccionVacia` hasta que su
 // lote de origen las construya.
+//
+// Auditoría 2, corrección Q-05 (calidad-codigo.md): `/reservas` era el
+// último placeholder `SeccionVacia` del router, pese a que la feature de
+// reservas está completa (packages/domain/src/aplicacion/reservas.ts,
+// apps/api/src/routes/reservas.ts) y vive dentro del calendario maestro
+// (`ModalCrearReserva.tsx`, enlazado desde `PanelSeleccion.tsx`) — nunca
+// tuvo su propia pantalla dedicada ni un ítem de menú que apuntara ahí.
+// Se redirige a `/calendario` en vez de dejar un "sección sin contenido"
+// que sugeriría una feature rota; el import de `SeccionVacia` ya no se
+// usa en ningún otro lugar de este archivo.
 export default function App() {
   return (
     <SesionProvider>
@@ -49,10 +57,7 @@ export default function App() {
                   <Route path="/monitor-sync/alertas" element={<AlertasPage />} />
                   <Route path="/propiedades" element={<PropiedadesPage />} />
                   <Route path="/cuentas-canal" element={<CuentasCanalPage />} />
-                  <Route
-                    path="/reservas"
-                    element={<SeccionVacia titulo="Reservas" icono={BookOpenCheck} lote="Lote 3" />}
-                  />
+                  <Route path="/reservas" element={<Navigate to="/calendario" replace />} />
                   <Route path="/operacion" element={<OperacionPage />} />
                   <Route path="/mensajes" element={<BandejaPage />} />
                   <Route path="/mensajes/plantillas" element={<PlantillasPage />} />

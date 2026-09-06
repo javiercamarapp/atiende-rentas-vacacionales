@@ -23,16 +23,15 @@ describe("AdminSidebar", () => {
     expect(screen.getByRole("link", { name: /Monitor de sincronización/i })).toHaveAttribute("href", "/monitor-sync");
   });
 
-  it("las secciones de otros lotes aparecen deshabilitadas con etiqueta 'Pronto', no como si funcionaran", () => {
-    // Lote 8: los lotes 5/6 (limpieza/mensajería) y este mismo lote ya
-    // completaron sus items — el único placeholder restante (Lote 9,
-    // automatización agéntica) vive en el grupo "PLATAFORMA", que (a)
-    // está detrás de `soloAdmin` (invisible sin sesión de admin/
-    // superadmin) y (b) es un acordeón colapsado por defecto (solo
-    // "ANÁLISIS" es `siempreAbierto`). Se simula una sesión de superadmin
-    // y se fuerza el grupo abierto (mismas claves de localStorage que usan
-    // `SesionProvider`/`AdminSidebar`) para verificar que ESE placeholder
-    // sigue mostrando "Pronto" y no un enlace roto.
+  it("Auditoría 2 (P-01): 'Automatización agéntica' ya es un enlace real, no queda ningún placeholder 'Pronto'", () => {
+    // Hasta la corrección P-01 (docs/auditoria-2/producto-ux-operacion.md)
+    // este era el único item sin `ruta` de todo el sidebar — quedaba
+    // "Pronto" para siempre pese a que el backend de Lote 9 ya estaba
+    // completo. Esta prueba fijaba ese comportamiento como correcto; ahora
+    // fija lo contrario: el grupo "PLATAFORMA" (soloAdmin, acordeón no
+    // siempre abierto) se fuerza visible/expandido con sesión de
+    // superadmin, y "Automatización agéntica" debe resolver a `/agentes`
+    // como cualquier otro ítem activo — sin ningún "Pronto" restante.
     localStorage.setItem("atiende-rv-access-token", "token-de-prueba");
     localStorage.setItem(
       "atiende-rv-usuario-sesion",
@@ -41,8 +40,8 @@ describe("AdminSidebar", () => {
     localStorage.setItem("atiende-rv-sidebar-grupo-abierto", "PLATAFORMA");
     try {
       renderSidebar();
-      expect(screen.getAllByText("Pronto").length).toBeGreaterThan(0);
-      expect(screen.queryByRole("link", { name: /Automatización agéntica/i })).not.toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /Automatización agéntica/i })).toHaveAttribute("href", "/agentes");
+      expect(screen.queryByText("Pronto")).not.toBeInTheDocument();
     } finally {
       localStorage.removeItem("atiende-rv-access-token");
       localStorage.removeItem("atiende-rv-usuario-sesion");
