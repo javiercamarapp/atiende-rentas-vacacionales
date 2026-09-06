@@ -116,8 +116,16 @@ export function CalendarioMaestroPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 items-start">
-        <div>
+      {/* `min-w-0` en ambas columnas: por defecto un item de grid tiene
+          `min-width: auto`, que nunca se encoge por debajo del ancho
+          intrínseco de su contenido — la tabla del timeline (`min-w-max`,
+          con su propio `overflow-x-auto`) empujaba entonces la pista
+          `1fr` completa, y con ella la página entera, más allá del
+          viewport, cortando el panel de detalle derecho en vez de
+          desbordar solo dentro de su propio contenedor con scroll (visto
+          a 1440px en docs/capturas/lote4-calendario-timeline.png). */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-4 items-start">
+        <div className="min-w-0">
           {(unidadesQuery.cargando || calendariosQuery.cargando) && (
             <Card>
               <CardContent className="p-4 text-sm text-muted-foreground">Cargando calendario…</CardContent>
