@@ -1,15 +1,14 @@
-// Placeholder de comandos de prueba que aún no tienen sujeto en el Lote 0
-// (scaffold puro). `test:integration` requiere `embedded-postgres` y el
-// esquema de `packages/db` (Lote 1); `test:e2e` requiere Playwright contra
-// páginas reales con datos (Lote 4 en adelante). Este script documenta esa
-// ausencia explícitamente en vez de fingir una prueba verde vacía sin
-// contexto, y sale con código 0 para no romper `npm run ci` en este lote.
+// Placeholder de comandos de prueba que aún no tienen sujeto real.
+// `test:integration` (embedded-postgres + esquema de packages/db) ya tiene
+// sujeto real desde Lote 1 y se enruta directamente por
+// `npm run test:integration --workspaces --if-present` en el package.json
+// raíz, no por este stub. `test:e2e` requiere Playwright contra páginas
+// reales con datos (Lote 4 en adelante) y sigue sin sujeto. Este script
+// documenta esa ausencia explícitamente en vez de fingir una prueba verde
+// vacía sin contexto, y sale con código 0 para no romper `npm run ci`.
 const comando = process.argv[2] ?? "desconocido";
 
 const notas = {
-  "test:integration":
-    "Sin sujeto todavía: requiere el esquema de packages/db y el runner " +
-    "contra embedded-postgres, introducidos en Lote 1 (docs/fase2/LOTES.md).",
   "test:e2e":
     "Sin sujeto todavía: requiere páginas reales con datos y Playwright " +
     "(channel: 'chrome'), introducidos a partir de Lote 4 " +
