@@ -8,6 +8,7 @@ import { crearRutasBackoffice } from "./backoffice/index.js";
 import { crearRutasBloqueos } from "./bloqueos.js";
 import { crearRutasCanales } from "./canales.js";
 import { crearRutasConflictos } from "./conflictos.js";
+import { crearRutasExportIcal } from "./exportIcal.js";
 import { crearRutasFinanzas } from "./finanzas.js";
 import { crearRutasLimpieza } from "./limpieza/index.js";
 import { crearRutasMensajeria } from "./mensajeria/index.js";
@@ -23,6 +24,10 @@ export interface DependenciasRutas {
   pool: pg.Pool;
   jwtSecret: string;
   keyring: KeyringCifradoCanal;
+  /** Lote 11B, corrección #3 (URL de exportación iCal): base pública de
+   * esta API para componer la URL absoluta del feed que se le entrega al
+   * usuario. */
+  urlPublicaApi: string;
 }
 
 // Registro de rutas de apps/api (Lote 3: primera carga real, sobre el
@@ -31,7 +36,7 @@ export interface DependenciasRutas {
 // propio `app.route(...)` aquí, en un commit pequeño y separado — nunca
 // reescriben este archivo completo.
 export function registrarRutas(app: Hono, deps: DependenciasRutas): Hono {
-  const { pool, jwtSecret, keyring } = deps;
+  const { pool, jwtSecret, keyring, urlPublicaApi } = deps;
 
   app.route("/auth", crearRutasAuth(pool, jwtSecret));
   app.route("/tenants", crearRutasTenants(pool, jwtSecret));
@@ -50,6 +55,7 @@ export function registrarRutas(app: Hono, deps: DependenciasRutas): Hono {
   app.route("/reportes", crearRutasReportes(pool, jwtSecret));
   app.route("/backoffice", crearRutasBackoffice(pool, jwtSecret, keyring));
   app.route("/agentes", crearRutasAgentes(pool, jwtSecret));
+  app.route("/export-ical", crearRutasExportIcal(pool, jwtSecret, urlPublicaApi));
 
   return app;
 }

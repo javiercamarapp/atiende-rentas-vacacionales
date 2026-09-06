@@ -49,6 +49,7 @@ import { migracion0081Alerta } from "./0081_alerta.js";
 import { migracion0090CuentaCanalCifrado } from "./0090_cuenta_canal_cifrado.js";
 import { migracion0091AuditoriaTriggerCuentaCanal } from "./0091_auditoria_trigger_cuenta_canal.js";
 import { migracion0092RlsTablasCanalLote2 } from "./0092_rls_tablas_canal_lote2.js";
+import { migracion0100FeedIcalToken } from "./0100_feed_ical_token.js";
 
 // Orden fijo, nunca reordenar migraciones ya aplicadas en algún entorno
 // (patrón expand/contract real llega en Lote 10 — H-088). Cada lote
@@ -127,4 +128,8 @@ export const migraciones: Migracion[] = [
   migracion0090CuentaCanalCifrado,
   migracion0091AuditoriaTriggerCuentaCanal,
   migracion0092RlsTablasCanalLote2,
+  // Rango 0100+ reservado a Lote 11B (correcciones cruzadas detectadas al
+  // cerrar Fase 2) — ver comentario de cabecera en
+  // 0100_feed_ical_token.ts.
+  migracion0100FeedIcalToken,
 ];

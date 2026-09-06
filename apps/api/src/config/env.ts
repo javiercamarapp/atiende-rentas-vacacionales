@@ -11,6 +11,11 @@ export interface ConfiguracionApi {
   jwtSecret: string;
   cifradoCanalClaves: string;
   rateLimit: { ventanaMs: number; maximo: number };
+  /** Base pública de esta API (Lote 11B, corrección #3: URL de
+   * exportación iCal) — usada SOLO para componer la URL absoluta del feed
+   * `.ics` que se le muestra al usuario; la ruta pública en sí
+   * (`GET /feed/ical/:token`) no depende de este valor para funcionar. */
+  urlPublicaApi: string;
 }
 
 function leerEntorno(valor: string | undefined): ConfiguracionApi["entorno"] {
@@ -42,5 +47,6 @@ export function cargarConfiguracion(env: NodeJS.ProcessEnv = process.env): Confi
       ventanaMs: Number.parseInt(env.RATE_LIMIT_VENTANA_MS ?? "60000", 10),
       maximo: Number.parseInt(env.RATE_LIMIT_MAXIMO ?? "100", 10),
     },
+    urlPublicaApi: env.API_PUBLIC_URL ?? `http://localhost:${Number.parseInt(env.PORT ?? "8787", 10)}`,
   };
 }

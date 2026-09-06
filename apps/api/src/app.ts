@@ -4,6 +4,7 @@ import pg from "pg";
 import { cargarConfiguracion } from "./config/env.js";
 import { cuerpoError, ErrorDominio } from "./contrato/errores.js";
 import { crearLogger } from "./middleware/logger.js";
+import { crearRutasFeedIcal } from "./routes/feedIcal.js";
 import { registrarRutas } from "./routes/index.js";
 import { cabecerasSeguridad } from "./seguridad/cabeceras.js";
 import { KeyringCifradoCanal } from "./seguridad/cifrado.js";
@@ -61,7 +62,13 @@ export function crearApp(opciones: OpcionesCrearApp = {}) {
     }),
   );
 
-  registrarRutas(app, { pool, jwtSecret: config.jwtSecret, keyring });
+  // Feed .ics público (Lote 11B, corrección #3): montado ANTES de
+  // `registrarRutas` a propósito, sin `requiereAutenticacion` — el token
+  // opaco en la URL es la única credencial, nunca un JWT (un canal
+  // externo suscribiendo esta URL no tiene sesión de usuario).
+  app.route("/feed/ical", crearRutasFeedIcal(pool));
+
+  registrarRutas(app, { pool, jwtSecret: config.jwtSecret, keyring, urlPublicaApi: config.urlPublicaApi });
 
   // Manejador central de errores: todo `ErrorDominio` mapea a su
   // `httpStatus`/`codigo` fijo (nunca 500 genérico para un error de
