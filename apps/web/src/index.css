@@ -1,0 +1,4 @@
+/* Tokens/tipografía/animaciones portados de atiende-restaurantes viven en
+   @atiende-rv/ui-atiende (D-015) — esta app solo los importa, no los
+   redefine, para que ambos consuman una única fuente de verdad visual. */
+@import "@atiende-rv/ui-atiende/index.css";
