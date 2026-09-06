@@ -319,3 +319,111 @@ formalmente.
 
 20/20 logs citados en `correcciones-{seguridad,dominio,producto}.md` existen
 físicamente en `docs/logs/` — sin huecos, sin logs "fantasma".
+
+---
+
+## 13. Ronda final (post-reverificación) — verificación con ejecución real
+
+Tras la publicación de este informe, se aplicó una ronda de corrección
+acotada a los 2 puntos pendientes (commits `8cfdbc3`, `46015a1`, `50b1b6b`,
+`1b323dd`; 124 commits en `main` al cierre). El reverificador (el mismo
+proceso, sin delegar en un tercero) verificó CADA fix con ejecución real
+propia, no por lectura de los commits.
+
+### 13.1 Hallazgo nuevo `NODE_ENV=""` — VERIFICADO CERRADO
+
+`git show 8cfdbc3`: `apps/api/src/config/env.ts` (`leerEntorno`) y
+`packages/sim/src/comun/etiquetado.ts` (`assertNoParecerProduccion`) ahora
+tratan explícitamente `valor === undefined` como la ÚNICA forma de
+"ausencia"; cualquier variable DEFINIDA pero vacía o solo-espacios
+(`""`/`"   "`) se clasifica como "production"/lanza fail-closed.
+
+Ejecución real de las suites ya añadidas por el commit:
+- `apps/api/test/config/env.test.ts` → **19/19 verde** (incluye
+  `NODE_ENV=""`/`"  "` → `entorno:"production"` y exige secretos).
+- `packages/sim/test/etiquetado.test.ts` → **9/9 verde**.
+- `apps/api/test/integration/mensajeria.test.ts -t "NODE_ENV"` → **1/1
+  verde**: aprobar un borrador con `NODE_ENV=""` responde HTTP **500**
+  (rechazado), confirmado en el log HTTP real capturado durante la corrida
+  (antes: 200 silencioso, camino real
+  `apps/api/src/routes/mensajeria/borradores.ts:175`).
+
+**Variantes adicionales del reverificador** (script propio ejecutado
+temporalmente dentro de `apps/api/test/config/`, no commiteado, eliminado
+tras la corrida — 6/6 verde):
+- `NODE_ENV=" development "` (con espacios, sin vaciar) → **sigue
+  reconociéndose como `development`**, NO fail-closed — confirma que el fix
+  no sobre-corrigió (trim se aplica correctamente antes de comparar contra
+  la allow-list, no antes de comprobar vacío).
+- `ATIENDE_ENTORNO=""` con `NODE_ENV=production` explícito → **fail-closed**
+  (la rama de allow-list explícita gana: una `ATIENDE_ENTORNO` definida pero
+  vacía no está en la allow-list, lanza sin mirar `NODE_ENV`).
+- `ATIENDE_ENTORNO=""` y `NODE_ENV=""` (ambas vacías) → **fail-closed**.
+- Solo `NODE_ENV=""` (sin `ATIENDE_ENTORNO`) → **fail-closed** vía la rama
+  heredada, mensaje "desconocido" observado.
+- Solo `NODE_ENV="   "` (solo espacios) → **fail-closed**, mismo mensaje.
+- `NODE_ENV=" PRODUCCIÓN "` (tilde+mayúsculas+espacios) →
+  `cargarConfiguracion` exige secretos explícitos (lanza si faltan).
+
+**Veredicto: VERIFICADO CERRADO.** Las 4 variantes pedidas por el
+coordinador (`NODE_ENV=""`, `NODE_ENV="   "`, `NODE_ENV=" development "`,
+`ATIENDE_ENTORNO=""` con `NODE_ENV=production`, ambas vacías) se probaron
+con ejecución real y el comportamiento observado coincide en los 6 casos
+con el invariante documentado en el propio código. Sin sobre-corrección
+(el camino legítimo `" development "` sigue funcionando).
+
+### 13.2 D-ADV-01 — VERIFICADO CERRADO (con nota de precisión sobre la ronda anterior)
+
+`git show e976d99` (el fix de código real, ya existente en `main` **desde
+antes** del inicio de las auditorías de seguridad/dominio/producto de
+auditoría-2 — commit con fecha `2026-09-06 04:55:32`, previo a los
+despachos de auditoría #36-38 a las 05:18): `traducirErrorDominio`
+(`apps/api/src/routes/reservas.ts:142-149`) reconoce
+`error.code === "42501"` y el texto "row-level security policy", mapea a
+`recurso_no_encontrado` (404). El commit `46015a1` de esta ronda final
+únicamente actualizó documentación/comentarios desactualizados
+(`docs/auditoria-2/defectos-adversarial.md` y el comentario del `it` en
+`tests/adversarial/multitenant/casos.test.ts`) — **la aserción del test en
+sí nunca cambió** (`expect([403, 404]).toContain(res.status)` ya existía).
+
+Ejecución real:
+- `npx vitest run tests/adversarial/multitenant/casos.test.ts` → **8/8
+  verde**, incluido el caso 18 (`status` observado en log: `404`).
+- `npx vitest run apps/api/test/integration/api.test.ts -t "D-ADV-01"` →
+  **1/1 verde**, log HTTP real: `{"metodo":"POST","ruta":"/bloqueos",
+  "status":404,...}`.
+
+**Nota de precisión:** la sección §7 de este informe (ronda inicial)
+reportó D-ADV-01 como "sigue abierto" basándose en el campo "Estado:
+abierto" de `defectos-adversarial.md`, sin volver a ejecutar ese `it`
+específico de forma aislada (el reverificador de dominio sí corrió
+`test:adversarial` completo en 49/49 verde, lo que ya incluía este caso en
+verde, pero no se cruzó esa evidencia contra la afirmación textual del
+documento). El código y el test ya eran correctos en la ronda inicial; el
+único gap real era documental (comentario "EN ROJO a propósito" y campo de
+estado desactualizados), ahora corregido. Esto no cambia el veredicto de
+"REQUIERE 1 RONDA" de la síntesis original, ya que el gap de `NODE_ENV=""`
+(§13.1) sí era un defecto de código real y nuevo.
+
+**Veredicto: VERIFICADO CERRADO.**
+
+### 13.3 Gates completos — re-ejecutados en su totalidad por el reverificador
+
+| Comando | Estado | Conteo |
+|---|---|---|
+| `npm run typecheck` | **VERDE** | 7/7 workspaces, 0 errores |
+| `npm run lint` | **VERDE** | 0 errores, 11 warnings preexistentes (mismos que la ronda anterior) |
+| `npm run test` | **VERDE** | 92 archivos / **578 pruebas** (+10 vs. ronda anterior: nuevas de `env.test.ts`/`etiquetado.test.ts`/`mensajeria.test.ts`) |
+| `npm run test:integration` | **VERDE** | 15 archivos / **136 pruebas** (+1: prueba HTTP de `mensajeria.test.ts`) |
+| `npm run test:adversarial` | **VERDE** | 5 archivos / **49 pruebas**, 0 en rojo (D-ADV-01 ya no aparece como caso especial) |
+| `npm run evals:agentes` | **VERDE** | 10/10 casos, 0 fallos adversariales, 100% acierto normal |
+
+Todos ejecutados de punta a punta por el reverificador en esta sesión, no
+citados de logs de terceros.
+
+### 13.4 Conclusión de la ronda final
+
+Los 2 puntos pendientes de la síntesis original están **VERIFICADOS
+CERRADOS con ejecución real**, sin sobre-corrección ni regresión. No se
+encontró ningún hallazgo crítico/alto nuevo en esta ronda. Ver
+`00-SINTESIS.md` para el veredicto definitivo de Fase 2.
