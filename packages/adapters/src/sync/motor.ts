@@ -238,6 +238,43 @@ function extraerRango(evento: VEventNormalizado, zonaHoraria: string): RangoFech
   };
 }
 
+/**
+ * D-DSD-12: `crearReservaConfirmada` (efecto de dominio, su propio
+ * COMMIT) y `upsertEventoImportado` (bookkeeping de versión en
+ * `evento_canal_importado`, escritura SEPARADA y posterior) no son
+ * atómicos entre sí. Si el proceso muere entre ambos COMMIT, el reproceso
+ * del mismo ciclo ve `previa === null` (sin bookkeeping) para un UID cuyo
+ * efecto YA se aplicó — sin esta verificación, `ejecutarCicloImport`
+ * volvería a llamar `crearReservaConfirmada` con el mismo rango, generando
+ * una segunda fila `conflicto_pendiente` y una alerta `overbooking_confirmado`
+ * FALSA contra la reserva consigo misma (dato falso al usuario).
+ *
+ * Antes de crear una reserva nueva, se busca una ocupación activa ya
+ * existente con la MISMA identidad natural que `evento_canal_importado`
+ * usa para deduplicar `(unidad, canal, uid)` — vía `canal_origen_id` +
+ * `external_id` en `ocupacion_unidad` — y el MISMO rango exacto (si el
+ * rango difiere, no se asume recuperación de crash: podría ser un UID
+ * reciclado genuino para una reserva distinta, y se deja que el camino
+ * normal de `crearReservaConfirmada`/EXCLUDE decida). Cuando coincide, se
+ * recupera el bookkeeping apuntando a la ocupación existente en vez de
+ * duplicar el efecto.
+ */
+async function buscarOcupacionActivaParaRecuperarBookkeeping(
+  ctx: ContextoSincronizacion,
+  externalId: string,
+  rango: RangoFechas,
+): Promise<string | null> {
+  const fila = await ctx.ejecutor.query<{ id: string }>(
+    `SELECT id FROM ocupacion_unidad
+     WHERE unidad_id = $1 AND canal_origen_id = $2 AND external_id = $3 AND estado <> 'cancelado'
+       AND rango = daterange($4, $5, '[)')
+     ORDER BY creado_en ASC
+     LIMIT 1`,
+    [ctx.unidadId, ctx.canalId, externalId, rango.inicio, rango.fin],
+  );
+  return fila.rows[0]?.id ?? null;
+}
+
 /** Ejecuta un ciclo completo de import para (unidad, canal): fetch →
  * cuarentena en caso de fallo → parseo → anti-eco → resolución de versión
  * → aplicación transaccional. Nunca libera disponibilidad ante fallo
@@ -442,17 +479,24 @@ async function procesarEventoDelCiclo(
     if (modificado.conflicto) resumen.conflictosDetectados++;
     await upsertEventoImportado(ctx, entrante, previa.ocupacionUnidadId, "aplicar", true);
   } else {
-    const estadoOcupacion = evento.status === "TENTATIVE" ? "provisional" : "confirmado";
-    const creado = await crearReservaConfirmada(ctx.ejecutor, {
-      unidadId: ctx.unidadId,
-      rango,
-      estado: estadoOcupacion,
-      bloqueante: true,
-      canalOrigenId: ctx.canalId,
-      externalId: evento.uid,
-    });
-    if (creado.conflicto) resumen.conflictosDetectados++;
-    await upsertEventoImportado(ctx, entrante, creado.ocupacionId, "aplicar", true);
+    // D-DSD-12: recuperación de bookkeeping perdido antes de crear una
+    // reserva nueva (ver buscarOcupacionActivaParaRecuperarBookkeeping).
+    const ocupacionRecuperada = await buscarOcupacionActivaParaRecuperarBookkeeping(ctx, evento.uid, rango);
+    if (ocupacionRecuperada) {
+      await upsertEventoImportado(ctx, entrante, ocupacionRecuperada, "aplicar", true);
+    } else {
+      const estadoOcupacion = evento.status === "TENTATIVE" ? "provisional" : "confirmado";
+      const creado = await crearReservaConfirmada(ctx.ejecutor, {
+        unidadId: ctx.unidadId,
+        rango,
+        estado: estadoOcupacion,
+        bloqueante: true,
+        canalOrigenId: ctx.canalId,
+        externalId: evento.uid,
+      });
+      if (creado.conflicto) resumen.conflictosDetectados++;
+      await upsertEventoImportado(ctx, entrante, creado.ocupacionId, "aplicar", true);
+    }
   }
   resumen.eventosAplicados++;
 }

@@ -419,3 +419,52 @@ describe("caso 20 — SSRF: URL de feed apuntando a metadata/rango privado", () 
   });
 });
 
+describe("D-DSD-12 (regresión) — crash entre el efecto de dominio y el bookkeeping de sync no genera overbooking falso", () => {
+  it("reprocesar el mismo UID tras perder el bookkeeping (efecto ya aplicado) recupera el bookkeeping en vez de duplicar la reserva", async () => {
+    const unidadId = await entorno.crearUnidad("d-dsd-12-crash-bookkeeping");
+    const uid = "d-dsd-12-crash@canal-externo.com";
+    const rango = { inicio: "2028-03-01", fin: "2028-03-05" };
+
+    // Simula "el efecto de dominio ya se aplicó, pero el proceso murió
+    // antes de escribir el bookkeeping" — llamada directa al dominio,
+    // bypaseando ejecutarCicloImport (que en un ciclo normal completo SÍ
+    // llegaría a escribir evento_canal_importado).
+    const creado = await crearReservaConfirmada(entorno.ejecutor(), {
+      unidadId,
+      rango,
+      estado: "confirmado",
+      bloqueante: true,
+      canalOrigenId: canalId,
+      externalId: uid,
+    });
+    expect(creado.conflicto).toBeNull();
+
+    const resultado = await ciclo(
+      unidadId,
+      feedIcsDePrueba([{ uid, sequence: 1, dtstamp: "20270101T000000Z", dtstart: "20280301", dtend: "20280305", status: "CONFIRMED" }]),
+    );
+
+    expect(resultado.conflictosDetectados).toBe(0);
+
+    const conflictos = await entorno.motor.ejecutor.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM conflicto_calendario WHERE unidad_id = $1 AND tipo = 'overbooking_confirmado'`,
+      [unidadId],
+    );
+    expect(Number(conflictos.rows[0]!.n)).toBe(0);
+
+    const totales = await entorno.motor.ejecutor.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM ocupacion_unidad WHERE unidad_id = $1`,
+      [unidadId],
+    );
+    expect(Number(totales.rows[0]!.n)).toBe(1);
+
+    // El bookkeeping quedó apuntando a la ocupación original recuperada,
+    // no a una fila nueva.
+    const bookkeeping = await entorno.motor.ejecutor.query<{ ocupacion_unidad_id: string }>(
+      `SELECT ocupacion_unidad_id FROM evento_canal_importado WHERE unidad_id = $1 AND canal_id = $2 AND uid_evento = $3`,
+      [unidadId, canalId, uid],
+    );
+    expect(bookkeeping.rows[0]!.ocupacion_unidad_id).toBe(creado.ocupacionId);
+  });
+});
+
