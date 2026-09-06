@@ -182,10 +182,10 @@ externa").
 
 | ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
 |---|---|---|---|---|---|---|
-| H-092 | Implementación completa del catálogo de 20 casos adversariales, ejecutable en CI | REQ-170 | §Calendario-2 (20 casos) | MUST | XL | por hacer |
-| H-093 | Suite de carga del importador con objetivos calibrados en piloto (nunca a priori) | REQ-171 | §Plan-1 | MUST | L | por hacer |
-| H-094 | Pruebas de SSRF, límites de tamaño ICS y XXE (si aplica parser XML) | REQ-030, REQ-031, REQ-155 | §RV19/21-2, §RV19/21-3, §RV19/21-15 | MUST | M | por hacer |
-| H-095 | Pruebas de aislamiento multitenant y escalada de privilegios (casos 18, 19) | REQ-140 | §RV19/21-4 | MUST | M | por hacer |
+| H-092 | Implementación completa del catálogo de 20 casos adversariales, ejecutable en CI | REQ-170 | §Calendario-2 (20 casos) | MUST | XL | hecho (Lote 11A) |
+| H-093 | Suite de carga del importador con objetivos calibrados en piloto (nunca a priori) | REQ-171 | §Plan-1 | MUST | L | hecho (Lote 11A) |
+| H-094 | Pruebas de SSRF, límites de tamaño ICS y XXE (si aplica parser XML) | REQ-030, REQ-031, REQ-155 | §RV19/21-2, §RV19/21-3, §RV19/21-15 | MUST | M | hecho (Lote 11A) — sin XXE: el parser ICS es texto plano propio, no XML (ver nota de alcance abajo) |
+| H-095 | Pruebas de aislamiento multitenant y escalada de privilegios (casos 18, 19) | REQ-140 | §RV19/21-4 | MUST | M | hecho (Lote 11A) |
 
 ---
 
@@ -509,3 +509,82 @@ por canal, que depende de instrumentación de sync de Lote 2/10) quedan
   de commits no perfectamente lineal.
 - **Commits:** ver `git log` (código bajo mensajes `feat(lote5)`/
   `docs(lote5)`, con al menos un tramo recuperado tras un `amend` externo).
+
+## Lote 11A — cerrado (suite adversarial completa de 20 casos + carga; E16 completa)
+
+4/95 historias marcadas `hecho (Lote 11A)` arriba: H-092 a H-095 (E16
+completa). El código concurrente de Lote 11B (correcciones en
+`apps/api`/`apps/web`/`scripts`) no forma parte de este cierre.
+
+- **Código:** `tests/adversarial/calendario/casos.test.ts` (casos 2, 4, 5,
+  12, 14, 15 de ACEPTACION §Calendario-2, contra `embedded-postgres` real
+  + simuladores etiquetados, reutilizando `crearEntornoAdversarial`/
+  `feedIcsDePrueba` de `tests/adversarial/sync/entorno.ts` de Lote 2 en
+  vez de duplicarlos). `tests/adversarial/multitenant/casos.test.ts`
+  (casos 18/19 verificados vía HTTP real contra `apps/api` —
+  `crearApp`/`app.request` — complementando, no duplicando, la
+  verificación con SQL directo de `packages/db/test/integration/
+  rls.test.ts` de Lote 1/3: cubre además el camino de ESCRITURA
+  cross-tenant, POST /bloqueos y POST /reservas, que la suite HTTP de
+  Lote 3 no cubría). `tests/adversarial/outbox/casos.test.ts` (caso 16 a
+  nivel del WORKER real de outbox de Lote 10,
+  `apps/api/src/workers/observabilidad/outboxWorker.ts`, importado por
+  ruta de archivo — complementa el caso 16 a nivel de motor de
+  sincronización de Lote 2). `tests/adversarial/ssrf/casos.test.ts`
+  (vectores adicionales del caso 20: RFC1918, loopback, esquema `file:`,
+  redirección HTTP real hacia un destino interno con revalidación por
+  salto; más una suite extra de H-094 fuera del catálogo de 20 —
+  "ICS bomba"/límites de tamaño-eventos-longitud de línea del parser de
+  Lote 2). `tests/adversarial/generar-reporte.mjs` (clasifica cada `it`
+  por número de caso a partir de una corrida real de
+  `vitest --reporter=json`, nunca a mano; produce
+  `docs/logs/adversarial-reporte.{md,json}`). `tests/load/` (H-093): 3
+  escenarios (`escenarioA-importacion.ts` — 50 unidades × 3 canales,
+  latencia interna evento→noche cerrada con conexiones `pg`
+  independientes reales, sin overbooking; `escenarioB-rafagaReservas.ts`
+  — 30 conexiones concurrentes sobre la misma unidad, exactamente 1
+  ganador, `23P01` limpio en el resto, cero deadlocks, extiende a escala
+  el entregable de H-005/Lote 1; `escenarioC-reconciliacion.ts` — 500
+  UIDs activos con 10% de drift sembrado deterministamente, invariante
+  H-018 verificado a escala) + `comun.ts` (helpers de percentiles/
+  hardware/wrapper de conexión) + `run.mjs` (orquestador de
+  `npm run test:load`). Línea `"test:load"` añadida a `package.json`
+  raíz; `scripts/adversarial.mjs` (Lote 2) y `npm run ci` quedan SIN
+  tocar — la carga permanece manual/CI nocturno, según LOTES.md.
+- **Pruebas:** 41 tests nuevos propios en `tests/adversarial/`
+  (`calendario` 8, `multitenant` 8, `outbox` 2, `ssrf` 11, más 12 de
+  `sync` de Lote 2 que ya vivían ahí) — 40 en verde, 1 en rojo A
+  PROPÓSITO (defecto real documentado, ver abajo). Reporte consolidado:
+  20/20 casos del catálogo de ACEPTACION §Calendario-2 en verde
+  (`docs/logs/adversarial-reporte.md`). Carga: 3/3 escenarios ejecutados
+  de punta a punta con números reales (`docs/logs/load-reporte.md`),
+  explícitamente marcados como NO-SLO (§Plan-1).
+- **Defecto real encontrado y documentado, NO maquillado (regla del
+  lote):** D-ADV-01 — `POST /bloqueos` con un `unidadId` de otro tenant
+  es rechazado correctamente por RLS (0 filas escritas, verificado), pero
+  `traducirErrorDominio` (`apps/api/src/routes/reservas.ts`) no reconoce
+  la violación de RLS de Postgres y cae al `catch-all` `error_interno`
+  (HTTP 500) en vez de un error de autorización clasificado (403/404,
+  como sí hace `POST /reservas` para el mismo escenario). El invariante
+  de seguridad real (aislamiento de datos) se cumple siempre — es un
+  defecto de clasificación de error, no una fuga. Reproducción exacta y
+  corrección sugerida en `docs/auditoria-2/defectos-adversarial.md`; el
+  `it` que lo reproduce se dejó en rojo a propósito en
+  `tests/adversarial/multitenant/casos.test.ts` (caso 18). Corrección
+  fuera del alcance de 11A (carpeta exclusiva `apps/api` de 11B).
+- **Incidente de índice git compartido (mismo riesgo B-007 ya documentado
+  por Lotes 5/6/7/8/10):** el commit de código de este lote
+  (`feat(lote11a): ...`) absorbió, además de los archivos propios,
+  cambios en vuelo de Lote 11B (`apps/api/openapi.yaml`,
+  `apps/api/src/routes/exportIcal.ts`,
+  `apps/api/test/integration/exportIcal.test.ts`) que estaban en el
+  índice compartido en el momento del commit pese a que `git add` se
+  ejecutó solo con rutas explícitas propias. Siguiendo la política ya
+  establecida por este proyecto para B-007 (nunca reescribir historial —
+  `--amend`/`reset`/`rebase`/`stash` prohibidos), no se corrigió con
+  ninguna operación destructiva: el contenido de esos 3 archivos es
+  correcto y no se perdió nada; solo queda atribuido al commit de Lote
+  11A en vez de al de 11B. Documentado aquí para que 11B no intente
+  re-commitear el mismo contenido como si faltara.
+- **Commits:** ver `git log` (código bajo `feat(lote11a)`, defecto bajo
+  `docs(lote11a)`, evidencia/reportes bajo `docs(lote11a)`).
