@@ -75,9 +75,9 @@ externa").
 
 | ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
 |---|---|---|---|---|---|---|
-| H-035 | Instrumentación OTel: Gauge edad última sync, Counter errores (`error_class`), Histogram latencia, UpDownCounter cola | REQ-038, REQ-156 | §Operación-2 | MUST | L | por hacer |
-| H-036 | Trazas distribuidas del ciclo webhook/import→cola→worker→escritura→confirmación | REQ-157 | §Operación-2 | MUST | M | por hacer |
-| H-037 | Alertas y runbooks (edad sync, tasa error, drift, cola creciente) — nunca cancelan ni contactan | REQ-009, REQ-163 | §Operación-1 | MUST | L | por hacer |
+| H-035 | Instrumentación OTel: Gauge edad última sync, Counter errores (`error_class`), Histogram latencia, UpDownCounter cola | REQ-038, REQ-156 | §Operación-2 | MUST | L | hecho (Lote 10) |
+| H-036 | Trazas distribuidas del ciclo webhook/import→cola→worker→escritura→confirmación | REQ-157 | §Operación-2 | MUST | M | hecho (Lote 10, spans PRODUCER/CONSUMER encadenados por traceId; sin @opentelemetry/* real, ver nota en el código) |
+| H-037 | Alertas y runbooks (edad sync, tasa error, drift, cola creciente) — nunca cancelan ni contactan | REQ-009, REQ-163 | §Operación-1 | MUST | L | hecho (Lote 10, 6 reglas + docs/runbooks/*.md) |
 | H-038 | Panel de monitor de sync en UI (drift, conflictos activos, edad por canal/unidad) | REQ-038 | §Operación-2 | MUST | M | hecho (Lote 4, panel de UI — edad/estado/conflictos reales; errores/cuarentena/drift muestran "no expuesto aún", instrumentación OTel de H-035/H-036 sigue pendiente) |
 | H-039 | Descomposición de latencia interna vs. por canal en UI y reporting | REQ-039 | §RV19/21-8 | MUST | M | hecho (Lote 4, parte de UI — monitor y matriz muestran latencia interna vs. por canal siempre separadas; el Histogram OTel de H-035 sigue pendiente) |
 
@@ -171,11 +171,11 @@ externa").
 
 | ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
 |---|---|---|---|---|---|---|
-| H-086 | Backup completo diario + WAL continuo, retención 35d/12m, prueba de restauración mensual | REQ-159 | §Operación-3 | MUST | M | por hacer |
-| H-087 | Reconciliación de drift obligatoria tras todo restore antes de reanudar push automático | REQ-160 | §Operación-3 | MUST | M | por hacer |
-| H-088 | Migraciones patrón expand/contract, nunca bloqueantes en horario de check-in/checkout | REQ-162 | §Operación-3 | MUST | M | por hacer |
-| H-089 | Feature flags default `false` para funcionalidad que module dinero/cancelación/contacto | REQ-163 | §Operación-1 | MUST | S | por hacer |
-| H-090 | Pausa automática de push ante token de canal revocado/expirado | REQ-165 | §Operación-1 | MUST | M | por hacer |
+| H-086 | Backup completo diario + WAL continuo, retención 35d/12m, prueba de restauración mensual | REQ-159 | §Operación-3 | MUST | M | hecho (Lote 10, parcial — backup lógico + restauración + verificación de integridad implementados y probados contra embedded-postgres real; WAL continuo y calendario de retención 35d/12m dependen de la infraestructura de Postgres administrado elegida en producción, brecha documentada en docs/runbooks/recuperacion-backup.md) |
+| H-087 | Reconciliación de drift obligatoria tras todo restore antes de reanudar push automático | REQ-160 | §Operación-3 | MUST | M | hecho (Lote 10) |
+| H-088 | Migraciones patrón expand/contract, nunca bloqueantes en horario de check-in/checkout | REQ-162 | §Operación-3 | MUST | M | hecho (Lote 10, parcial — chequeo de DROP/ALTER destructivo + orden/colisiones + dry-run implementados y probados contra el catálogo real; la restricción de horario de check-in/checkout es una regla de despliegue/runbook, no verificable por código sin un orquestador de despliegues) |
+| H-089 | Feature flags default `false` para funcionalidad que module dinero/cancelación/contacto | REQ-163 | §Operación-1 | MUST | S | hecho (Lote 10) |
+| H-090 | Pausa automática de push ante token de canal revocado/expirado | REQ-165 | §Operación-1 | MUST | M | hecho (Lote 10) |
 | H-091 | Modo degradado de solo-lectura del calendario si la BD primaria no responde | REQ-166 | §Operación-3 | MUST | L | por hacer |
 
 ## E16 — Pruebas adversariales (20 casos) y carga
@@ -360,3 +360,61 @@ de multi-empresa-gestora, no bloqueante para el resto de Fase 2).
   `cd packages/db && npx vitest run --config vitest.integration.config.ts
   test/integration/rls.test.ts`.
 - **Commits:** ver `git log` — rango de esta entrega en `docs/PROGRESO.md`.
+
+## Lote 10 — cerrado (observabilidad y recuperación)
+
+8/95 historias marcadas `hecho (Lote 10)` arriba: H-035 a H-037, H-086 a
+H-090 (E15 casi completa — H-091, modo degradado de solo-lectura, queda
+`por hacer` deliberadamente: requiere infraestructura de réplica de
+lectura no disponible en este entorno de construcción, no un olvido).
+
+- **Código:** `packages/domain/src/flags/` (registro tipado de feature
+  flags, default-off forzado para riesgo dinero/cancelación/contacto,
+  auditoría de cambios). `packages/db/migrations-tooling/` (expand/
+  contract, orden/colisiones de numeración entre lotes, dry-run contra
+  PGlite). `packages/db/backup/` (backup lógico propio, restauración con
+  `session_replication_role=replica`, verificación de integridad incluido
+  el EXCLUDE, reconciliación de drift obligatoria antes de reactivar
+  `sync.push_automatico`). `packages/db/src/migrations/0080-0081` (ledger
+  de idempotencia del worker de outbox, tabla de alertas). `apps/api/src/
+  workers/observabilidad/` (trazador y métricas OTel-like propios sin
+  dependencia nueva de `@opentelemetry/*`, exportadores consola/archivo/
+  OTLP, middleware HTTP, envoltorio instrumentado de
+  `ejecutarCicloImport` de Lote 2, worker de replay idempotente del
+  outbox, motor de 6 reglas de alerta con la única acción reversible del
+  catálogo — pausar push por token revocado —, rutas `/metrics`+
+  `/health/detallado`+`/alertas`). `docs/runbooks/*.md` (una por alerta +
+  recuperación de backup con supuestos de RPO/RTO declarados).
+  `scripts/verificar-lotes.mjs` + `npm run verificar:lotes` + extensión de
+  `npm run ci`/`.github/workflows/ci.yml` con `test:integration`/
+  `test:adversarial`.
+- **Pruebas:** 9 de flags, 16 de migrations-tooling, 11+3 de backup
+  (PGlite + dos clusters `embedded-postgres` reales y aislados), 39 de
+  observabilidad (sanitización de PII con email/teléfono sembrados
+  reales, encadenamiento de spans por `traceId`, las 6 reglas de alerta
+  con persistencia/ack, y el caso central: matar el worker de outbox a
+  mitad de un lote de 6 eventos y reanudar sin duplicar ni perder ningún
+  efecto). Total nuevo: 78 pruebas. `npm run lint`/`npm run typecheck`
+  verdes en todos los paquetes que este lote toca. Ver
+  `docs/logs/lote10-test.log`, `docs/logs/lote10-integration.log`,
+  `docs/logs/lote10-restauracion.log`, `docs/logs/lote10-ci.log`.
+- **Hallazgo de esta sesión, no previsto en el backlog:** el agregado de
+  CI raíz (`npm run test --workspaces --if-present`) YA cubría
+  correctamente todos los workspaces — el número de "12 tests" citado en
+  el encargo era el estado de cierre de Lote 0 (`docs/AGENTES.md` #23),
+  no el estado actual (verificado en esta sesión: 377 pruebas en 7
+  workspaces). Este lote añadió la herramienta de verificación explícita
+  (`verificar:lotes`) que faltaba, no una corrección del mecanismo de
+  agregado en sí, que ya funcionaba.
+- **Brecha documentada, no un olvido:** H-091 (modo degradado de
+  solo-lectura si la BD primaria no responde) requiere una réplica de
+  lectura real, infraestructura fuera del alcance de este entorno de
+  construcción — queda `por hacer`. WAL continuo/retención 35d-12m de
+  H-086 depende de la elección final de proveedor de Postgres
+  administrado en producción — el backup lógico + restauración +
+  verificación SÍ están implementados y probados. La restricción de
+  horario de check-in/checkout de H-088 es una regla operativa de
+  despliegue, documentada en el runbook, no verificable por código sin
+  un orquestador de despliegues real.
+- **Commits:** ver `git log` — rango de esta entrega en
+  `docs/PROGRESO.md`.
