@@ -18,6 +18,7 @@ import { listarCuentasCanal } from "./api";
 import { LISTA_CANALES, type CanalCodigo } from "./catalogoCanales";
 import { aEstadoBadge, etiquetaHonesta } from "./estadoConexion";
 import { edadLegible } from "../../lib/tiempo/edad";
+import { ExportIcalUrl } from "./ExportIcalUrl";
 import { FormularioConectarIcal } from "./FormularioConectarIcal";
 import { ErrorApiAlerta } from "../calendario/components/ErrorApiAlerta";
 
@@ -147,9 +148,12 @@ export function MatrizConectividadPage() {
                   "conectar directo" para Booking.com en ningún flujo de onboarding (PLAN-CONSTRUCCION.md §6).
                 </p>
               ) : (
-                formularioAbierto === info.codigo && (
-                  <FormularioConectarIcal canal={info.codigo} onConectado={() => { setFormularioAbierto(null); cuentasQuery.recargar(); }} />
-                )
+                <>
+                  {formularioAbierto === info.codigo && (
+                    <FormularioConectarIcal canal={info.codigo} onConectado={() => { setFormularioAbierto(null); cuentasQuery.recargar(); }} />
+                  )}
+                  {info.capacidades.export && <ExportIcalUrl canal={info.codigo} />}
+                </>
               )}
             </CardContent>
           </Card>

@@ -12,3 +12,23 @@ export function crearCuentaCanal(cuerpo: CuerpoCrearCuentaCanal): Promise<{ id: 
 export function sincronizarAhora(cuentaCanalId: string): Promise<{ encolado: boolean }> {
   return peticion(`/canales/${cuentaCanalId}/sync`, { metodo: "POST" });
 }
+
+/** Lote 11B, corrección #3: URL del feed `.ics` propio por unidad+canal,
+ * con token opaco rotable. `GET` es idempotente (conserva el token si ya
+ * existía); `POST .../rotar` siempre emite uno nuevo e invalida el
+ * anterior de inmediato. */
+export interface UrlExportIcal {
+  unidadId: string;
+  canalCodigo: string;
+  token: string;
+  url: string;
+  rotadoEn: string | null;
+}
+
+export function obtenerUrlExportIcal(unidadId: string, canalCodigo: string): Promise<UrlExportIcal> {
+  return peticion(`/export-ical/${unidadId}/${canalCodigo}`);
+}
+
+export function rotarUrlExportIcal(unidadId: string, canalCodigo: string): Promise<UrlExportIcal> {
+  return peticion(`/export-ical/${unidadId}/${canalCodigo}/rotar`, { metodo: "POST" });
+}

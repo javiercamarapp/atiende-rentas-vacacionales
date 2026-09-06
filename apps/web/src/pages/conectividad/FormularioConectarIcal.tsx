@@ -43,8 +43,6 @@ export function FormularioConectarIcal({
   const [errorCliente, setErrorCliente] = useState<string | null>(null);
   const mutacion = useMutacionLigera(crearCuentaCanal);
 
-  const urlExport = null as string | null; // ver nota más abajo, honesto: aún no expuesto por la API.
-
   async function alEnviar(e: React.FormEvent) {
     e.preventDefault();
     const problema = validarUrlIcal(urlImport);
@@ -89,12 +87,6 @@ export function FormularioConectarIcal({
             {errorCliente}
           </p>
         )}
-      </div>
-      <div className="space-y-1">
-        <p className="text-xs font-medium text-muted-foreground">URL de exportación propia (para pegar en {canal})</p>
-        <p className="text-xs text-muted-foreground italic">
-          {urlExport ?? `Aún no expuesta por la API (endpoint pendiente en Lote 2/3) — no se muestra un enlace falso.`}
-        </p>
       </div>
       <ErrorApiAlerta error={mutacion.error} />
       <div className="flex justify-end">
