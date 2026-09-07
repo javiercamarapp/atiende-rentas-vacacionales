@@ -191,6 +191,21 @@ verificado con una corrida real de `docker compose` en este entorno (sin
 demonio de Docker disponible aquí) — revísalo en un ambiente con Docker
 antes de confiar en él para producción.
 
+## 8.5. Cron de sincronización iCal
+
+`GET /api/internal/cron/sync-ical` (registrado en `vercel.json` →
+`crons`, cada 15 minutos) dispara el motor de sync iCal para los canales
+activos de todos los tenants — sin esto, los calendarios importados solo
+se refrescan bajo `POST /canales/:id/sync` manual, nunca solos. Requiere
+`CRON_SECRET` (Vercel lo envía automático como `Authorization: Bearer` si
+la variable existe en el proyecto) y `CRON_SYNC_SUPERADMIN_ID` — ver
+`docs/despliegue/cron-sync.md` para el diseño completo, el tradeoff de
+seguridad de cómo lee canales cross-tenant (requiere revisión humana
+antes de producción) y cómo probarlo con `curl`. **Plan Hobby de Vercel
+no ejecuta este `schedule` cada 15 minutos** (lo agrupa a ~1 vez al día
+sin avisar) — requiere plan Pro o superior, ver `docs/despliegue/cron-sync.md`
+§"Requisito de plan de Vercel".
+
 ## 9. Checklist de producción
 
 - [ ] `DATABASE_URL` apunta al rol `app_rv` (nunca al superusuario de
@@ -210,6 +225,17 @@ antes de confiar en él para producción.
       de monitoreo propio.
 - [ ] Runbooks existentes: `docs/runbooks/` (si existe en tu checkout) —
       revisar antes de la primera incidencia real.
+- [ ] `CRON_SECRET` (§8.5) generado y configurado en Vercel — sin él, el
+      cron de sync iCal permanece inactivo (503, fail-closed), nunca falla
+      "silenciosamente" en producción. `CRON_SYNC_SUPERADMIN_ID` apunta a
+      un superadmin real y activo — **revisar `docs/despliegue/cron-sync.md`
+      antes de activarlo**: el diseño de acceso cross-tenant tiene un
+      tradeoff de seguridad que requiere aprobación explícita.
+- [ ] Plan de Vercel del proyecto soporta el `schedule` de `crons` en
+      `vercel.json` (cada 15 minutos requiere Pro o superior — Hobby lo
+      agrupa a ~1 vez al día sin error visible) — confirmar en Project
+      Settings → Cron Jobs antes de dar por hecho que el cron corre con
+      la frecuencia esperada.
 - [ ] `APP_ENV_LABEL=produccion` en Production (nunca "desarrollo") —
       D-019/DEFINICION-DE-HECHO §1.
 - [ ] Stripe: si se activa (`STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET`),

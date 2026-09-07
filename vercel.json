@@ -11,5 +11,6 @@
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" },
     { "source": "/(.*)", "destination": "/index.html" }
-  ]
+  ],
+  "crons": [{ "path": "/api/internal/cron/sync-ical", "schedule": "*/15 * * * *" }]
 }

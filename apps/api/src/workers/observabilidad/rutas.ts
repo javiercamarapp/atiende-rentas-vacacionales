@@ -5,6 +5,7 @@ import { requiereAutenticacion } from "../../middleware/autenticacion.js";
 import { exponerFormatoPrometheus, resumenLatenciaEtiquetada, RegistroMetricas } from "./metricas.js";
 import { contarPendientesOutbox, edadPendienteMasViejoMs } from "./outboxWorker.js";
 import { reconocerAlerta, resolverAlerta } from "./alertas.js";
+import { crearRutasCronSyncIcal } from "../../rutas/internas/cronSync.js";
 
 /**
  * `/metrics` (Prometheus text) y `/health/detallado` (Lote 10, H-035),
@@ -111,6 +112,15 @@ export function rutasObservabilidad(deps: DependenciasRutasObservabilidad): Hono
   });
 
   app.route("/alertas", rutasAlertas);
+
+  // GET /internal/cron/sync-ical (H-cron-sync, paquete cron-sync): dispara
+  // el motor de sync iCal para todos los canales activos de todos los
+  // tenants — ver apps/api/src/rutas/internas/cronSync.ts para el diseño
+  // completo (protegido por CRON_SECRET, nunca por requiereAutenticacion:
+  // lo invoca Vercel Cron, no un usuario logueado). Montada aquí, sin
+  // tocar app.ts, reutilizando el mismo punto de fusión que el resto de
+  // esta función (`app.route("/", rutasObservabilidad(...))` en app.ts).
+  app.route("/internal/cron", crearRutasCronSyncIcal({ pool: deps.pool, metricas: deps.metricas }));
 
   return app;
 }
