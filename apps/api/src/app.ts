@@ -9,6 +9,7 @@ import { registrarRutas } from "./routes/index.js";
 import { cabecerasSeguridad } from "./seguridad/cabeceras.js";
 import { KeyringCifradoCanal } from "./seguridad/cifrado.js";
 import { construirAdaptadorCorreo } from "./seguridad/correo.js";
+import { capturarErrorNoManejado, crearRutaPruebaSentry } from "./observabilidad/sentry.js";
 import { construirPagosStripeDesdeEntorno, PagosSimulado } from "@atiende-rv/domain/facturacion";
 import { crearRateLimit } from "./seguridad/rateLimit.js";
 import { ZodError, type ZodIssue } from "zod";
@@ -82,6 +83,10 @@ export function crearApp(opciones: OpcionesCrearApp = {}) {
   const trazador = crearTrazador("atiende-rv-api", construirExportadoresDesdeEntorno(leerConfiguracionOtelEntorno()));
   app.use("*", crearMiddlewareObservabilidad(trazador, metricas));
   app.route("/", rutasObservabilidad({ metricas, pool, jwtSecret: config.jwtSecret }));
+  // Sentry (bucle B): ruta interna de verificación end-to-end de la
+  // integración, fail-closed sin CRON_SECRET — ver
+  // apps/api/src/observabilidad/sentry.ts y docs/despliegue/sentry.md.
+  app.route("/internal", crearRutaPruebaSentry());
 
   app.get("/health", (c) =>
     c.json({
@@ -159,6 +164,12 @@ export function crearApp(opciones: OpcionesCrearApp = {}) {
     console.error(
       JSON.stringify({ error: "no_manejado", mensaje: redactarPiiEnTexto((err as Error).message) }),
     );
+    // Sentry (bucle B): solo la rama de 500 genérico — NUNCA cambia el
+    // código/cuerpo de esta respuesta, es puramente un efecto secundario
+    // de observabilidad; no-op si SENTRY_DSN no está configurado. Los
+    // `ErrorDominio`/`ZodError` de arriba son flujo de control esperado,
+    // no bugs — no se envían a Sentry.
+    capturarErrorNoManejado(err);
     return c.json({ error: { codigo: "error_interno", mensaje: "Error interno del servidor" } }, 500);
   });
 

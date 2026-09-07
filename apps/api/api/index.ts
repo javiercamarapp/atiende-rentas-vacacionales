@@ -28,6 +28,14 @@
 import { handle } from "hono/vercel";
 import { Hono } from "hono";
 import { crearApp } from "../src/app.js";
+import { esperarEnvioSentry, iniciarSentry, sentryEstaHabilitado } from "../src/observabilidad/sentry.js";
+
+// Sentry (bucle B): se inicializa ANTES de construir la app (antes incluso
+// de que `crearApp()`/`cargarConfiguracion()` puedan lanzar en el arranque
+// fail-closed de arriba) — así un error de arranque real también queda
+// instrumentado, no solo los errores de request ya en marcha. No-op total
+// sin `SENTRY_DSN` (ver apps/api/src/observabilidad/sentry.ts).
+iniciarSentry(process.env);
 
 function construirAppSinConfigurar(motivo: string): Hono {
   const app = new Hono();
@@ -109,4 +117,24 @@ function montarBajoApi(app: Hono): Hono {
 // Fix: export a `fetch` function"). `export const fetch` es la firma
 // Web-estándar (mismo nombre que Cloudflare Workers) que Vercel sí
 // reconoce para Node.js Functions modernas.
-export const fetch = handle(montarBajoApi(obtenerApp()));
+const manejarFetch = handle(montarBajoApi(obtenerApp()));
+
+// Sentry (bucle B) + Vercel Functions: el proceso de una función puede
+// congelarse apenas se envía la `Response` (no hay proceso "de larga
+// vida" entre invocaciones) — el propio SDK/documentación de Sentry para
+// entornos serverless advierte que, sin esperar explícitamente, un evento
+// que su transporte todavía no terminó de mandar por red en ese instante
+// se pierde en silencio. `Sentry.flush(2000)` (apps/api/src/observabilidad/
+// sentry.ts#esperarEnvioSentry) vacía esa cola antes de dejar terminar la
+// invocación — con timeout acotado para no alargar la latencia de la
+// respuesta al cliente más de 2s en el peor caso. No-op (sin `await` real)
+// si Sentry no está habilitado.
+export const fetch: typeof manejarFetch = sentryEstaHabilitado()
+  ? (async (...args: Parameters<typeof manejarFetch>) => {
+      try {
+        return await manejarFetch(...args);
+      } finally {
+        await esperarEnvioSentry(2000);
+      }
+    })
+  : manejarFetch;

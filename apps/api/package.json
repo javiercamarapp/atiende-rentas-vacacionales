@@ -22,6 +22,7 @@
     "@atiende-rv/domain": "0.0.0",
     "@atiende-rv/sim": "0.0.0",
     "@hono/node-server": "^1.13.7",
+    "@sentry/node": "^10.73.0",
     "@types/nodemailer": "^8.0.1",
     "hono": "^4.6.14",
     "jose": "^5.9.6",
