@@ -126,7 +126,11 @@ describe("evaluarAlertas (lógica pura de reglas)", () => {
   });
 });
 
-describe("dispararAlertas / reconocerAlerta / resolverAlerta (persistencia + flag reversible)", () => {
+// Cada caso levanta un PGlite nuevo y aplica las ~70 migraciones (~1.5 s en
+// frío); con workers en paralelo o en el runner de GitHub Actions superaba
+// el timeout por defecto de 5 s (flaky observado en CI y en local). Solo se
+// amplía el tope de tiempo — las aserciones no cambian.
+describe("dispararAlertas / reconocerAlerta / resolverAlerta (persistencia + flag reversible)", { timeout: 30_000 }, () => {
   async function motorConDatosMinimos() {
     const motor = await crearMotorPglite();
     await aplicarMigraciones(motor.ejecutor, migraciones);

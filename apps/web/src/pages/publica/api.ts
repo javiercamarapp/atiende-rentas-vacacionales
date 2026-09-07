@@ -35,7 +35,11 @@ export interface SaludApi {
   entorno: string;
   etiquetaEntorno: string;
   aviso: string;
-  baseDeDatos?: "configurada" | "sin_configurar";
+  // "ok"/"error" desde Lote 3.3 (health honesto con SELECT 1 real);
+  // "configurada" se conserva por compatibilidad con despliegues previos.
+  baseDeDatos?: "ok" | "error" | "configurada" | "sin_configurar";
+  baseDeDatosMotivo?: string;
+  migracionesPendientes?: number;
 }
 
 export function obtenerSaludApi(): Promise<SaludApi> {

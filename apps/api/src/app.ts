@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import pg from "pg";
-import { verificarSaludBaseDeDatos } from "@atiende-rv/db";
+import { obtenerPoolServerlessCompartido, verificarSaludBaseDeDatos } from "@atiende-rv/db";
 import { cargarConfiguracion } from "./config/env.js";
 import { cuerpoError, ErrorDominio } from "./contrato/errores.js";
 import { crearLogger } from "./middleware/logger.js";
@@ -56,7 +56,16 @@ export function crearApp(opciones: OpcionesCrearApp = {}) {
   const config = cargarConfiguracion();
   const app = new Hono();
 
-  const pool = opciones.pool ?? new pg.Pool({ connectionString: config.databaseUrl || undefined });
+  // Con `DATABASE_URL` real, el pool sale del helper serverless de
+  // packages/db (SSL automático para hosts gestionados como Supabase,
+  // tamaño de pool acotado y caché a nivel de módulo entre invocaciones
+  // de Vercel Functions — ver conexionServerless.ts). Sin URL se conserva
+  // el comportamiento anterior (pool "vacío" que solo falla al usarse).
+  const pool =
+    opciones.pool ??
+    (config.databaseUrl
+      ? obtenerPoolServerlessCompartido(config.databaseUrl)
+      : new pg.Pool({ connectionString: undefined }));
   const keyring = new KeyringCifradoCanal(config.cifradoCanalClaves);
   // Lote 3.3 (RV16): Stripe real SOLO si AMBAS variables están presentes
   // (fail-safe hacia PagosSimulado, nunca un adaptador Stripe a medias) —

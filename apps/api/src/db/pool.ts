@@ -1,4 +1,5 @@
-import pg from "pg";
+import type pg from "pg";
+import { obtenerPoolServerlessCompartido } from "@atiende-rv/db";
 
 /**
  * Pool de conexión de runtime, siempre autenticado como `app_rv`
@@ -10,5 +11,8 @@ import pg from "pg";
  * usuario en un entorno que no sea `test`.
  */
 export function crearPool(databaseUrl: string): pg.Pool {
-  return new pg.Pool({ connectionString: databaseUrl });
+  // SSL automático para hosts gestionados (Supabase), pool acotado y
+  // cacheado entre invocaciones serverless — ver
+  // packages/db/src/runner/conexionServerless.ts.
+  return obtenerPoolServerlessCompartido(databaseUrl);
 }

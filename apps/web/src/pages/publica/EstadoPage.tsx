@@ -48,7 +48,11 @@ export function EstadoPage() {
                   <dd className="font-medium text-foreground">{salud.etiquetaEntorno}</dd>
                   <dt className="text-muted-foreground">Base de datos</dt>
                   <dd className="font-medium text-foreground">
-                    {salud.baseDeDatos === "configurada" ? "Configurada" : "Sin configurar todavía"}
+                    {salud.baseDeDatos === "ok" || salud.baseDeDatos === "configurada"
+                      ? "Conectada"
+                      : salud.baseDeDatos === "error"
+                        ? "Con error"
+                        : "Sin configurar todavía"}
                   </dd>
                   <dt className="text-muted-foreground col-span-2 mt-2 text-xs italic">{salud.aviso}</dt>
                 </dl>
