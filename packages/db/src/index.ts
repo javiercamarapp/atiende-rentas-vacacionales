@@ -13,3 +13,17 @@ export { crearMotorEmbeddedPostgres } from "./runner/motorEmbeddedPostgres.js";
 export type { MotorEmbeddedPostgres } from "./runner/motorEmbeddedPostgres.js";
 export { EnrutadorLecturaReplica, leerUrlReplicaDesdeEntorno } from "./runner/enrutadorLecturaReplica.js";
 export type { PoolConsultable, OpcionesEnrutadorLecturaReplica } from "./runner/enrutadorLecturaReplica.js";
+export {
+  hostRequiereSslPorDefecto,
+  resolverSslPg,
+  construirOpcionesPoolServerless,
+  obtenerPoolServerlessCompartido,
+  _reiniciarCachePoolsServerless,
+} from "./runner/conexionServerless.js";
+export type { EntornoConexionDb } from "./runner/conexionServerless.js";
+export { verificarSaludBaseDeDatos } from "./runner/saludBaseDeDatos.js";
+export type {
+  EstadoSaludBaseDeDatos,
+  ResultadoSaludBaseDeDatos,
+  OpcionesVerificarSaludBaseDeDatos,
+} from "./runner/saludBaseDeDatos.js";

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import pg from "pg";
+import { verificarSaludBaseDeDatos } from "@atiende-rv/db";
 import { cargarConfiguracion } from "./config/env.js";
 import { cuerpoError, ErrorDominio } from "./contrato/errores.js";
 import { crearLogger } from "./middleware/logger.js";
@@ -88,23 +89,32 @@ export function crearApp(opciones: OpcionesCrearApp = {}) {
   // apps/api/src/observabilidad/sentry.ts y docs/despliegue/sentry.md.
   app.route("/internal", crearRutaPruebaSentry());
 
-  app.get("/health", (c) =>
-    c.json({
+  app.get("/health", async (c) => {
+    // Lote 3.3 (despliegue, D-DSD-15): estado HONESTO de `DATABASE_URL` —
+    // antes este campo era `config.databaseUrl ? "configurada" :
+    // "sin_configurar"`, un chequeo puramente sintáctico que reportaba
+    // "configurada" incluso con una URL rota/inalcanzable. Ahora:
+    // "sin_configurar" (sin URL, sin abrir conexión), "ok" (un `SELECT 1`
+    // real respondió dentro del timeout) o "error" (con `baseDeDatosMotivo`
+    // corto y sin credenciales — ver packages/db/src/runner/
+    // saludBaseDeDatos.ts). `migracionesPendientes` solo se agrega cuando
+    // "ok" y es barato de calcular (una consulta adicional a
+    // `schema_migrations`, ya contra una conexión que se sabe viva).
+    const saludDb = await verificarSaludBaseDeDatos(config.databaseUrl);
+    return c.json({
       status: "ok",
       entorno: config.entorno,
       etiquetaEntorno: config.etiquetaEntorno,
       // Recordatorio explícito en el propio healthcheck: sin conexiones
       // productivas de ningún canal (DEFINICION-DE-HECHO §1).
       aviso: "Entorno de desarrollo — sin conexiones productivas",
-      // Lote 3.3 (despliegue): estado honesto de `DATABASE_URL` — nunca
-      // "ok" ciego cuando no hay Postgres gestionado configurado todavía
-      // (p. ej. un proyecto de Vercel recién creado antes de aprovisionar
-      // la base de datos). Chequeo barato (sin abrir conexión real); ver
-      // `GET /health/detallado` para el chequeo con conexión real a la
-      // base de datos (workers/observabilidad/rutas.ts).
-      baseDeDatos: config.databaseUrl ? "configurada" : "sin_configurar",
-    }),
-  );
+      baseDeDatos: saludDb.estado,
+      ...(saludDb.motivo !== undefined ? { baseDeDatosMotivo: saludDb.motivo } : {}),
+      ...(saludDb.migracionesPendientes !== undefined
+        ? { migracionesPendientes: saludDb.migracionesPendientes }
+        : {}),
+    });
+  });
 
   // Feed .ics público (Lote 11B, corrección #3): montado ANTES de
   // `registrarRutas` a propósito, sin `requiereAutenticacion` — el token

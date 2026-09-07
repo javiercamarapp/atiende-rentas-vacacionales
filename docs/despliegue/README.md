@@ -66,11 +66,14 @@ proveedor después es solo cambiar `DATABASE_URL`.
 
 ### Opción B — Supabase
 
-1. Crea un proyecto en <https://supabase.com> → **Project Settings** →
-   **Database** → copia la cadena "Connection string" en modo **Session**
-   (puerto 5432, no el *pooler* de puerto 6543: las migraciones abren
-   transacciones largas que el modo *transaction pooling* corta).
-2. Pega esa cadena como `DATABASE_URL` en Vercel (§3).
+Guía completa, paso a paso, con las tres cadenas de conexión de Supabase
+y por qué la conexión directa/Session Pooler (nunca el Transaction
+Pooler de puerto 6543 mientras el contexto de RLS de esta API siga
+siendo de sesión): **`docs/despliegue/supabase.md`**.
+
+Resumen: `DATABASE_URL` → Direct connection o Session pooler (puerto
+5432); `DATABASE_URL_DIRECT` → siempre Direct connection, usada solo por
+`npx tsx scripts/db-migrate-prod.mjs` (migraciones).
 
 ### Opción C — Postgres propio (cualquier VPS/nube con Postgres 16+)
 
