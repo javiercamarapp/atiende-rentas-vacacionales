@@ -35,9 +35,17 @@ apps/web/blob-report/
 
 # Lote 3.3 (despliegue): `/api/index.js` es un artefacto GENERADO por
 # `npm run build:api-vercel` (deploy/build-api-vercel.mjs) a partir de
-# `apps/api/api/index.ts` — nunca se edita ni se versiona a mano, igual
-# que `apps/web/dist/`.
-/api/
+# `apps/api/api/index.ts`, y SÍ se versiona (placeholder mínimo abajo)
+# a propósito: Vercel detecta qué archivos son Serverless Functions
+# ANTES de correr `buildCommand` (escanea `/api/` en el checkout inicial
+# de git), así que si `/api/index.js` no existe ya en el repo, el deploy
+# falla con "doesn't match any Serverless Functions inside the api
+# directory" incluso sin declarar `functions` en vercel.json — 100% de
+# los despliegues a Vercel fallaban por esto (confirmado con
+# `vercel inspect --logs` y reproducido localmente con `vercel build`).
+# El placeholder commiteado se sobreescribe siempre con el bundle real
+# durante `buildCommand`, tanto en local como en Vercel — no lo edites
+# a mano salvo que estés arreglando este mismo mecanismo.
 .vercel
 .env*
 # Plantilla sin secretos reales (deploy/docker-compose.yml) — igual trato
