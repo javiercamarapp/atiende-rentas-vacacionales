@@ -1,7 +1,13 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import pg from "pg";
-import { obtenerPoolServerlessCompartido, verificarSaludBaseDeDatos } from "@atiende-rv/db";
+// Importados por ruta de módulo, NO por el barril `@atiende-rv/db`: el
+// barril reexporta también los motores de pruebas (`embedded-postgres`,
+// PGlite) y un import de VALOR desde ahí los arrastra al bundle de Vercel
+// (deploy/build-api-vercel.mjs), que falla al resolver sus binarios por
+// plataforma. Los `import type` del resto de la API sí pueden usar el barril.
+import { obtenerPoolServerlessCompartido } from "@atiende-rv/db/src/runner/conexionServerless.js";
+import { verificarSaludBaseDeDatos } from "@atiende-rv/db/src/runner/saludBaseDeDatos.js";
 import { cargarConfiguracion } from "./config/env.js";
 import { cuerpoError, ErrorDominio } from "./contrato/errores.js";
 import { crearLogger } from "./middleware/logger.js";

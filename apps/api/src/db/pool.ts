@@ -1,5 +1,6 @@
 import type pg from "pg";
-import { obtenerPoolServerlessCompartido } from "@atiende-rv/db";
+// Ruta de módulo directa (no el barril) — ver nota en apps/api/src/app.ts.
+import { obtenerPoolServerlessCompartido } from "@atiende-rv/db/src/runner/conexionServerless.js";
 
 /**
  * Pool de conexión de runtime, siempre autenticado como `app_rv`
