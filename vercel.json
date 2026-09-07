@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "npm ci",
+  "installCommand": "npm ci --include=dev",
   "buildCommand": "VITE_API_URL=/api npm run build --workspace=@atiende-rv/web && npm run build:api-vercel",
   "outputDirectory": "apps/web/dist",
   "functions": {
