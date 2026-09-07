@@ -283,8 +283,8 @@ export function crearRutasAuth(deps: DependenciasAuth): Hono {
       );
     });
     const url = `${urlPublicaWeb}/verificar-correo?token=${encodeURIComponent(token)}`;
-    const { asunto, textoPlano } = correoVerificacion(url);
-    await correo.enviar({ para: email, asunto, textoPlano });
+    const { asunto, textoPlano, html } = correoVerificacion(url);
+    await correo.enviar({ para: email, asunto, textoPlano, html });
   }
 
   async function verificarContrasenaActual(usuarioId: string, passwordActual: string): Promise<boolean> {
@@ -852,8 +852,8 @@ export function crearRutasAuth(deps: DependenciasAuth): Hono {
           [usuario.id, hash, TTL_TOKEN_RESET_MS],
         );
         const url = `${urlPublicaWeb}/restablecer-password?token=${encodeURIComponent(token)}`;
-        const { asunto, textoPlano } = correoRestablecerPassword(url);
-        await correo.enviar({ para: cuerpo.email, asunto, textoPlano });
+        const { asunto, textoPlano, html } = correoRestablecerPassword(url);
+        await correo.enviar({ para: cuerpo.email, asunto, textoPlano, html });
       }
     });
     return c.json({ enviado: true });

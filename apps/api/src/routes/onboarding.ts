@@ -100,8 +100,8 @@ export function crearRutasOnboarding(deps: DependenciasOnboarding): Hono {
       );
     });
     const urlVerificacion = `${urlPublicaWeb}/verificar-correo?token=${encodeURIComponent(token)}`;
-    const { asunto, textoPlano } = correoVerificacion(urlVerificacion);
-    await correo.enviar({ para: cuerpo.adminCorreo, asunto, textoPlano });
+    const { asunto, textoPlano, html } = correoVerificacion(urlVerificacion);
+    await correo.enviar({ para: cuerpo.adminCorreo, asunto, textoPlano, html });
 
     return c.json(
       {
