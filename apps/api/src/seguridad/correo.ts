@@ -1,4 +1,8 @@
 import nodemailer, { type Transporter } from "nodemailer";
+import { AdaptadorCorreoResend } from "./correoResend.js";
+import { correoRestablecerPasswordHtml, correoVerificacionHtml } from "./plantillasCorreo/index.js";
+
+export { AdaptadorCorreoResend, ErrorCorreoResend, type ConfiguracionResend } from "./correoResend.js";
 
 /**
  * Interfaz de envío de correo (Lote 3.2, H-096+): verificación de correo,
@@ -16,18 +20,29 @@ import nodemailer, { type Transporter } from "nodemailer";
  *      asunto/cuerpo, sin estado oculto) — documentado aquí explícitamente
  *      para quien haga esa unificación después.
  *
- * Dos implementaciones:
- *   - `AdaptadorCorreoSimulado`: escribe el correo a un log estructurado
- *     (nunca lo envía) — SIEMPRE la que se usa en pruebas/E2E, y también
- *     el valor por defecto en desarrollo si no hay SMTP configurado
- *     (nunca se envía correo real por accidente desde un entorno de
- *     desarrollo). Guarda los últimos correos en memoria para que las
- *     pruebas de integración puedan leer el token de verificación/reset
- *     sin necesidad de un servidor SMTP de prueba.
+ * Tres implementaciones (`construirAdaptadorCorreo` elige una a partir
+ * del entorno, en este orden — ver su docstring para el detalle):
+ *   - `AdaptadorCorreoResend` (Lote correo-resend): API HTTP de Resend
+ *     (`fetch` crudo, sin SDK) — la usa `construirAdaptadorCorreo` cuando
+ *     hay `RESEND_API_KEY`. `RESEND_FROM` es obligatoria en ese caso
+ *     (fail-closed: sin ella, `construirAdaptadorCorreo` lanza en vez de
+ *     inventar un remitente). Ver `./correoResend.ts`.
  *   - `AdaptadorCorreoSmtp`: SMTP real vía `nodemailer`, configurado por
  *     entorno (`SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASSWORD`/
  *     `SMTP_FROM`/`SMTP_SECURE`) — nunca con credenciales embebidas en el
- *     repositorio.
+ *     repositorio. Se usa cuando no hay `RESEND_API_KEY` pero sí
+ *     `SMTP_HOST`.
+ *   - `AdaptadorCorreoSimulado`: escribe el correo a un log estructurado
+ *     (nunca lo envía) — SIEMPRE la que se usa en pruebas/E2E, y también
+ *     el valor por defecto en desarrollo si no hay Resend ni SMTP
+ *     configurados (nunca se envía correo real por accidente desde un
+ *     entorno de desarrollo). Guarda los últimos correos en memoria para
+ *     que las pruebas de integración puedan leer el token de
+ *     verificación/reset sin necesidad de un servidor SMTP de prueba.
+ *
+ * Las plantillas HTML (logo + CTA, `apps/api/src/seguridad/plantillasCorreo/`)
+ * son opcionales en `CorreoAEnviar.html` — todo llamador que sólo use
+ * `textoPlano` sigue funcionando exactamente igual que antes de este lote.
  */
 
 export interface CorreoAEnviar {
@@ -112,10 +127,43 @@ export class AdaptadorCorreoSmtp implements InterfazCorreo {
   }
 }
 
-/** Construye el adaptador correcto a partir de `SMTP_HOST` (fail-safe: sin
- * esa variable, siempre el simulado — nunca se intenta SMTP real con
- * configuración incompleta). */
+/** URL pública por defecto usada en el HTML de los correos (logo, pie,
+ * botones) cuando no hay `APP_PUBLIC_URL` en el entorno — nunca bloquea
+ * el envío por faltar esta variable, a diferencia de `RESEND_FROM`
+ * (donde sí es fail-closed porque inventar un remitente sería peor que
+ * inventar un dominio de referencia en el pie del correo). */
+const URL_PUBLICA_POR_DEFECTO = "https://atiende-rentas-vacacionales.vercel.app";
+
+function urlPublicaDelEntorno(): string {
+  return process.env.APP_PUBLIC_URL || URL_PUBLICA_POR_DEFECTO;
+}
+
+/** Construye el adaptador correcto a partir del entorno (fail-safe): sin
+ * `RESEND_API_KEY` ni `SMTP_HOST`, siempre el simulado — nunca se intenta
+ * un adaptador real con configuración incompleta.
+ *
+ * Orden de selección:
+ *   1. `RESEND_API_KEY` presente → `AdaptadorCorreoResend`. `RESEND_FROM`
+ *      es OBLIGATORIA en este caso (fail-closed, D-019): sin ella, esta
+ *      función lanza en vez de enviar con un remitente inventado — nunca
+ *      cae en silencio a SMTP/simulado cuando la intención explícita era
+ *      usar Resend.
+ *   2. Si no, `SMTP_HOST` presente → `AdaptadorCorreoSmtp` (comportamiento
+ *      preexistente, intacto).
+ *   3. Si no, `AdaptadorCorreoSimulado` (comportamiento preexistente,
+ *      intacto — nunca se envía correo real por accidente).
+ */
 export function construirAdaptadorCorreo(env: NodeJS.ProcessEnv): InterfazCorreo {
+  if (env.RESEND_API_KEY) {
+    if (!env.RESEND_FROM) {
+      throw new Error(
+        "RESEND_API_KEY está definida pero falta RESEND_FROM — fail-closed: nunca se envía un correo " +
+          "real con un remitente inventado. Define RESEND_FROM (p. ej. 'Atiende <no-responder@useatiende.ai>') " +
+          "o quita RESEND_API_KEY para usar SMTP/el adaptador simulado.",
+      );
+    }
+    return new AdaptadorCorreoResend({ apiKey: env.RESEND_API_KEY, remitente: env.RESEND_FROM });
+  }
   if (!env.SMTP_HOST) {
     return new AdaptadorCorreoSimulado();
   }
@@ -129,19 +177,27 @@ export function construirAdaptadorCorreo(env: NodeJS.ProcessEnv): InterfazCorreo
   });
 }
 
-// --- Plantillas mínimas de texto (sin PII más allá del propio email del
-// destinatario, que ya conoce el propio destinatario) ---
+// --- Plantillas de texto plano + HTML (sin PII más allá del propio
+// email del destinatario, que ya conoce el propio destinatario) ---
 
-export function correoVerificacion(urlVerificacion: string): { asunto: string; textoPlano: string } {
+export function correoVerificacion(
+  urlVerificacion: string,
+  urlPublica: string = urlPublicaDelEntorno(),
+): { asunto: string; textoPlano: string; html: string } {
   return {
     asunto: "Confirma tu correo — Atiende Rentas Vacacionales",
     textoPlano: `Confirma tu correo entrando a este enlace (válido por 24 horas):\n\n${urlVerificacion}\n\nSi no creaste esta cuenta, ignora este mensaje.`,
+    html: correoVerificacionHtml(urlVerificacion, urlPublica),
   };
 }
 
-export function correoRestablecerPassword(urlRestablecer: string): { asunto: string; textoPlano: string } {
+export function correoRestablecerPassword(
+  urlRestablecer: string,
+  urlPublica: string = urlPublicaDelEntorno(),
+): { asunto: string; textoPlano: string; html: string } {
   return {
     asunto: "Restablecer tu contraseña — Atiende Rentas Vacacionales",
     textoPlano: `Restablece tu contraseña entrando a este enlace (válido por 1 hora):\n\n${urlRestablecer}\n\nSi no pediste este cambio, ignora este mensaje — tu contraseña actual sigue siendo válida.`,
+    html: correoRestablecerPasswordHtml(urlRestablecer, urlPublica),
   };
 }
