@@ -226,7 +226,6 @@ describe("1d: generación concurrente del mismo owner statement (mismo owner+per
       // 23505 (unique_violation) de Postgres, sin manejar por la capa de
       // aplicación — se propagaría tal cual como un error 500 al cliente
       // HTTP que perdió la carrera.
-      // eslint-disable-next-line no-console
       console.log("EVIDENCIA rechazo concurrente (code/message):", rechazadas[0]!.reason?.code, rechazadas[0]!.reason?.message);
     }
     expect(rechazadas).toHaveLength(0);

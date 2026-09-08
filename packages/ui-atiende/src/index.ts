@@ -8,7 +8,8 @@ export { AtiendeMark, AtiendeWordmark } from "./AtiendeLogo";
 export { ThemeSelector } from "./ThemeSelector";
 export { StatCard, TrendStatCard } from "./StatCard";
 
-export { Button, buttonVariants, type ButtonProps } from "./ui/button";
+export { Button, type ButtonProps } from "./ui/button";
+export { buttonVariants } from "./ui/button-variants";
 export {
   Card,
   CardHeader,
@@ -27,11 +28,6 @@ export {
   TableCell,
   TableCaption,
 } from "./ui/table";
-export {
-  Badge,
-  badgeVariants,
-  EstadoConexionBadge,
-  ETIQUETA_ESTADO_CONEXION,
-  type BadgeProps,
-  type EstadoConexionCanal,
-} from "./ui/badge";
+export { Badge, EstadoConexionBadge, type BadgeProps } from "./ui/badge";
+export { badgeVariants } from "./ui/badge-variants";
+export { ETIQUETA_ESTADO_CONEXION, type EstadoConexionCanal } from "./ui/badge-estado-conexion";

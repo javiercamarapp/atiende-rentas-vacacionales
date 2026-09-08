@@ -94,7 +94,6 @@ async function levantarServidorHttpsAutofirmado(
 describe("H1 CRÍTICO — bypass SSRF vía direcciones IPv6-mapeadas-a-IPv4 (ssrf.ts normalizarIpv6)", () => {
   it("[CORREGIDO S-01] validarIpPermitida SÍ bloquea ::ffff:127.0.0.1 (loopback) — antes de la corrección, `normalizarIpv6` solo pelaba el prefijo literal y comparaba contra patrones IPv6, nunca contra RANGOS_BLOQUEADOS_IPV4 (evidencia original: `validarIpPermitida(\"::ffff:127.0.0.1\")` -> `{\"permitida\":true}`). Ahora `parsearIpv6ABytes`+`ipv4EmbebidaEnBytes` normalizan cualquier IPv4-mapeada a su IPv4 y la revalidan por completo.", () => {
     const resultado = validarIpPermitida("::ffff:127.0.0.1");
-    // eslint-disable-next-line no-console
     console.log("::ffff:127.0.0.1 ->", JSON.stringify(resultado));
     expect(resultado.permitida).toBe(false);
     expect(resultado.motivo).toBe("loopback");

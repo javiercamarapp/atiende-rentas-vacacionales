@@ -164,7 +164,6 @@ async function main() {
   const app = crearApp({ pool });
 
   serve({ fetch: app.fetch, port: PUERTO_API_E2E }, (info) => {
-    // eslint-disable-next-line no-console
     console.log(`[e2e-api] escuchando en http://localhost:${info.port}`);
   });
 
@@ -179,7 +178,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  // eslint-disable-next-line no-console
   console.error("[e2e-api] fallo al arrancar:", err);
   process.exit(1);
 });

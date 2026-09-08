@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { Badge, EstadoConexionBadge, type EstadoConexionCanal } from "./badge";
+import { Badge, EstadoConexionBadge } from "./badge";
+import type { EstadoConexionCanal } from "./badge-estado-conexion";
 
 describe("Badge", () => {
   it("renderiza cada variante de estado de conexión explícita", () => {

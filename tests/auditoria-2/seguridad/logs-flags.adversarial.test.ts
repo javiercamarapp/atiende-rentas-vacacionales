@@ -243,7 +243,6 @@ describe("Bloque A — LOGS/PII sobre flujo real de mensajería (embedded-postgr
     const huboNombreEnLogs = lineasLog.some((l) => l.includes(PII_NOMBRE));
     const huboTextoCrudoEnLogs = lineasLog.some((l) => l.includes(textoEntrante));
 
-    // eslint-disable-next-line no-console
     console.info(
       "[A1 evidencia] líneas de log capturadas:",
       JSON.stringify({ huboEmailEnLogs, huboTelefonoEnLogs, huboNombreEnLogs, huboTextoCrudoEnLogs, totalLineas: lineasLog.length }),
@@ -337,7 +336,6 @@ describe("Bloque A — LOGS/PII sobre flujo real de mensajería (embedded-postgr
     const cuerpo = (await res.json()) as { error: { detalles: Array<{ path: string; mensaje: string }> } };
     const mensajeCompleto = JSON.stringify(cuerpo);
 
-    // eslint-disable-next-line no-console
     console.info("[A3 evidencia] cuerpo 422 real:", mensajeCompleto);
 
     // Antes de la corrección: el valor SÍ aparecía (zod interpola
