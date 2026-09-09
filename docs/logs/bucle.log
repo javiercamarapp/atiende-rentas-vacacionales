@@ -127,3 +127,6 @@
 2026-09-06 17:57:59 | DESPACHO | auditoría-3 #49:    2 "model":"claude-sonnet-5" 
 2026-09-08 21:23:38 | REANUDACION | límite semanal reseteado; reanudando auditoría-3 #49
 2026-09-08 21:28:51 | INTEGRACION | 25 commits externos integrados; auditoría-3 re-escopeada; Supabase sin token
+2026-09-08 21:53:46 | DESPERTAR | auditoría-3 activa (4 agentes: auditor + 3 sub); sin acción
+2026-09-08 21:57:42 | 429 | auditor #49 cortado en regresiones; reanudado
+2026-09-08 22:30:39 | REANUDACION | #49 secuencial; sub-auditores muertos por estancamiento
