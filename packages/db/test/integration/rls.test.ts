@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import EmbeddedPostgres from "embedded-postgres";
 import pg from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { aplicarMigraciones } from "../../src/runner/migrar.js";
 import { migraciones } from "../../src/migrations/index.js";
 import type { EjecutorSql } from "../../src/runner/ejecutorSql.js";
@@ -309,6 +309,73 @@ describe("H-042 / caso adversarial 18: aislamiento cross-tenant (SQL directo, ro
     const nombres = directorio.rows.map((r: { nombre: string }) => r.nombre);
     expect(nombres).toContain("Tenant A");
     expect(nombres).toContain("Tenant B");
+  });
+
+  // A3-DESP-01 (`0128_delegacion_servicio_sistema.ts`): tercera rama de
+  // is_tenant_member, separada por completo de acceso_romper_cristal —
+  // una delegación de servicio ACTIVA (sin tenant_id: aplica a todos)
+  // hace miembro a un superadmin de CUALQUIER tenant, sin crear ninguna
+  // fila en la tabla del canal humano de emergencia.
+  describe("delegación de servicio del sistema (A3-DESP-01) — separada de romper cristal", () => {
+    afterEach(async () => {
+      await superusuario
+        .query("UPDATE delegacion_servicio_sistema SET revocado_en = now() WHERE revocado_en IS NULL")
+        .catch(() => undefined);
+    });
+
+    it("con una delegación de servicio activa, el superadmin lee datos de TODOS los tenants (A y B)", async () => {
+      await superusuario.query(
+        `INSERT INTO delegacion_servicio_sistema (servicio, superadmin_id, motivo)
+         VALUES ('cron_sync_ical', $1, 'Prueba de integración: delegación estable de servicio')`,
+        [ids.superadmin],
+      );
+
+      const cliente = await comoUsuario(ids.superadmin, null, "superadmin");
+      // tenant B en particular: a esta altura del archivo, la única
+      // concesión `acceso_romper_cristal` que este superadmin tuvo para
+      // el tenant B ya expiró (ver "una concesión expirada ya no da
+      // acceso" más arriba) — que SÍ pueda leerlo ahora demuestra que es
+      // la delegación de servicio, y no un romper-cristal residual de
+      // otro test, la que está otorgando el acceso.
+      const propB = await cliente.query("SELECT * FROM propiedad WHERE id = $1", [ids.propiedadB]);
+      expect(propB.rowCount).toBe(1);
+    });
+
+    it("una delegación de servicio REVOCADA ya no da acceso cross-tenant", async () => {
+      await superusuario.query(
+        `INSERT INTO delegacion_servicio_sistema (servicio, superadmin_id, motivo, revocado_en)
+         VALUES ('cron_sync_ical', $1, 'Delegación de prueba, ya revocada', now())`,
+        [ids.superadmin],
+      );
+
+      const cliente = await comoUsuario(ids.superadmin, null, "superadmin");
+      // tenant B de nuevo, por la misma razón: sin un romper-cristal
+      // vigente que pueda confundir el resultado (el de B ya expiró).
+      const propB = await cliente.query("SELECT * FROM propiedad WHERE id = $1", [ids.propiedadB]);
+      expect(propB.rowCount).toBe(0);
+    });
+
+    it("app_rv no puede crear su propia delegación de servicio (RLS bloquea el INSERT sin política)", async () => {
+      const cliente = await comoUsuario(ids.superadmin, null, "superadmin");
+      await expect(
+        cliente.query(
+          `INSERT INTO delegacion_servicio_sistema (servicio, superadmin_id, motivo)
+           VALUES ('cron_sync_ical', $1, 'intento de auto-otorgarse una delegación')`,
+          [ids.superadmin],
+        ),
+      ).rejects.toMatchObject({ code: "42501" }); // insufficient_privilege (sin política INSERT para app_rv)
+    });
+
+    it("un admin_gestora (no superadmin) no puede leer delegacion_servicio_sistema", async () => {
+      await superusuario.query(
+        `INSERT INTO delegacion_servicio_sistema (servicio, superadmin_id, motivo)
+         VALUES ('cron_sync_ical', $1, 'Prueba de integración: visibilidad restringida a superadmin')`,
+        [ids.superadmin],
+      );
+      const cliente = await comoUsuario(ids.adminA, ids.tenantA, "admin_gestora");
+      const filas = await cliente.query("SELECT 1 FROM delegacion_servicio_sistema");
+      expect(filas.rowCount).toBe(0);
+    });
   });
 });
 

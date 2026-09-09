@@ -43,24 +43,38 @@ import type { RegistroMetricas } from "../../workers/observabilidad/metricas.js"
  * el tipo de "finge que sincroniza pero no hace nada" que este programa
  * prohíbe.
  *
- * No hay ninguna función `SECURITY DEFINER` ya existente en el esquema
- * que haga este fan-out cross-tenant sin RLS (la forma "correcta" a largo
- * plazo sería añadir una, vía una migración nueva — fuera del alcance de
- * este paquete, que no toca `packages/db/migrations/**`), así que este
- * archivo usa el ÚNICO mecanismo que el propio esquema ya expone para que
- * un superadmin obtenga acceso cross-tenant: se AUTO-OTORGA, con la
- * identidad configurada en `CRON_SYNC_SUPERADMIN_ID`, una concesión
- * "romper cristal" a TODOS los tenants a la vez, con un motivo fijo y
- * distinguible como generado por el sistema (`ALCANCE_ROMPER_CRISTAL_CRON`),
- * una ventana de vida corta (`MINUTOS_VIGENCIA_GRANT_CRON`, bastante más
- * holgada que el presupuesto de tiempo del propio ciclo), y la REVOCA
- * explícitamente al terminar (`SesionTrabajoCron.cerrar`). Esto dista de
- * ser gratis: convierte un control pensado para accesos humanos raros y
- * justificados en algo que se ejecuta cada 15 minutos, para siempre, sobre
- * todos los tenants — ver docs/despliegue/cron-sync.md para el análisis
- * completo y la alternativa recomendada (una migración con una función
- * `SECURITY DEFINER` dedicada). Se implementa así para que el cron
- * funcione de verdad hoy, no como aprobación tácita del tradeoff.
+ * ## A3-DESP-01: esto YA NO usa "romper cristal" para nada rutinario
+ *
+ * Versión anterior de este archivo (antes de `0128_delegacion_servicio_
+ * sistema.ts`): cada corrida se AUTO-OTORGABA, con la identidad
+ * `CRON_SYNC_SUPERADMIN_ID`, una concesión `acceso_romper_cristal` — el
+ * mecanismo reservado para acceso HUMANO de emergencia (H-075/H-076) — a
+ * TODOS los tenants, la usaba, y la auto-revocaba al terminar. Repetido
+ * cada 15 minutos, para siempre, eso banalizaba exactamente la señal que
+ * `acceso_romper_cristal` existe para preservar rara: un humano
+ * auditando el panel de "romper cristal" tenía que aprender a filtrar
+ * filas del cron para no perder de vista una excepción real.
+ *
+ * Ahora el acceso cross-tenant rutinario del cron pasa por
+ * `delegacion_servicio_sistema` (`0128_delegacion_servicio_sistema.ts`):
+ * una fila estable, creada una sola vez por un operador con acceso
+ * directo a Postgres (nunca por este código — la tabla no tiene política
+ * INSERT/UPDATE/DELETE para `app_rv`, así que ni este archivo ni ninguna
+ * otra ruta de `apps/api` puede auto-otorgarse la delegación), que
+ * `is_tenant_member` reconoce como membresía de TODOS los tenants
+ * mientras siga activa. `crearProveedorSesionPostgres` solo VERIFICA que
+ * esa delegación exista y esté activa (`SERVICIO_CRON_SYNC_ICAL`) —
+ * fail-closed si no, igual que ya fallaba si `CRON_SYNC_SUPERADMIN_ID` no
+ * resolvía a un superadmin activo. `acceso_romper_cristal` queda
+ * intocado por este archivo: sigue siendo, sin excepción, el canal
+ * reservado para acceso humano de emergencia.
+ *
+ * El uso real de esa delegación SÍ queda auditado, pero en su propio
+ * canal dedicado: `auditoria_ejecucion_servicio_sistema`, una fila por
+ * corrida con el resumen del lote (`SesionTrabajoCron.cerrar`, ver más
+ * abajo) — nunca mezclado con `acceso_romper_cristal` ni con
+ * `auditoria_mutacion`. Ver `docs/despliegue/cron-sync.md` para el
+ * análisis completo y cómo activar la delegación en un despliegue nuevo.
  */
 
 // --- Contrato de canal iCal activo -----------------------------------
@@ -76,19 +90,35 @@ export interface FeedIcalActivo {
   ultimaSincronizacionExitosaEn: string | null;
 }
 
+/** Resumen de UNA corrida completa del cron, pasado a `cerrar` para que
+ * quede como la fila de `auditoria_ejecucion_servicio_sistema` — el canal
+ * de auditoría DEDICADO al uso de la delegación de servicio (A3-DESP-01),
+ * separado de `acceso_romper_cristal`. */
+export interface ResumenEjecucionCron {
+  iniciadoEn: Date;
+  /** Tenants distintos entre los feeds REALMENTE intentados (procesados u
+   * con error) — nunca incluye `pendientes` que el presupuesto de tiempo
+   * ni siquiera llegó a tocar. */
+  tenantsAlcanzados: number;
+  feedsProcesados: number;
+  feedsError: number;
+  feedsPendientes: number;
+}
+
 /** Una "sesión de trabajo" ya autorizada (RLS satisfecho) que vive
  * mientras dura UNA ejecución del cron: un único `ejecutor` reutilizable
  * para leer la lista de canales y, después, aplicar el ciclo de sync de
  * cada uno — deben compartir la misma conexión/sesión de Postgres para
- * que la concesión "romper cristal" siga vigente durante las escrituras,
- * no solo durante la lectura inicial. */
+ * que la delegación de servicio siga vigente durante las escrituras, no
+ * solo durante la lectura inicial. */
 export interface SesionTrabajoCron {
   ejecutor: EjecutorTransaccional;
   listarFeedsActivos(): Promise<FeedIcalActivo[]>;
-  /** Revoca la concesión otorgada y libera la conexión — SIEMPRE se debe
-   * llamar, incluso si `listarFeedsActivos` o el procesamiento de canales
-   * lanzó. */
-  cerrar(): Promise<void>;
+  /** Registra el resumen del lote en el canal de auditoría dedicado
+   * (A3-DESP-01) y libera la conexión — SIEMPRE se debe llamar, incluso
+   * si `listarFeedsActivos` o el procesamiento de canales lanzó (en ese
+   * caso `resumen` refleja lo que se alcanzó a hacer antes del fallo). */
+  cerrar(resumen: ResumenEjecucionCron): Promise<void>;
 }
 
 export interface ProveedorSesionCron {
@@ -151,18 +181,29 @@ export async function ejecutarCronSyncIcal(opciones: OpcionesEjecutarCronSyncIca
   const ahoraMs = opciones.ahoraMs ?? (() => Date.now());
   const presupuestoMs = opciones.presupuestoMs ?? PRESUPUESTO_MS_DEFECTO;
   const inicioMs = ahoraMs();
+  const iniciadoEn = new Date(inicioMs);
+
+  // Hoisted fuera del `try` a propósito: el `finally` construye el
+  // resumen para `sesion.cerrar` con lo que se alcanzó a hacer incluso si
+  // `listarFeedsActivos` o un `ejecutarCiclo` lanzaron sin capturar
+  // (nunca deja la corrida sin su fila en `auditoria_ejecucion_servicio_
+  // sistema`, A3-DESP-01).
+  const tenantsAlcanzados = new Set<string>();
+  const detalles: DetalleFeedCron[] = [];
+  let procesados = 0;
+  let errores = 0;
+  let totalFeeds = 0;
+  let indice = 0;
 
   const sesion = await opciones.proveedorSesion.abrir();
   try {
     const feeds = await sesion.listarFeedsActivos();
-    const detalles: DetalleFeedCron[] = [];
-    let procesados = 0;
-    let errores = 0;
-    let indice = 0;
+    totalFeeds = feeds.length;
 
     for (; indice < feeds.length; indice++) {
       if (ahoraMs() - inicioMs >= presupuestoMs) break;
       const feed = feeds[indice]!;
+      tenantsAlcanzados.add(feed.tenantId);
       try {
         const resultado = await opciones.ejecutarCiclo(feed, sesion.ejecutor);
         procesados++;
@@ -183,27 +224,27 @@ export async function ejecutarCronSyncIcal(opciones: OpcionesEjecutarCronSyncIca
       }
     }
 
-    return { procesados, errores, pendientes: feeds.length - indice, detalles };
+    return { procesados, errores, pendientes: totalFeeds - indice, detalles };
   } finally {
-    await sesion.cerrar();
+    await sesion.cerrar({
+      iniciadoEn,
+      tenantsAlcanzados: tenantsAlcanzados.size,
+      feedsProcesados: procesados,
+      feedsError: errores,
+      feedsPendientes: totalFeeds - indice,
+    });
   }
 }
 
 // --- Proveedor de sesión real contra Postgres (producción) ------------
 
-/** Motivo fijo y distinguible en `acceso_romper_cristal`/`auditoria_mutacion`
- * como generado por el sistema — nunca se confunde con un "romper
- * cristal" humano real en el panel de back office (H-075/H-076). */
-export const MOTIVO_ROMPER_CRISTAL_CRON =
-  "[sistema] cron automático de sincronización iCal (GET /internal/cron/sync-ical) — " +
-  "concesión autogenerada y autoexpirable, sin revisión humana por ejecución";
-export const ALCANCE_ROMPER_CRISTAL_CRON = "cron_sync_ical";
-/** Bastante más holgado que `PRESUPUESTO_MS_DEFECTO` (22s) para absorber
- * cold start/latencia de red sin dejar la concesión activa mucho más
- * tiempo del necesario — se revoca explícitamente al terminar de todos
- * modos (`cerrar()`), esto es solo el respaldo si esa revocación no
- * llegara a ejecutarse (crash del proceso). */
-const MINUTOS_VIGENCIA_GRANT_CRON = 5;
+/** Nombre del servicio en `delegacion_servicio_sistema`/
+ * `auditoria_ejecucion_servicio_sistema` (0128_delegacion_servicio_
+ * sistema.ts) — distinguible por diseño del `alcance='general'` que usan
+ * las concesiones humanas de `acceso_romper_cristal`: son tablas
+ * DISTINTAS, así que ni siquiera hace falta un valor "raro" para no
+ * confundirlos (A3-DESP-01). */
+export const SERVICIO_CRON_SYNC_ICAL = "cron_sync_ical";
 /** Timeout de fetch por canal individual (más corto que el default de
  * `fetchIcsSeguro`, 15s) para que un solo feed lento no consuma buena
  * parte del presupuesto total de 22s del lote. */
@@ -282,8 +323,15 @@ export interface OpcionesProveedorSesionPostgres {
  * de verdad resuelve a un superadmin activo (`rol_actual()`, función
  * `SECURITY DEFINER` ya otorgada a `app_rv` desde 0014_rls_funciones_helper.ts
  * — no hace falta ninguna consulta nueva sin RLS para esta verificación),
- * y se auto-otorga la concesión "romper cristal" a todos los tenants
- * (ver comentario de cabecera del archivo para el porqué). */
+ * y verifica que tenga una DELEGACIÓN DE SERVICIO activa en
+ * `delegacion_servicio_sistema` (0128_delegacion_servicio_sistema.ts,
+ * A3-DESP-01) — nunca la crea: esa tabla no tiene política INSERT para
+ * `app_rv`, así que este código NO PUEDE auto-otorgársela aunque
+ * quisiera. Si la delegación no existe o fue revocada, `abrir()` lanza
+ * ANTES de tocar cualquier tabla de negocio (fail-closed explícito, el
+ * mismo criterio que ya aplicaba a `CRON_SYNC_SUPERADMIN_ID` mal
+ * configurado) — ver `docs/despliegue/cron-sync.md` §"Delegación de
+ * servicio del cron" para cómo un operador la activa. */
 export function crearProveedorSesionPostgres(opciones: OpcionesProveedorSesionPostgres): ProveedorSesionCron {
   return {
     async abrir(): Promise<SesionTrabajoCron> {
@@ -303,7 +351,7 @@ export function crearProveedorSesionPostgres(opciones: OpcionesProveedorSesionPo
         // `rol_actual()` deriva SIEMPRE de la tabla `usuario` en vivo
         // (0014_rls_funciones_helper.ts) — si el id configurado no existe,
         // no está activo, o no tiene rol 'superadmin', esto es `null` y
-        // fallamos aquí mismo, ANTES de otorgar ninguna concesión ni de
+        // fallamos aquí mismo, ANTES de comprobar la delegación o de
         // intentar leer una sola fila de negocio.
         const filaRol = await cliente.query<{ rol: string | null }>("SELECT rol_actual() AS rol");
         if (filaRol.rows[0]?.rol !== "superadmin") {
@@ -314,12 +362,29 @@ export function crearProveedorSesionPostgres(opciones: OpcionesProveedorSesionPo
           );
         }
 
-        await cliente.query(
-          `INSERT INTO acceso_romper_cristal (superadmin_id, tenant_id, motivo, alcance, expira_en)
-           SELECT $1, t.id, $2, $3, now() + ($4 || ' minutes')::interval
-           FROM tenant t`,
-          [superadminId, MOTIVO_ROMPER_CRISTAL_CRON, ALCANCE_ROMPER_CRISTAL_CRON, MINUTOS_VIGENCIA_GRANT_CRON],
+        // A3-DESP-01: ya NO se auto-otorga nada aquí. Solo se VERIFICA que
+        // un operador haya activado, de antemano y a mano, la delegación
+        // de servicio — la política SELECT de `delegacion_servicio_
+        // sistema` deja ver esta fila aunque `is_tenant_member` para
+        // tenants de negocio siga en 0 hasta este mismo SELECT resolver
+        // `true` (la política de esa tabla es `rol_actual() = 'superadmin'`,
+        // no `is_tenant_member`).
+        const filaDelegacion = await cliente.query<{ existe: boolean }>(
+          `SELECT EXISTS (
+             SELECT 1 FROM delegacion_servicio_sistema
+             WHERE superadmin_id = $1 AND servicio = $2 AND revocado_en IS NULL
+           ) AS existe`,
+          [superadminId, SERVICIO_CRON_SYNC_ICAL],
         );
+        if (!filaDelegacion.rows[0]?.existe) {
+          throw new Error(
+            `CRON_SYNC_SUPERADMIN_ID ("${superadminId}") no tiene una delegación de servicio activa ` +
+              `("${SERVICIO_CRON_SYNC_ICAL}") en delegacion_servicio_sistema — el cron ya no se auto-otorga ` +
+              "acceso cross-tenant vía acceso_romper_cristal (A3-DESP-01). Un operador con acceso directo a " +
+              "Postgres debe crear esa fila explícitamente antes de activar este cron en un despliegue nuevo " +
+              "(ver docs/despliegue/cron-sync.md, sección \"Delegación de servicio del cron\").",
+          );
+        }
 
         return {
           ejecutor: ejecutorDeCliente(cliente),
@@ -327,12 +392,29 @@ export function crearProveedorSesionPostgres(opciones: OpcionesProveedorSesionPo
             const { rows } = await cliente.query<FilaFeedActivo>(SQL_LISTAR_FEEDS_ACTIVOS);
             return rows.map(filaAFeedIcalActivo);
           },
-          async cerrar() {
+          async cerrar(resumen: ResumenEjecucionCron) {
             try {
+              // Canal de auditoría DEDICADO (A3-DESP-01): una fila por
+              // corrida, nunca mezclada con acceso_romper_cristal. La
+              // política INSERT de esta tabla vuelve a exigir una
+              // delegación activa para este mismo `servicio` — si algo
+              // revocó la delegación a medio lote, este INSERT falla en
+              // vez de fingir que la ejecución fue autorizada de
+              // principio a fin.
               await cliente.query(
-                `UPDATE acceso_romper_cristal SET revocado_en = now()
-                 WHERE superadmin_id = $1 AND alcance = $2 AND revocado_en IS NULL`,
-                [superadminId, ALCANCE_ROMPER_CRISTAL_CRON],
+                `INSERT INTO auditoria_ejecucion_servicio_sistema
+                   (servicio, superadmin_id, iniciado_en, finalizado_en, tenants_alcanzados,
+                    feeds_procesados, feeds_error, feeds_pendientes)
+                 VALUES ($1, $2, $3, now(), $4, $5, $6, $7)`,
+                [
+                  SERVICIO_CRON_SYNC_ICAL,
+                  superadminId,
+                  resumen.iniciadoEn,
+                  resumen.tenantsAlcanzados,
+                  resumen.feedsProcesados,
+                  resumen.feedsError,
+                  resumen.feedsPendientes,
+                ],
               );
             } finally {
               await limpiarSesion(cliente).catch(() => undefined);
