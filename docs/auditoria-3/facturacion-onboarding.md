@@ -12,8 +12,40 @@ producción) y se marcan como SOSPECHA los puntos no verificados con repro real.
 
 ## Hallazgos
 
-### A3-FACT-01 — MEDIO — `facturacion_registrar_pago()` no ordena eventos de webhook fuera de secuencia
+### A3-FACT-01 — MEDIO — `facturacion_registrar_pago()` no ordena eventos de webhook fuera de secuencia — **CORREGIDO**
 
+- **Estado:** corregido. `suscripcion_tenant` gana la columna
+  `ultimo_evento_stripe_creado_en` (epoch en segundos, migración
+  `0129_facturacion_orden_webhook.ts`) con el `created` del ÚLTIMO evento de Stripe
+  que efectivamente aplicó un cambio de estado para ese tenant.
+  `facturacion_registrar_pago()` gana un séptimo parámetro, `_evento_creado_en`
+  (mismo epoch), y solo aplica el `UPDATE` de estado si no hay ningún evento previo
+  aplicado (`NULL`, primera vez) o si el evento entrante es estrictamente más nuevo
+  que el último aplicado — un evento cronológicamente más viejo entregado tarde
+  SIGUE registrándose en `evento_pago_procesado` (la idempotencia de reintentos del
+  MISMO `evento_id` no cambia en absoluto) pero ya no pisa el estado más nuevo. El
+  parámetro tiene `DEFAULT extract(epoch FROM clock_timestamp())::bigint` y la
+  comparación es NULL-safe en ambos lados, para que un llamador que aún no lo pasa
+  (u órdenes de Stripe sin `created`, aunque Stripe siempre lo incluye en eventos
+  reales) siga aplicando el efecto exactamente como antes de esta migración, sin
+  romper ningún llamador existente. `EventoWebhookPago.creadoEnEpoch`
+  (`packages/domain/src/facturacion/pagos/interfaz.ts`) transporta el epoch desde
+  `PagosStripe.verificarYParsearWebhook` (campo `created` del evento) hasta la ruta
+  HTTP (`apps/api/src/routes/facturacion.ts`), que lo reenvía a la función SQL.
+- **Repro actualizado:** `tests/auditoria-3/facturacion/webhookFueraDeOrden.test.ts` —
+  PASA (5 tests). El caso original (evento `updated` entregado después de un
+  `deleted` pero cronológicamente anterior) ya NO reactiva la suscripción cancelada;
+  se agregó (a) una variante con otro par de estados (`pago_pendiente` no vuelve a
+  `activa`), (b) el camino feliz de orden normal (evento nuevo después de uno viejo
+  SÍ cambia el estado), (c) el reintento exacto del mismo `evento_id` sigue siendo
+  idempotente sin importar el `_evento_creado_en` del reintento, y un quinto caso
+  que confirma que un llamador que omite el parámetro (código previo a esta
+  migración) sigue funcionando. La suite de integración existente
+  (`packages/db/test/integration/facturacionOnboardingRls.test.ts`,
+  `apps/api/test/integration/onboardingFacturacion.test.ts`, que ejercitan la ruta
+  HTTP real con fixtures de Stripe sin `created`) sigue en verde con el nuevo
+  parámetro activo.
+- **Hallazgo original (contexto, ya no vigente):**
 - **Archivo:** `packages/db/src/migrations/0124_facturacion_webhook.ts:29-72`
   (`facturacion_registrar_pago`); consumido desde
   `apps/api/src/routes/facturacion.ts:380-448` (`POST /webhooks/stripe`).
