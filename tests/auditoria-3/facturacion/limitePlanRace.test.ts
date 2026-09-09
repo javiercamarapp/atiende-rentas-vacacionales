@@ -1,20 +1,30 @@
-// Auditoría-3 / A3-fact-02
+// Auditoría-3 / A3-FACT-02 — CORREGIDO
 //
-// Hallazgo: `exigirLimitePlan()` (apps/api/src/routes/facturacionLimites.ts:26-73)
-// implementa el límite de plan como un patrón "leer uso actual -> comparar
-// contra el límite -> si permitido, dejar que la ruta haga el INSERT real"
-// (comentario propio: "se llama explícitamente al inicio de cada ruta...
-// ANTES del INSERT real"). La lectura de uso (`medicion_uso_actual`, un
-// simple `count(*)` sobre `unidad`/`cuenta_canal`) y el INSERT posterior
-// NO comparten ninguna transacción serializable ni lock (ni un advisory
-// lock, ni `SELECT ... FOR UPDATE`, ni `SERIALIZABLE`) — es un clásico
-// TOCTOU (time-of-check to time-of-use).
+// Hallazgo original: `exigirLimitePlan()` (apps/api/src/routes/
+// facturacionLimites.ts) implementaba el límite de plan como un patrón
+// "leer uso actual -> comparar contra el límite -> si permitido, dejar
+// que la ruta haga el INSERT real", abriendo su PROPIA transacción
+// separada de la transacción que hacía el INSERT — un clásico TOCTOU
+// (time-of-check to time-of-use). Dos peticiones concurrentes podían
+// leer AMBAS "0 de 1" antes de que cualquiera insertara, pasar el
+// chequeo las DOS, e insertar las DOS, excediendo el límite del plan.
 //
-// Este test reproduce el escenario exacto pedido por la auditoría: dos
-// peticiones CONCURRENTES para dar de alta una unidad cuando el plan solo
-// permite 1 unidad activa y el tenant ya tiene 0. Ambas deberían ver
-// "0 de 1" en el chequeo y ambas insertan — el tenant termina con 2
-// unidades activas contra un límite de 1.
+// Corrección verificada aquí: `exigirLimitePlanEnTransaccion()` recibe
+// el `PoolClient` de la transacción activa (la MISMA que hace el
+// INSERT) y toma, como primera operación, un advisory lock
+// TRANSACCIONAL (`pg_advisory_xact_lock`) namespaced por tenant — eso
+// serializa, por tenant, el chequeo + INSERT completo: la segunda
+// petición concurrente espera a que la PRIMERA transacción entera
+// termine (COMMIT o ROLLBACK) antes de leer `medicion_uso_actual`, así
+// que ve el uso YA incrementado por la primera y es rechazada con 402
+// (`plan_limite_alcanzado`) en vez de insertar.
+//
+// Este archivo reproduce el escenario exacto pedido por la auditoría —
+// dos peticiones CONCURRENTES para dar de alta una unidad cuando el
+// plan solo permite 1 unidad activa y el tenant ya tiene 0 — y además
+// una variante de mayor concurrencia (5 peticiones a la vez) para
+// verificar que la corrección no depende de que solo haya 2
+// contendientes.
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,9 +32,9 @@ import EmbeddedPostgres from "embedded-postgres";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { aplicarMigraciones, migraciones, type EjecutorSql } from "@atiende-rv/db";
-import { exigirLimitePlan } from "../../../apps/api/src/routes/facturacionLimites.js";
-import { conSesion } from "../../../apps/api/src/db/contexto.js";
-import type { ContextoAuth } from "../../../apps/api/src/middleware/autenticacion.js";
+import { exigirLimitePlanEnTransaccion } from "../../../apps/api/src/routes/facturacionLimites.js";
+import { conSesion, enTransaccion } from "../../../apps/api/src/db/contexto.js";
+import { ErrorDominio } from "../../../apps/api/src/contrato/errores.js";
 
 const USUARIO_APP = "app_rv";
 const PASSWORD_APP = "app_rv_dev_change_in_prod";
@@ -114,40 +124,80 @@ afterAll(async () => {
   await rm(databaseDir, { recursive: true, force: true }).catch(() => undefined);
 });
 
-describe("A3-fact-02: exigirLimitePlan + INSERT unidad tiene una carrera TOCTOU", () => {
-  it("2 altas de unidad CONCURRENTES contra un límite de 1 crean 2 unidades activas", async () => {
-    const auth: ContextoAuth = { usuarioId, tenantId, rol: "admin_gestora", colaboradorNivel: null };
+/** Simula exactamente lo que hace `POST /unidades` tras la corrección:
+ * el chequeo de límite y el INSERT en la MISMA transacción, sobre el
+ * mismo `PoolClient`, con la sesión RLS del tenant fijada. */
+async function intentarAltaUnidad(nombre: string): Promise<"creada" | "rechazada"> {
+  try {
+    await conSesion(pool, { usuarioId, tenantId, rol: "admin_gestora", colaboradorNivel: null }, (cliente) =>
+      enTransaccion(cliente, async () => {
+        await exigirLimitePlanEnTransaccion(cliente, tenantId, "unidades_activas");
+        await cliente.query(`INSERT INTO unidad (propiedad_id, nombre) VALUES ($1, $2)`, [propiedadId, nombre]);
+      }),
+    );
+    return "creada";
+  } catch (error) {
+    if (error instanceof ErrorDominio && error.codigo === "plan_limite_alcanzado") return "rechazada";
+    throw error;
+  }
+}
 
-    async function intentarAltaUnidad(nombre: string): Promise<"creada" | "rechazada"> {
-      await exigirLimitePlan(pool, auth, "unidades_activas"); // lanza ErrorDominio 402 si no hay cupo
-      await conSesion(pool, { usuarioId, tenantId, rol: "admin_gestora", colaboradorNivel: null }, async (cliente) => {
-        await cliente.query(
-          `INSERT INTO unidad (propiedad_id, nombre) VALUES ($1, $2)`,
-          [propiedadId, nombre],
-        );
-      });
-      return "creada";
-    }
+async function contarUnidadesReales(): Promise<number> {
+  const { rows } = await superusuario.query<{ n: string }>(
+    "SELECT count(*)::text AS n FROM unidad u JOIN propiedad p ON p.id = u.propiedad_id WHERE p.tenant_id = $1",
+    [tenantId],
+  );
+  return Number(rows[0]!.n);
+}
 
+describe("A3-FACT-02 (corregido): exigirLimitePlanEnTransaccion + INSERT unidad es atómico bajo concurrencia real", () => {
+  it("2 altas de unidad CONCURRENTES contra un límite de 1: exactamente 1 se crea, la otra se rechaza con 402", async () => {
     const resultados = await Promise.allSettled([
       intentarAltaUnidad("Unidad race A"),
       intentarAltaUnidad("Unidad race B"),
     ]);
 
-    const creadas = resultados.filter((r) => r.status === "fulfilled").length;
+    // Ninguna promesa debe rechazar con un error inesperado — solo el
+    // valor de retorno "rechazada" (ErrorDominio 402 ya capturado arriba)
+    // o "creada".
+    for (const r of resultados) {
+      if (r.status === "rejected") throw r.reason;
+    }
+    const valores = resultados.map((r) => (r as PromiseFulfilledResult<"creada" | "rechazada">).value);
 
-    const { rows } = await superusuario.query<{ n: string }>(
-      "SELECT count(*)::text AS n FROM unidad u JOIN propiedad p ON p.id = u.propiedad_id WHERE p.tenant_id = $1",
-      [tenantId],
+    const creadas = valores.filter((v) => v === "creada").length;
+    const rechazadas = valores.filter((v) => v === "rechazada").length;
+    const unidadesReales = await contarUnidadesReales();
+
+    // Antes de la corrección: ambas veían "0 de 1" ANTES de que
+    // cualquiera insertara, así que las DOS pasaban el chequeo y las DOS
+    // insertaban (creadas=2, unidadesReales=2 > límite de 1). El
+    // advisory lock transaccional por tenant serializa las dos
+    // transacciones completas: la segunda solo lee `medicion_uso_actual`
+    // después de que la primera hizo COMMIT (o ROLLBACK), así que ve el
+    // uso real y es rechazada.
+    expect(creadas).toBe(1);
+    expect(rechazadas).toBe(1);
+    expect(unidadesReales).toBe(1); // nunca excede el límite de 1 configurado arriba
+  });
+
+  it("5 altas de unidad CONCURRENTES contra el mismo límite de 1: exactamente 1 se crea (no depende de que solo haya 2 contendientes)", async () => {
+    // Punto de partida: 1 unidad ya activa (creada por el test anterior)
+    // contra el mismo límite de 1 — así que NINGUNA de estas 5 debería
+    // poder crear una unidad nueva.
+    const antes = await contarUnidadesReales();
+    expect(antes).toBe(1);
+
+    const resultados = await Promise.allSettled(
+      Array.from({ length: 5 }, (_, i) => intentarAltaUnidad(`Unidad race stress ${i}`)),
     );
-    const unidadesReales = Number(rows[0]!.n);
+    for (const r of resultados) {
+      if (r.status === "rejected") throw r.reason;
+    }
+    const valores = resultados.map((r) => (r as PromiseFulfilledResult<"creada" | "rechazada">).value);
 
-    // Si el límite se respetara de verdad, como mucho 1 de las 2 llamadas
-    // concurrentes debería haber creado una unidad (o ninguna, si ambas
-    // corrieran el chequeo tras la otra ya haber insertado). El bug real:
-    // ambas ven "0 de 1" ANTES de que cualquiera inserte, así que las DOS
-    // pasan el chequeo y las DOS insertan.
-    expect(creadas).toBe(2);
-    expect(unidadesReales).toBe(2); // > límite de 1 configurado arriba
+    expect(valores.filter((v) => v === "creada").length).toBe(0);
+    expect(valores.filter((v) => v === "rechazada").length).toBe(5);
+    expect(await contarUnidadesReales()).toBe(1); // sin cambios: el límite se sostiene
   });
 });

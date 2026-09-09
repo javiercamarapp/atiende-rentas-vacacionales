@@ -8,7 +8,7 @@ import { exigirRol } from "../middleware/roles.js";
 import { ROLES_ADMIN_OPERADOR, ROLES_ADMIN } from "../rolesComunes.js";
 import { sesionDeAuth } from "../middleware/tenant.js";
 import type { KeyringCifradoCanal } from "../seguridad/cifrado.js";
-import { exigirLimitePlan } from "./facturacionLimites.js";
+import { exigirLimitePlanEnTransaccion } from "./facturacionLimites.js";
 
 /** Ventana de "sync reciente" para considerar honestamente `producción`
  * (D-017): 6 horas — más laxa que la latencia declarada de Airbnb (~3h)
@@ -89,9 +89,6 @@ export function crearRutasCanales(pool: pg.Pool, jwtSecret: string, keyring: Key
     if (!tenantId) {
       throw new ErrorDominio("validacion", "tenantId es requerido para superadmin");
     }
-    // RV16 (Lote 3.3): límite de cuentas de canal del plan, aplicado en
-    // SERVIDOR — 402 tipado.
-    await exigirLimitePlan(pool, auth, "cuentas_canal");
 
     const cifrado = cuerpo.credenciales
       ? keyring.cifrar(JSON.stringify(cuerpo.credenciales))
@@ -99,6 +96,13 @@ export function crearRutasCanales(pool: pg.Pool, jwtSecret: string, keyring: Key
 
     const fila = await conSesion(pool, sesionDeAuth(auth), async (cliente) =>
       enTransaccion(cliente, async () => {
+        // RV16 (Lote 3.3) + A3-FACT-02 (corregido): límite de cuentas de
+        // canal del plan, aplicado en SERVIDOR — 402 tipado, DENTRO de la
+        // misma transacción que el INSERT real (advisory lock por
+        // tenant), nunca en una conexión/transacción separada — ver el
+        // comentario de cabecera de `exigirLimitePlanEnTransaccion`.
+        await exigirLimitePlanEnTransaccion(cliente, auth.tenantId, "cuentas_canal");
+
         const canal = await cliente.query<{ id: string }>("SELECT id FROM canal WHERE codigo = $1", [
           cuerpo.canalCodigo,
         ]);

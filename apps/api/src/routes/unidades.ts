@@ -8,7 +8,7 @@ import { requiereAutenticacion } from "../middleware/autenticacion.js";
 import { exigirRol } from "../middleware/roles.js";
 import { ROLES_ADMIN } from "../rolesComunes.js";
 import { sesionDeAuth } from "../middleware/tenant.js";
-import { exigirLimitePlan } from "./facturacionLimites.js";
+import { exigirLimitePlanEnTransaccion } from "./facturacionLimites.js";
 
 interface FilaOcupacion {
   id: string;
@@ -50,12 +50,16 @@ export function crearRutasUnidades(pool: pg.Pool, jwtSecret: string): Hono {
     const auth = c.get("auth");
     exigirRol(auth, ...ROLES_ADMIN);
     const cuerpo = CuerpoCrearUnidad.parse(await c.req.json());
-    // RV16 (Lote 3.3): límite de unidades activas del plan, aplicado en
-    // SERVIDOR — 402 tipado, nunca solo un candado del lado del cliente.
-    await exigirLimitePlan(pool, auth, "unidades_activas");
 
     const fila = await conSesion(pool, sesionDeAuth(auth), async (cliente) =>
       enTransaccion(cliente, async () => {
+        // RV16 (Lote 3.3) + A3-FACT-02 (corregido): límite de unidades
+        // activas del plan, aplicado en SERVIDOR — 402 tipado, DENTRO de
+        // la misma transacción que el INSERT real (advisory lock por
+        // tenant), nunca en una conexión/transacción separada — ver el
+        // comentario de cabecera de `exigirLimitePlanEnTransaccion`.
+        await exigirLimitePlanEnTransaccion(cliente, auth.tenantId, "unidades_activas");
+
         const { rows } = await cliente.query(
           `INSERT INTO unidad (propiedad_id, owner_id, nombre, duracion_minima_noches)
            VALUES ($1, $2, $3, COALESCE($4, 1))

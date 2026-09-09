@@ -25,4 +25,9 @@ export type {
 } from "./pagos/interfaz.js";
 export { ErrorFirmaWebhookInvalida } from "./pagos/interfaz.js";
 export { PagosSimulado } from "./pagos/simulado.js";
-export { PagosStripe, tieneCredencialesStripe, construirPagosStripeDesdeEntorno } from "./pagos/stripe.js";
+export {
+  PagosStripe,
+  tieneCredencialesStripe,
+  construirPagosStripeDesdeEntorno,
+  construirAdaptadorPagosDesdeEntorno,
+} from "./pagos/stripe.js";

@@ -17,7 +17,7 @@ import { cabecerasSeguridad } from "./seguridad/cabeceras.js";
 import { KeyringCifradoCanal } from "./seguridad/cifrado.js";
 import { construirAdaptadorCorreo } from "./seguridad/correo.js";
 import { capturarErrorNoManejado, crearRutaPruebaSentry } from "./observabilidad/sentry.js";
-import { construirPagosStripeDesdeEntorno, PagosSimulado } from "@atiende-rv/domain/facturacion";
+import { construirAdaptadorPagosDesdeEntorno } from "@atiende-rv/domain/facturacion";
 import { crearRateLimit } from "./seguridad/rateLimit.js";
 import { ZodError, type ZodIssue } from "zod";
 import {
@@ -73,13 +73,21 @@ export function crearApp(opciones: OpcionesCrearApp = {}) {
       ? obtenerPoolServerlessCompartido(config.databaseUrl)
       : new pg.Pool({ connectionString: undefined }));
   const keyring = new KeyringCifradoCanal(config.cifradoCanalClaves);
-  // Lote 3.3 (RV16): Stripe real SOLO si AMBAS variables están presentes
-  // (fail-safe hacia PagosSimulado, nunca un adaptador Stripe a medias) —
-  // ver packages/domain/src/facturacion/pagos/stripe.ts.
-  const pagos = construirPagosStripeDesdeEntorno({
+  // Lote 3.3 (RV16) + A3-FACT-03 (docs/auditoria-3/facturacion-onboarding.md,
+  // corregido): Stripe real SOLO si AMBAS variables están presentes; sin
+  // ellas, `PagosSimulado` únicamente en un entorno NO productivo — en
+  // producción (`config.entorno === "production"`, la misma clasificación
+  // fail-closed de config/env.ts: cualquier NODE_ENV desconocido o mal
+  // escrito cuenta como productivo) faltar cualquiera de las dos variables
+  // hace que esto LANCE en vez de degradar en silencio a pagos simulados
+  // (que activarían suscripciones "activas" sin cobro real) — ver
+  // `construirAdaptadorPagosDesdeEntorno` en
+  // packages/domain/src/facturacion/pagos/stripe.ts.
+  const pagos = construirAdaptadorPagosDesdeEntorno({
     STRIPE_SECRET_KEY: config.stripe.claveSecreta ?? undefined,
     STRIPE_WEBHOOK_SECRET: config.stripe.secretoWebhook ?? undefined,
-  }) ?? new PagosSimulado();
+    entornoEsProductivo: config.entorno === "production",
+  });
 
   app.use("*", cabecerasSeguridad);
   // `credentials: true` (Lote 3.2, H-096): imprescindible para que el

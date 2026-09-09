@@ -7,6 +7,7 @@ import type {
   SesionPortalCliente,
 } from "./interfaz.js";
 import { ErrorFirmaWebhookInvalida } from "./interfaz.js";
+import { PagosSimulado } from "./simulado.js";
 
 const API_BASE = "https://api.stripe.com/v1";
 
@@ -211,4 +212,51 @@ export function construirPagosStripeDesdeEntorno(env: {
 }): PagosStripe | null {
   if (!tieneCredencialesStripe(env)) return null;
   return new PagosStripe(env.STRIPE_SECRET_KEY!.trim(), env.STRIPE_WEBHOOK_SECRET!.trim());
+}
+
+/**
+ * A3-FACT-03 (docs/auditoria-3/facturacion-onboarding.md) — ALTO,
+ * corregido: `PagosSimulado` NO puede seguir siendo el fallback
+ * SILENCIOSO en un entorno productivo. Antes, `apps/api/src/app.ts`
+ * decidía el proveedor de pagos ÚNICAMENTE en función de si las
+ * credenciales de Stripe estaban presentes
+ * (`construirPagosStripeDesdeEntorno(...) ?? new PagosSimulado()`), sin
+ * mirar nunca `NODE_ENV`/`config.entorno` — a diferencia de
+ * `JWT_SECRET`/`CANAL_CIFRADO_CLAVES` (apps/api/src/config/env.ts,
+ * S-02/S-03), que sí abortan el arranque en producción si faltan. Un
+ * despliegue productivo sin `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET`
+ * (omisión operativa plausible, sobre todo en un primer despliegue)
+ * arrancaba con normalidad usando `PagosSimulado`, cuyo
+ * `crearSesionCheckout` ACTIVA la suscripción de inmediato sin cobro
+ * real: cualquier tenant obtenía acceso "pagado" real sin que Atiende
+ * cobrara nada, sin ninguna alerta visible.
+ *
+ * Este es el ÚNICO punto donde debe decidirse el adaptador de pagos real
+ * (`apps/api/src/app.ts` la llama en vez de construir `PagosStripe`/
+ * `PagosSimulado` a mano): si faltan las credenciales de Stripe Y el
+ * entorno es productivo, LANZA (fail-closed, nunca degrada en silencio)
+ * — mismo criterio que `resolverJwtSecret`/`resolverCifradoCanalClaves`.
+ * `PagosSimulado` solo se permite cuando `entornoEsProductivo` es
+ * `false` (desarrollo/test explícito — la misma clasificación
+ * fail-closed de `apps/api/src/config/env.ts`: cualquier `NODE_ENV`
+ * ausente o development/test explícito es "no productivo"; cualquier
+ * otro valor, incluido uno desconocido o mal escrito, cuenta como
+ * productivo).
+ */
+export function construirAdaptadorPagosDesdeEntorno(params: {
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
+  entornoEsProductivo: boolean;
+}): AdaptadorPagos {
+  const stripe = construirPagosStripeDesdeEntorno(params);
+  if (stripe) return stripe;
+  if (params.entornoEsProductivo) {
+    throw new Error(
+      "STRIPE_SECRET_KEY y STRIPE_WEBHOOK_SECRET son obligatorios en un entorno productivo " +
+        "(fail-closed, A3-FACT-03): sin AMBAS variables, el sistema NUNCA debe degradar en " +
+        "silencio a PagosSimulado (que activa suscripciones sin cobro real). Defínelas en la " +
+        "configuración del despliegue — ver apps/api/.env.example.",
+    );
+  }
+  return new PagosSimulado();
 }

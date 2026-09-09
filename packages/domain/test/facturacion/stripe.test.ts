@@ -1,7 +1,9 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { ErrorFirmaWebhookInvalida } from "../../src/facturacion/pagos/interfaz.js";
+import { PagosSimulado } from "../../src/facturacion/pagos/simulado.js";
 import {
+  construirAdaptadorPagosDesdeEntorno,
   construirPagosStripeDesdeEntorno,
   PagosStripe,
   tieneCredencialesStripe,
@@ -122,5 +124,60 @@ describe("construirPagosStripeDesdeEntorno / tieneCredencialesStripe — activac
     });
     expect(adaptador).toBeInstanceOf(PagosStripe);
     expect(adaptador!.proveedor).toBe("stripe");
+  });
+});
+
+/**
+ * A3-FACT-03 (docs/auditoria-3/facturacion-onboarding.md) — ALTO,
+ * corregido: `PagosSimulado` NUNCA puede ser el fallback silencioso de
+ * `construirAdaptadorPagosDesdeEntorno` en un entorno productivo — debe
+ * LANZAR explícitamente en vez de degradar en silencio (fail-closed,
+ * mismo criterio que `resolverJwtSecret`/`resolverCifradoCanalClaves` en
+ * apps/api/src/config/env.ts, S-02/S-03). La simulación solo se permite
+ * cuando el llamante declara `entornoEsProductivo: false` (desarrollo o
+ * test explícito).
+ */
+describe("construirAdaptadorPagosDesdeEntorno — A3-FACT-03: fail-closed en producción, nunca PagosSimulado en silencio", () => {
+  it("LANZA si el entorno es productivo y faltan AMBAS credenciales de Stripe", () => {
+    expect(() => construirAdaptadorPagosDesdeEntorno({ entornoEsProductivo: true })).toThrow(
+      /STRIPE_SECRET_KEY y STRIPE_WEBHOOK_SECRET son obligatorios/,
+    );
+  });
+
+  it("LANZA si el entorno es productivo y falta solo STRIPE_WEBHOOK_SECRET (nunca a medias)", () => {
+    expect(() =>
+      construirAdaptadorPagosDesdeEntorno({ STRIPE_SECRET_KEY: "sk_live_x", entornoEsProductivo: true }),
+    ).toThrow(/STRIPE_SECRET_KEY y STRIPE_WEBHOOK_SECRET son obligatorios/);
+  });
+
+  it("LANZA si el entorno es productivo y falta solo STRIPE_SECRET_KEY (nunca a medias)", () => {
+    expect(() =>
+      construirAdaptadorPagosDesdeEntorno({ STRIPE_WEBHOOK_SECRET: "whsec_x", entornoEsProductivo: true }),
+    ).toThrow(/STRIPE_SECRET_KEY y STRIPE_WEBHOOK_SECRET son obligatorios/);
+  });
+
+  it("con el entorno productivo y AMBAS credenciales presentes, construye un PagosStripe real (nunca lanza)", () => {
+    const adaptador = construirAdaptadorPagosDesdeEntorno({
+      STRIPE_SECRET_KEY: "sk_live_x",
+      STRIPE_WEBHOOK_SECRET: "whsec_x",
+      entornoEsProductivo: true,
+    });
+    expect(adaptador).toBeInstanceOf(PagosStripe);
+    expect(adaptador.proveedor).toBe("stripe");
+  });
+
+  it("con el entorno NO productivo (desarrollo/test) y sin credenciales, SÍ degrada a PagosSimulado — nunca lanza", () => {
+    const adaptador = construirAdaptadorPagosDesdeEntorno({ entornoEsProductivo: false });
+    expect(adaptador).toBeInstanceOf(PagosSimulado);
+    expect(adaptador.proveedor).toBe("simulado");
+  });
+
+  it("con el entorno NO productivo pero AMBAS credenciales presentes, prefiere Stripe real sobre el simulador", () => {
+    const adaptador = construirAdaptadorPagosDesdeEntorno({
+      STRIPE_SECRET_KEY: "sk_live_x",
+      STRIPE_WEBHOOK_SECRET: "whsec_x",
+      entornoEsProductivo: false,
+    });
+    expect(adaptador).toBeInstanceOf(PagosStripe);
   });
 });
