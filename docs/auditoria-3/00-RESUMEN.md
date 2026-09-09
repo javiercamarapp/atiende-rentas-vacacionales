@@ -1,6 +1,134 @@
 # Auditoría-3 (Fase 3) — Resumen
 
-## Estado al traspaso (2026-09-08, ~23:10)
+## VEREDICTO FINAL (2026-09-09, sesión de cierre)
+
+**APTO para producción con Supabase, CONDICIONADO.** Ninguno de los 9 hallazgos de
+esta auditoría es, por severidad individual, un bloqueante de "no lanzar nunca", y
+las dos condiciones que sí se consideraban innegociables antes de aceptar
+pagos/usuarios reales (A3-FACT-03, A3-AUTH-01) **ya están corregidas y fusionadas en
+`main` hoy** — verificado por lectura de código (`apps/api/src/app.ts:76-90`,
+`apps/api/src/routes/auth.ts:62,194`) y por la suite completa en verde (ver abajo).
+
+Con esto, el estado real de `main` en este momento es:
+
+- **Ya no bloqueante para producción**: A3-FACT-03 (PagosSimulado sin fail-closed) y
+  A3-AUTH-01 (rate limit de MFA no distribuido) — ambos corregidos y en `main`
+  (commits `eb9fd0b`, `20555c3`).
+- **Siguen abiertos en `main` HOY** (código en ramas `fix/*` sin fusionar, NO
+  reflejado todavía en lo que correría en producción si se desplegara este commit):
+  A3-AUTH-02 (CSRF no ligado a sesión), A3-DESP-01 (cron banaliza "romper cristal"),
+  A3-NOTIF-01 (HMAC sin timestamp), A3-NOTIF-02 (clave de cifrado sin fail-closed).
+  Ninguno de los cuatro es, por sí solo, razón para bloquear un primer despliegue —
+  son defensa en profundidad / higiene operativa — pero **no están en `main`
+  todavía** y este veredicto no se los atribuye hasta que esas 4 ramas se fusionen y
+  se re-verifiquen.
+- **Sin fix iniciado, quedan como deuda documentada, no bloqueante**: A3-FACT-01
+  (orden de webhooks de Stripe), A3-AUTH-03 (SOSPECHA, no confirmado), A3-NOTIF-03
+  (bajo, sin reintentos, decisión de diseño declarada).
+
+### Condiciones para desplegar a Supabase hoy (adicionales a los 6 requisitos de la
+sección "Requisitos para Supabase" más abajo, que siguen vigentes sin cambio)
+
+1. Configurar `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` reales en Vercel ANTES
+   del primer pago — con el fix de A3-FACT-03 ya en `main`, omitirlas en producción
+   ahora **hace que la app falle al arrancar** (fail-closed), así que esta condición
+   pasó de "silenciosa" a "autoevidente": no hay forma de lanzar a producción con
+   Stripe mal configurado sin que el despliegue falle de forma visible. Verificar de
+   todos modos antes del primer pago real.
+2. Fusionar las 4 ramas `fix/*` pendientes (`auth02-csrf`,
+   `desp01-cron-romper-cristal`, `notif01-hmac-timestamp`,
+   `notif02-clave-cifrado-failclosed`) en un plazo razonable — no bloquean el primer
+   despliegue, pero sí deben entrar antes de considerar la Fase 3 cerrada.
+3. Resolver A3-FACT-01 (orden de eventos de webhook de Stripe) antes de tener
+   volumen real de cancelaciones/reactivaciones — hoy sin fix, severidad MEDIA,
+   impacto de negocio (reactivación indebida de suscripción cancelada) más que de
+   seguridad.
+
+### Honestidad sobre cobertura de esta auditoría (no omitir)
+
+- La muestra de historias `H-096+` **no alcanzó las ≥30 pedidas**: se verificaron a
+  profundidad ~23 (vía los rubros de auth/canales/facturación/despliegue), no el
+  resto del backlog de ~124 historias. El backlog marca casi todo `hecho`, pero
+  "hecho" se confirmó que es honesto sobre "se construyó", no sobre "sin defectos"
+  (se encontraron 6 hallazgos reales en historias marcadas `hecho`).
+- **B-007 (commits ajenos) NO se auditó exhaustivamente**: de los 84+ commits desde
+  `2026-09-06 08:00`, solo se hizo una revisión parcial (un archivo de producto sin
+  commitear detectado y dejado intacto, atribuido al orquestador concurrente, no a
+  un lote de build). No hay una auditoría línea-por-línea de cada commit.
+- `tests/auditoria-2/seguridad/{logs-flags,secretos-inyeccion}.adversarial.test.ts`
+  (regresión de Fase 2) **no se re-ejecutaron en ninguna sesión de esta auditoría**
+  — sigue pendiente, no se tocó en esta sesión de cierre tampoco (fuera del alcance
+  dado: solo se pidió re-verificar `apps/api` unit+integration).
+- A3-AUTH-03 sigue como SOSPECHA sin repro — no se intentó reproducir en esta sesión
+  de cierre (fuera del alcance dado).
+
+## 1) Re-verificación de la alerta de la suite de `apps/api` (2026-09-09)
+
+**Resultado: la alerta NO se reproduce hoy. 335/335 pruebas en verde (0 fallas),
+en dos corridas completas independientes.**
+
+- `npm run test --workspace=apps/api` (unitarias): **27 archivos, 210 pruebas — 210
+  passed, 0 failed.** Repetido una segunda vez de forma independiente: idéntico
+  resultado (210/210).
+- `npm run test:integration --workspace=apps/api` (integración contra
+  `embedded-postgres` real): **13 archivos, 125 pruebas — 125 passed, 0 failed.**
+  Repetido una segunda vez: idéntico resultado (125/125). Esta suite ya corre con
+  `fileParallelism: false` (`apps/api/vitest.integration.config.ts`) — es decir, los
+  archivos de integración se ejecutan en serie por diseño, no en paralelo.
+- Total: **40 archivos de prueba, 335 pruebas, 335/335 en verde**, en dos corridas
+  consecutivas idénticas (misma máquina, mismo checkout de `main`).
+- **No se encontraron las "16 de 331 fallidas"** que reportó `calidad.md` la noche
+  del 2026-09-08. Como no hubo ninguna falla que reproducir, el paso de "correr en
+  serie para diferenciar flake de regresión real" no aplicó (nada que diferenciar).
+  La hipótesis de flake por contención de recursos (`embedded-postgres` corriendo en
+  paralelo con OTRAS sesiones/auditores concurrentes en la misma máquina esa noche,
+  documentado en `calidad.md` y en la nota de "orquestador concurrente" de esa
+  sesión) es la explicación más plausible y consistente con que hoy, en una sesión
+  sin otra actividad concurrente conocida, todo pasa limpio dos veces seguidas. No se
+  encontró evidencia de una regresión real de producto.
+- La cifra "780" de `docs/PROGRESO.md` no se verificó en esta sesión (fuera de
+  alcance: solo se pidió re-correr `apps/api`, no el resto de workspaces) — no se
+  puede confirmar ni refutar con lo corrido aquí; el número real y confirmado por
+  esta sesión es el de `apps/api` (335), no el agregado del monorepo.
+
+## 2) Bloqueo de publicación: push a `main` NO realizado
+
+Se pidió confirmar con `gh` que este repo no tiene una integración de despliegue que
+se dispare por cambios de solo-docs antes de pushear. **Se confirmó lo contrario: sí
+la tiene, y ya se disparó repetidamente por commits de solo-docs esta misma noche.**
+
+- `gh api repos/:owner/:repo/deployments` muestra que el GitHub App nativo de Vercel
+  (`vercel[bot]`, integración git de Vercel — **no** el workflow
+  `.github/workflows/deploy.yml`) crea un deployment de **Production** en CADA push
+  a `main`, sin excepción por tipo de archivo. Confirmado con los commits
+  `a55b0b1`, `9097c33` y `cba8b1b` — los tres **puramente de documentación**
+  (`docs: traspaso...`, `docs(auditoria-3): rubro CALIDAD...`, `docs: cierre del
+  auditor #49...`) — cada uno generó su propio deployment `Production` por
+  `vercel[bot]` minutos después del push.
+- El workflow `.github/workflows/deploy.yml` (el despliegue "propio", vía Actions)
+  SÍ está correctamente excluido hoy: requiere los tres secrets
+  `VERCEL_TOKEN`/`VERCEL_ORG_ID`/`VERCEL_PROJECT_ID` y solo están configurados dos
+  (`VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` — falta `VERCEL_TOKEN`, confirmado con
+  `gh secret list`), así que ese job específico se saltaría. **Pero eso es
+  irrelevante**: el disparador real de despliegues a producción de este repo es la
+  integración git nativa de Vercel (`vercel[bot]`), que es independiente de esos
+  secrets y de Actions por completo, y ESA sí dispara siempre.
+- `.github/workflows/ci.yml` también corre en cada push a `main` (sin filtro de
+  rutas) — lint/typecheck/test/test:integration/test:adversarial/build en
+  `macos-latest` — pero el repo es **público** (`gh repo view` →
+  `visibility: PUBLIC`), por lo que Actions no tiene costo de minutos facturable en
+  este caso; no es el problema.
+- **Conclusión:** un push de este commit (solo `docs/auditoria-3/00-RESUMEN.md`) a
+  `main` dispararía un nuevo despliegue de producción real en Vercel — un efecto de
+  producción para el que esta sesión no tiene autorización explícita, y que la
+  instrucción de la tarea pedía evitar exactamente en este escenario ("si tienes
+  cualquier duda real, NO pushees y reporta el bloqueo"). **No se hizo push.** El
+  commit queda listo en `main` localmente (no en `origin/main`) para que Javier lo
+  empuje cuando decida asumir el deploy, o para desactivar/pausar la integración git
+  de Vercel (o añadir un `ignoreCommand` en `vercel.json` que se salte el build
+  cuando el diff es solo `docs/**`) antes de push futuros de documentación.
+
+## Estado al traspaso (2026-09-08, ~23:10) — histórico, superado por el veredicto de arriba
 
 Esta auditoría se hizo en solitario (sin sub-agentes, por inestabilidad de la API
 esta noche) y se traspasa a otra sesión antes de terminar. **Este documento NO
@@ -23,47 +151,51 @@ consolidar la lista priorizada A3-nn con severidades definitivas.
    paralelo, no confirmado) — contradice "test 780 todo verde" de `docs/PROGRESO.md` y
    debe re-verificarse antes de dar veredicto.
 
-### Pendiente para quien continúe
+### Pendiente real, tras el cierre de esta sesión (2026-09-09)
 
-- **Veredicto final** (¿APTO para producción con Supabase, con qué condiciones?) — no
-  escrito todavía.
-- **Lista priorizada consolidada A3-nn** con severidad/archivo:línea/repro/impacto/
-  corrección para los 9 hallazgos ya encontrados (ver tabla abajo) — hoy viven
-  repartidos en los 5 archivos de rubro, faltaría numerarlos de forma única y
-  ordenarlos por severidad en este resumen.
-- **Re-verificar la alerta de `apps/api` en verde/rojo real** (`npm run test`,
-  `npm run test:integration` completos) — es el bloqueante más urgente para poder dar
-  cualquier veredicto responsable.
+- Fusionar las 4 ramas `fix/*` restantes (`auth02-csrf`, `desp01-cron-romper-cristal`,
+  `notif01-hmac-timestamp`, `notif02-clave-cifrado-failclosed`) y re-verificar cada
+  una tras el merge (los repros citados en la tabla corren hoy en sus ramas, no se
+  re-confirmaron contra `main` post-merge porque no están fusionadas).
 - Re-ejecutar `tests/auditoria-2/seguridad/{logs-flags,secretos-inyeccion}
-  .adversarial.test.ts` (regresión de Fase 2, no se llegó a este punto).
-- Auditar B-007 (commits ajenos) de los 84 commits desde `2026-09-06 08:00` — no
-  hecho exhaustivamente.
+  .adversarial.test.ts` (regresión de Fase 2) — sigue sin re-ejecutarse en ninguna
+  sesión de esta auditoría.
+- Auditar B-007 (commits ajenos) de los 84+ commits desde `2026-09-06 08:00` —
+  sigue sin hacerse exhaustivamente.
 - Completar la muestra de ≥30 historias `H-096+` contra código real (hoy ~23
   verificadas en profundidad vía los otros rubros).
-- Notificaciones/webhooks salientes y regresiones de Fase 2 quedaron dentro de
-  `calidad.md` en vez de archivos separados — así se dejó por la instrucción de
-  reducir a 5 informes; reorganizar si se prefiere separarlos.
+- Resolver A3-FACT-01 (orden de webhooks de Stripe) — sin fix iniciado todavía.
+- Confirmar/descartar A3-AUTH-03 (SOSPECHA, carrera en aceptación de invitación) con
+  un repro real contra Postgres.
+- Decidir sobre A3-NOTIF-03 (sin reintentos de webhook saliente) — declarado
+  no-bloqueante por diseño, decisión de producto pendiente de ratificar.
+- Vercel: el repo despliega a producción en cada push a `main` vía la integración
+  git nativa (`vercel[bot]`), incluidos commits de solo-docs — considerar un
+  `ignoreCommand` en `vercel.json` para `docs/**`-only si se quiere evitar deploys
+  innecesarios (ver sección de bloqueo de push arriba).
 
-### Hallazgos encontrados hasta ahora (9), por severidad
+### Tabla consolidada de hallazgos A3-nn (9 confirmados + 1 sospecha), por severidad
 
-| ID | Severidad | Rubro | Resumen | Repro |
-|---|---|---|---|---|
-| A3-FACT-02 | **Alto** | Facturación | Carrera TOCTOU en límite de plan: 2 altas concurrentes contra límite=1 crean 2 unidades | `tests/auditoria-3/facturacion/limitePlanRace.test.ts` (PASA) |
-| A3-FACT-03 | **Alto** | Facturación | `PagosSimulado` es el fallback silencioso en producción si faltan credenciales de Stripe, sin fail-closed ni aviso en UI | Verificado por lectura (`apps/api/src/app.ts:79-82`) |
-| A3-AUTH-01 | **Alto** | Auth | Rate limiting en memoria, no distribuido — ineficaz en Vercel serverless; único freno de `/mfa/verificar` | `tests/auditoria-3/auth/rateLimitNoDistribuido.test.ts` (PASA) |
-| A3-AUTH-02 | Medio | Auth | Token CSRF de doble envío no ligado criptográficamente a la sesión | `tests/auditoria-3/auth/csrfNoLigadoASesion.test.ts` (PASA) |
-| A3-FACT-01 | Medio | Facturación | Webhook de Stripe no ordena eventos distintos por tiempo — evento viejo puede reactivar suscripción cancelada | `tests/auditoria-3/facturacion/webhookFueraDeOrden.test.ts` (PASA) |
-| A3-DESP-01 | Medio | Despliegue | Cron de sync iCal se auto-otorga "romper cristal" a todos los tenants cada 15 min, desensibilizando esa señal de auditoría | Verificado por lectura (`apps/api/src/rutas/internas/cronSync.ts:26-51`) |
-| A3-NOTIF-01 | Medio | Notificaciones | Firma HMAC de webhook saliente sin componente de tiempo (sin anti-replay estructural, a diferencia de Stripe) | Verificado por lectura (`packages/domain/src/notificaciones/webhookFirma.ts`) |
-| A3-NOTIF-02 | Medio | Notificaciones | Clave de cifrado del secreto de webhook sin fail-closed en producción (cae a clave efímera con solo `console.warn`) | Verificado por lectura (`apps/api/src/workers/notificaciones/cifradoSecreto.ts:19-38`) |
-| A3-AUTH-03 | SOSPECHA | Auth | Posible carrera en aceptación de invitación (doble alta, no account-takeover) | No reproducido — declarado SOSPECHA |
-| A3-NOTIF-03 | Bajo | Notificaciones | Sin reintentos/backoff en entrega de webhook saliente (best-effort declarado) | Verificado por lectura |
+| ID | Severidad | Rubro | Resumen | Repro | Estado en `main` HOY (2026-09-09) |
+|---|---|---|---|---|---|
+| A3-FACT-02 | **Alto** | Facturación | Carrera TOCTOU en límite de plan: 2 altas concurrentes contra límite=1 crean 2 unidades | `tests/auditoria-3/facturacion/limitePlanRace.test.ts` (PASA) | **CERRADO** — advisory lock transaccional (`pg_advisory_xact_lock`) en `apps/api/src/routes/facturacionLimites.ts`, commit `eb9fd0b`, fusionado en `main` |
+| A3-FACT-03 | **Alto** | Facturación | `PagosSimulado` es el fallback silencioso en producción si faltan credenciales de Stripe, sin fail-closed ni aviso en UI | Verificado por lectura (`apps/api/src/app.ts:79-82` original) | **CERRADO** — `apps/api/src/app.ts:76-90` ahora lanza en `entorno === "production"` si faltan las credenciales, commit `eb9fd0b`, fusionado en `main` |
+| A3-AUTH-01 | **Alto** | Auth | Rate limiting en memoria, no distribuido — ineficaz en Vercel serverless; único freno de `/mfa/verificar` | `tests/auditoria-3/auth/rateLimitNoDistribuido.test.ts` (PASA) | **CERRADO** — `LimitadorVentanaPostgres` sobre tabla `rate_limit_bucket`, `apps/api/src/routes/auth.ts:62,194`, commit `20555c3`, fusionado en `main` |
+| A3-AUTH-02 | Medio | Auth | Token CSRF de doble envío no ligado criptográficamente a la sesión | `tests/auditoria-3/auth/csrfNoLigadoASesion.test.ts` (PASA) | **PENDIENTE DE MERGE** — fix en rama `fix/auth02-csrf`, no fusionada; en `main` hoy el hallazgo sigue vigente |
+| A3-DESP-01 | Medio | Despliegue | Cron de sync iCal se auto-otorga "romper cristal" a todos los tenants cada 15 min, desensibilizando esa señal de auditoría | Verificado por lectura (`apps/api/src/rutas/internas/cronSync.ts:26-51`) | **PENDIENTE DE MERGE** — fix en rama `fix/desp01-cron-romper-cristal`, no fusionada; en `main` hoy el hallazgo sigue vigente |
+| A3-NOTIF-01 | Medio | Notificaciones | Firma HMAC de webhook saliente sin componente de tiempo (sin anti-replay estructural, a diferencia de Stripe) | Verificado por lectura (`packages/domain/src/notificaciones/webhookFirma.ts`) | **PENDIENTE DE MERGE** — fix en rama `fix/notif01-hmac-timestamp`, no fusionada; en `main` hoy el hallazgo sigue vigente |
+| A3-NOTIF-02 | Medio | Notificaciones | Clave de cifrado del secreto de webhook sin fail-closed en producción (cae a clave efímera con solo `console.warn`) | Verificado por lectura (`apps/api/src/workers/notificaciones/cifradoSecreto.ts:19-38`) | **PENDIENTE DE MERGE** — fix en rama `fix/notif02-clave-cifrado-failclosed`, no fusionada; en `main` hoy el hallazgo sigue vigente |
+| A3-FACT-01 | Medio | Facturación | Webhook de Stripe no ordena eventos distintos por tiempo — evento viejo puede reactivar suscripción cancelada | `tests/auditoria-3/facturacion/webhookFueraDeOrden.test.ts` (PASA) | **PENDIENTE** — sin rama de fix iniciada |
+| A3-AUTH-03 | SOSPECHA | Auth | Posible carrera en aceptación de invitación (doble alta, no account-takeover) | No reproducido — declarado SOSPECHA | **PENDIENTE** — sin confirmar, sin fix |
+| A3-NOTIF-03 | Bajo | Notificaciones | Sin reintentos/backoff en entrega de webhook saliente (best-effort declarado) | Verificado por lectura | **PENDIENTE / decisión de producto** — declarado no-bloqueante por diseño |
 
-**Nota importante:** ninguno de los 9 hallazgos anteriores es, por sí solo, un
-bloqueante de "no lanzar nunca" — pero A3-FACT-03 (PagosSimulado en producción) y
-A3-AUTH-01 (rate limit no distribuido protegiendo MFA) sí deberían resolverse ANTES de
-aceptar pagos/usuarios reales en Supabase+Vercel, y la alerta de la suite de
-`apps/api` en rojo debe aclararse antes de cualquier veredicto de "APTO".
+**Lectura del veredicto:** de los 3 hallazgos de severidad **Alto**, los 3 (100%)
+están cerrados y fusionados en `main` hoy. De los 5 de severidad **Medio**, 4 tienen
+fix escrito pero sin fusionar (código real, en ramas `fix/*`, pendiente de merge —
+NO es "sin corregir", es "corregido pero no desplegable todavía") y 1
+(A3-FACT-01) no tiene fix iniciado. Ninguno de los pendientes es, por severidad
+individual, razón para bloquear un primer despliegue a Supabase, pero deben
+fusionarse/resolverse antes de dar la Fase 3 por cerrada de forma definitiva.
 
 ### Verificado como correcto (regresión + Fase 3), no repetir como pendiente
 
