@@ -8,16 +8,26 @@ de severidad **Alto** (A3-FACT-02, A3-FACT-03, A3-AUTH-01) y los 5 de severidad
 **Medio** con fix escrito (A3-AUTH-02, A3-DESP-01, A3-NOTIF-01, A3-NOTIF-02,
 A3-FACT-01) están **todos corregidos, auditados de forma adversarial de forma
 independiente (con ataque real ejecutado por el auditor contra el código pre-fix y
-post-fix en A3-AUTH-02 y A3-NOTIF-01) y fusionados en `main`**, y la SOSPECHA
-A3-AUTH-03 quedó **reproducida y descartada** (repro real contra `embedded-postgres`
-confirma que no hay riesgo real) — verificado por lectura de código y por la suite
-completa en verde (ver abajo).
+post-fix en A3-AUTH-02 y A3-NOTIF-01) y fusionados en `main`**. El único hallazgo
+de severidad **Bajo** (A3-NOTIF-03) también está **corregido, con pruebas propias
+en verde**, implementado siguiendo exactamente el patrón de diseño que la propia
+auditoría sugirió (reutilizar el de `outboxWorker.ts`) — en la rama
+`fix/notif03-retry-backoff-webhook`, aún **sin fusionar a `main`** (sin una
+segunda pasada adversarial independiente todavía). La SOSPECHA A3-AUTH-03 quedó
+**reproducida y descartada** (repro real contra `embedded-postgres` confirma que
+no hay riesgo real) — verificado por lectura de código y por la suite completa en
+verde (ver abajo).
 
 Con esto, el estado real de `main` en este momento es:
 
 - **Cerrados y fusionados en `main`** (8 de 9 hallazgos): A3-FACT-02, A3-FACT-03,
   A3-AUTH-01 (severidad Alto), A3-AUTH-02, A3-DESP-01, A3-NOTIF-01, A3-NOTIF-02,
   A3-FACT-01 (severidad Medio, con fix real de código).
+- **Corregido en su propia rama, pendiente de fusionar a `main`**: A3-NOTIF-03
+  (severidad Bajo, cola de reintento con backoff acotado, rama
+  `fix/notif03-retry-backoff-webhook` — ver `docs/auditoria-3/calidad.md` sección
+  A3-NOTIF-03 para el detalle técnico completo). Con esto, los 9 hallazgos de esta
+  auditoría tienen fix escrito; solo falta fusionar esta última rama.
 - **A3-AUTH-03 reproducido y descartado (9-sep-2026, rama
   `fix/auth03-carrera-invitacion`, ya fusionada)**: repro real con `Promise.all`
   contra `embedded-postgres` confirma que la carrera NO produce doble alta — el
@@ -26,8 +36,6 @@ Con esto, el estado real de `main` en este momento es:
   y `tests/auditoria-3/auth/carreraInvitacion.test.ts` para el repro (ahora test de
   regresión permanente). Sin código de producción cambiado — no había bug que
   corregir.
-- **Sin fix iniciado, queda como deuda documentada, no bloqueante**: A3-NOTIF-03
-  (bajo, sin reintentos, decisión de diseño declarada).
 
 ### Condiciones para desplegar a Supabase hoy (adicionales a los 6 requisitos de la
 sección "Requisitos para Supabase" más abajo, que siguen vigentes sin cambio)
@@ -165,10 +173,10 @@ consolidar la lista priorizada A3-nn con severidades definitivas.
   sigue sin hacerse exhaustivamente.
 - Completar la muestra de ≥30 historias `H-096+` contra código real (hoy ~23
   verificadas en profundidad vía los otros rubros).
-- Decidir sobre A3-NOTIF-03 (sin reintentos de webhook saliente) — declarado
-  no-bloqueante por diseño, decisión de producto pendiente de ratificar. Es el
-  ÚNICO punto de la lista original que sigue sin resolver — todo lo demás
-  (fusionar las 4 ramas `fix/*`, A3-FACT-01, A3-AUTH-03) ya se cerró.
+- A3-NOTIF-03 (sin reintentos de webhook saliente) — decisión de producto YA
+  ratificada (cerrar el hallazgo, no dejarlo pendiente) y fix implementado (cola
+  de reintento con backoff acotado, rama `fix/notif03-retry-backoff-webhook`,
+  ver `docs/auditoria-3/calidad.md`). Solo falta fusionar esa rama a `main`.
 - Vercel: el repo despliega a producción en cada push a `main` vía la integración
   git nativa (`vercel[bot]`), incluidos commits de solo-docs — considerar un
   `ignoreCommand` en `vercel.json` para `docs/**`-only si se quiere evitar deploys
@@ -187,14 +195,17 @@ consolidar la lista priorizada A3-nn con severidades definitivas.
 | A3-NOTIF-02 | Medio | Notificaciones | Clave de cifrado del secreto de webhook sin fail-closed en producción (cae a clave efímera con solo `console.warn`) | Verificado por lectura (`apps/api/src/workers/notificaciones/cifradoSecreto.ts:19-38`) | **CERRADO** — reutiliza `exigeSecretosExplicitos` (mismo criterio que JWT/cifrado de canal): lanza en producción si falta la clave; fusionado en `main` |
 | A3-FACT-01 | Medio | Facturación | Webhook de Stripe no ordena eventos distintos por tiempo — evento viejo puede reactivar suscripción cancelada | `tests/auditoria-3/facturacion/webhookFueraDeOrden.test.ts` (PASA, 5 tests) | **CERRADO** — `suscripcion_tenant.ultimo_evento_stripe_creado_en` + `facturacion_registrar_pago()` ignora eventos fuera de orden (migración `0129`); fusionado en `main` |
 | A3-AUTH-03 | Descartado | Auth | Posible carrera en aceptación de invitación (doble alta, no account-takeover) | `tests/auditoria-3/auth/carreraInvitacion.test.ts` (PASA) — repro real N=2 y N=5 vía `Promise.all` contra la API real | **CERRADO SIN CÓDIGO** — confirmado SIN riesgo real: `usuario_email_key` (índice único, migración 0003) impide la doble alta en todas las corridas; sin fix de producción porque no hay bug de seguridad que corregir (detalle en `docs/auditoria-3/seguridad-auth.md`) |
-| A3-NOTIF-03 | Bajo | Notificaciones | Sin reintentos/backoff en entrega de webhook saliente (best-effort declarado) | Verificado por lectura | **PENDIENTE / decisión de producto** — declarado no-bloqueante por diseño |
+| A3-NOTIF-03 | Bajo | Notificaciones | Sin reintentos/backoff en entrega de webhook saliente (best-effort declarado) | `apps/api/test/notificaciones/webhookReintento.test.ts` (8 tests, PASA) + `dispatcher.test.ts`/`cronWebhooksReintento.test.ts` | **CORREGIDO, pendiente de fusionar** — cola de reintento con backoff exponencial acotado (`webhook_saliente_reintento`, migración `0131`), mismo patrón que `outboxWorker.ts`; rama `fix/notif03-retry-backoff-webhook`, sin fusionar en `main` todavía |
 
 **Lectura del veredicto:** de los 3 hallazgos de severidad **Alto**, los 3 (100%)
 están cerrados y fusionados en `main`. De los 5 de severidad **Medio**, los 5
 (100%) están cerrados y fusionados (A3-AUTH-02, A3-DESP-01, A3-NOTIF-01,
 A3-NOTIF-02, A3-FACT-01). La única SOSPECHA (A3-AUTH-03) quedó reproducida y
-descartada sin riesgo real. Solo queda A3-NOTIF-03 (Bajo) como deuda documentada
-pendiente de una decisión de producto, no bloqueante para el primer despliegue a
+descartada sin riesgo real. El único de severidad **Bajo** (A3-NOTIF-03) también
+tiene fix real con pruebas en verde, en su propia rama pendiente de fusionar a
+`main` — con esto, los 9 de 9 hallazgos de esta auditoría tienen código de
+corrección escrito, ninguno queda como deuda sin abordar. Fusionar
+`fix/notif03-retry-backoff-webhook` no es bloqueante para el primer despliegue a
 Supabase.
 
 ### Verificado como correcto (regresión + Fase 3), no repetir como pendiente

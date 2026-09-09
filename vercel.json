@@ -12,5 +12,8 @@
     { "source": "/api/(.*)", "destination": "/api" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
-  "crons": [{ "path": "/api/internal/cron/sync-ical", "schedule": "*/15 * * * *" }]
+  "crons": [
+    { "path": "/api/internal/cron/sync-ical", "schedule": "*/15 * * * *" },
+    { "path": "/api/internal/cron/webhooks-retry", "schedule": "*/5 * * * *" }
+  ]
 }

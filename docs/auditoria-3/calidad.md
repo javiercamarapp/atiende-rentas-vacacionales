@@ -73,18 +73,57 @@ límite de tiempo de esta sesión — ver `00-RESUMEN.md` para el estado de tras
 - **Corrección sugerida:** mover esta variable a `cargarConfiguracion()` y aplicarle el
   mismo criterio fail-closed que `CANAL_CIFRADO_CLAVES`.
 
-### A3-NOTIF-03 — BAJO — Sin reintentos/backoff en la entrega del webhook saliente
+### A3-NOTIF-03 — BAJO — Sin reintentos/backoff en la entrega del webhook saliente — **CORREGIDO**
 
-- **Archivo:** `apps/api/src/workers/notificaciones/dispatcher.ts:1-22`.
-- **Observación:** el envío es explícitamente "best-effort" (documentado en el propio
-  comentario) — un solo intento, sin cola de reintento ni backoff. Un fallo transitorio
-  del lado del tenant (su endpoint caído por 30 segundos) descarta la notificación para
-  siempre, sin reintento posterior. Es una decisión de diseño declarada, no un descuido
-  oculto, pero no cumple la expectativa típica de fiabilidad de un webhook de
-  producto.
-- **Corrección sugerida (no bloqueante):** encolar el envío fallido en una tabla tipo
-  `outbox` con reintento exponencial acotado (mismo patrón que
-  `apps/api/src/workers/observabilidad/outboxWorker.ts` ya usa para otros eventos).
+- **Estado:** corregido (decisión de producto: cerrar el hallazgo, no dejarlo
+  pendiente). `apps/api/src/workers/notificaciones/webhookReintento.ts` añade una
+  cola de reintento persistida (`webhook_saliente_reintento`,
+  `packages/db/src/migrations/0131_webhook_saliente_reintento.ts`) siguiendo el
+  MISMO patrón de diseño que `apps/api/src/workers/observabilidad/outboxWorker.ts`
+  ya usa para otros eventos (una fila por entrega pendiente, un worker periódico
+  que la procesa una transacción por fila, con re-chequeo `FOR UPDATE` dentro de la
+  transacción) — sin reutilizar literalmente `outbox_evento`, porque modela un
+  ciclo de vida distinto: esa tabla aplica un efecto exactamente una vez, mientras
+  que un envío de webhook puede reintentarse VARIAS veces con backoff creciente
+  hasta agotar un tope.
+  - `dispatcher.ts` sigue intentando la entrega SÍNCRONA de un solo intento como
+    antes (no se puede bloquear la operación de negocio que disparó la
+    notificación esperando reintentos) — lo que cambia es que, si ese intento
+    falla (timeout, 5xx, error de red), se encola vía `encolarReintentoWebhook` en
+    vez de descartarse para siempre.
+  - El worker periódico (`procesarReintentosWebhookPendientes`, expuesto en
+    `GET /internal/cron/webhooks-retry` —
+    `apps/api/src/rutas/internas/cronWebhooksReintento.ts`, protegido por
+    `CRON_SECRET` igual que `GET /internal/cron/sync-ical`, cada 5 min en
+    `vercel.json`) reintenta con backoff exponencial ACOTADO: 1min/5min/30min/2h
+    (`BACKOFF_REINTENTO_WEBHOOK_MS`), resolviendo la config vigente del tenant en
+    el momento del reintento (nunca una copia obsoleta).
+  - Entrega exitosa → la fila se BORRA (idempotencia hacia adelante: nunca se
+    reenvía una tercera vez tras recuperarse). Entrega fallida tras agotar
+    `MAX_INTENTOS_REINTENTO_WEBHOOK_DEFECTO` (5 intentos totales: el síncrono +
+    los 4 escalones de backoff) → la fila pasa a `estado = 'agotado'` (fallo
+    PERMANENTE, nunca reintentos infinitos), se CONSERVA para revisión humana, y
+    se loggea (`webhook_reintento_agotado`). `contarWebhookReintentoPorEstado`
+    queda expuesto en `GET /health/detallado` (mismo criterio que
+    `contarPendientesOutbox`).
+  - **Pruebas:** `apps/api/test/notificaciones/webhookReintento.test.ts` (8 tests
+    — backoff estrictamente creciente y medible sobre `proximo_intento_en` real,
+    fallo permanente tras agotar intentos sin volver a invocar el envío,
+    idempotencia: una entrega recuperada al 2º intento nunca reenvía un 3º),
+    `apps/api/test/notificaciones/dispatcher.test.ts` (3 casos nuevos: encola al
+    fallar, nunca encola si se entrega, nunca propaga si el propio encolado
+    falla) y `apps/api/test/notificaciones/cronWebhooksReintento.test.ts` (6 tests
+    de auth fail-closed/401/200/500 del endpoint HTTP). Las 364 pruebas de
+    `apps/api` y las 89 de `packages/db` pasan en verde.
+- **Límite conocido, documentado a propósito** (mismo criterio que
+  `outboxWorker.ts`): esto asume UN solo worker/invocación de cron activo a la
+  vez — sin `SELECT ... FOR UPDATE SKIP LOCKED` no hay protección contra dos
+  invocaciones concurrentes tomando la misma fila. El cron real (Vercel Cron, un
+  solo disparo por horario) no produce ese escenario en producción.
+- **Hallazgo original** (antes de la corrección), por lectura: el envío era
+  explícitamente "best-effort" — un solo intento, sin cola de reintento ni
+  backoff. Un fallo transitorio del lado del tenant (su endpoint caído por 30
+  segundos) descartaba la notificación para siempre, sin reintento posterior.
 
 ## Verificado y BIEN implementado (Notificaciones)
 

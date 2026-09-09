@@ -6,6 +6,8 @@ import { exponerFormatoPrometheus, resumenLatenciaEtiquetada, RegistroMetricas }
 import { contarPendientesOutbox, edadPendienteMasViejoMs } from "./outboxWorker.js";
 import { reconocerAlerta, resolverAlerta } from "./alertas.js";
 import { crearRutasCronSyncIcal } from "../../rutas/internas/cronSync.js";
+import { crearRutasCronWebhooksReintento } from "../../rutas/internas/cronWebhooksReintento.js";
+import { contarWebhookReintentoPorEstado } from "../notificaciones/webhookReintento.js";
 
 /**
  * `/metrics` (Prometheus text) y `/health/detallado` (Lote 10, H-035),
@@ -66,9 +68,14 @@ export function rutasObservabilidad(deps: DependenciasRutasObservabilidad): Hono
     let dbOk = true;
     let tamanoColaOutbox: number | null = null;
     let edadPendienteMasViejo: number | null = null;
+    // A3-NOTIF-03: mismo criterio que `contarPendientesOutbox` — tamaño
+    // real de la cola de reintento de webhooks (pendiente/agotado), nunca
+    // aproximado, como insumo directo para un operador auditando salud.
+    let webhookReintentoPorEstado: { pendiente: number; agotado: number } | null = null;
     try {
       tamanoColaOutbox = await contarPendientesOutbox(ejecutor);
       edadPendienteMasViejo = await edadPendienteMasViejoMs(ejecutor);
+      webhookReintentoPorEstado = await contarWebhookReintentoPorEstado(ejecutor);
     } catch {
       dbOk = false;
     }
@@ -77,6 +84,7 @@ export function rutasObservabilidad(deps: DependenciasRutasObservabilidad): Hono
       status: dbOk ? "ok" : "degradado",
       db: { conectada: dbOk },
       outbox: { tamanoCola: tamanoColaOutbox, edadPendienteMasViejoMs: edadPendienteMasViejo },
+      webhookReintento: webhookReintentoPorEstado,
       metricas: deps.metricas.snapshot(),
       // H-073: misma información que `metricas.latenciaInternaMs`/
       // `latenciaExternaDeclaradaSegundos`, ya separada y etiquetada
@@ -121,6 +129,14 @@ export function rutasObservabilidad(deps: DependenciasRutasObservabilidad): Hono
   // tocar app.ts, reutilizando el mismo punto de fusión que el resto de
   // esta función (`app.route("/", rutasObservabilidad(...))` en app.ts).
   app.route("/internal/cron", crearRutasCronSyncIcal({ pool: deps.pool, metricas: deps.metricas }));
+
+  // GET /internal/cron/webhooks-retry (A3-NOTIF-03, docs/auditoria-3/
+  // calidad.md): procesa la cola de reintento de webhooks salientes
+  // fallidos (backoff exponencial acotado) — ver apps/api/src/rutas/
+  // internas/cronWebhooksReintento.ts para el diseño completo. Mismo
+  // punto de montaje ("/internal/cron") y mismo criterio de protección
+  // (CRON_SECRET, nunca requiereAutenticacion) que sync-ical de arriba.
+  app.route("/internal/cron", crearRutasCronWebhooksReintento({ pool: deps.pool }));
 
   return app;
 }

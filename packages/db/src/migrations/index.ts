@@ -86,6 +86,7 @@ import { migracion0127RateLimitBucket } from "./0127_rate_limit_bucket.js";
 import { migracion0128DelegacionServicioSistema } from "./0128_delegacion_servicio_sistema.js";
 import { migracion0129FacturacionOrdenWebhook } from "./0129_facturacion_orden_webhook.js";
 import { migracion0130MensajeriaBorradorAgenteLlm } from "./0130_mensajeria_borrador_agente_llm.js";
+import { migracion0131WebhookSalienteReintento } from "./0131_webhook_saliente_reintento.js";
 
 // Orden fijo, nunca reordenar migraciones ya aplicadas en algún entorno
 // (patrón expand/contract real llega en Lote 10 — H-088). Cada lote
@@ -219,4 +220,8 @@ export const migraciones: Migracion[] = [
   // 0130: fix/mensajeria-nativa-por-canal — ver comentario de cabecera en
   // 0130_mensajeria_borrador_agente_llm.ts.
   migracion0130MensajeriaBorradorAgenteLlm,
+  // 0131: A3-NOTIF-03 (docs/auditoria-3/calidad.md) — cola de reintento
+  // con backoff acotado para webhooks salientes fallidos. Ver comentario
+  // de cabecera en 0131_webhook_saliente_reintento.ts.
+  migracion0131WebhookSalienteReintento,
 ];

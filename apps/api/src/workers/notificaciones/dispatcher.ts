@@ -3,11 +3,13 @@ import {
   usuarioActivoParaCanal,
   type AdaptadorCorreo,
   type ContenidoNotificacion,
+  type PayloadWebhookNotificacion,
   type PreferenciaNotificacionUsuario,
   type TipoEventoNotificable,
 } from "@atiende-rv/domain/notificaciones";
 import { descifrarSecretoWebhook } from "./cifradoSecreto.js";
 import { enviarWebhookFirmado, type OpcionesEnviarWebhook } from "./webhookSaliente.js";
+import { encolarReintentoWebhook } from "./webhookReintento.js";
 
 /**
  * H-054: orquesta el abanico multicanal para UN evento notificable hacia
@@ -21,6 +23,17 @@ import { enviarWebhookFirmado, type OpcionesEnviarWebhook } from "./webhookSalie
  * operación que generó la notificación (p. ej. `POST /pricing/.../
  * paridad` de H-071) — cada envío se intenta de forma independiente y sus
  * errores se devuelven en el resultado, nunca se lanzan.
+ *
+ * A3-NOTIF-03 (docs/auditoria-3/calidad.md, BAJO, corregido): el intento
+ * SÍNCRONO de webhook de aquí abajo sigue siendo de UN solo intento — eso
+ * no cambia (no se puede bloquear la operación que disparó la
+ * notificación esperando reintentos). Lo que cambia es que, si ese único
+ * intento síncrono falla (timeout, 5xx, error de red — nunca "tenant sin
+ * webhook activo" ni "usuario opt-out", que no son fallos, son "no había
+ * nada que enviar"), el envío se encola en `webhook_saliente_reintento`
+ * vía `encolarReintentoWebhook` para que el worker periódico
+ * (`webhookReintento.ts`) lo reintente con backoff exponencial acotado en
+ * vez de descartarlo para siempre.
  */
 /** Mínimo común entre `EjecutorSql` (`@atiende-rv/db`, usado por
  * `workers/observabilidad`) y `pg.PoolClient` (usado por el resto de
@@ -36,6 +49,9 @@ export interface DependenciasDispatcher {
   ejecutor: EjecutorConsultaMinimo;
   adaptadorCorreo: AdaptadorCorreo;
   enviarWebhook?: typeof enviarWebhookFirmado;
+  /** Inyectable para pruebas — por defecto `encolarReintentoWebhook` real
+   * de `webhookReintento.ts` (A3-NOTIF-03). */
+  encolarReintentoWebhook?: typeof encolarReintentoWebhook;
 }
 
 export interface ResultadoDespacho {
@@ -87,6 +103,7 @@ export async function despacharNotificacion(
 ): Promise<ResultadoDespacho> {
   const { ejecutor, adaptadorCorreo } = deps;
   const enviarWebhook = deps.enviarWebhook ?? enviarWebhookFirmado;
+  const encolarReintento = deps.encolarReintentoWebhook ?? encolarReintentoWebhook;
   const { usuarioId, usuarioEmail, tenantId, contenido } = opciones;
 
   const preferencias = await cargarPreferenciasUsuario(ejecutor, usuarioId);
@@ -119,20 +136,41 @@ export async function despacharNotificacion(
         secretoIv: config.secreto_iv,
         secretoTag: config.secreto_tag,
       });
-      const resultado = await enviarWebhook(
-        config.url,
-        secreto,
-        {
-          version: 1,
-          tipoEvento: contenido.tipoEvento,
-          titulo: contenido.titulo,
-          cuerpoTexto: contenido.cuerpoTexto,
-          metadata: contenido.metadata ?? {},
-          emitidoEn: new Date().toISOString(),
-        },
-        opciones.opcionesWebhook,
-      );
+      const payloadWebhook: PayloadWebhookNotificacion = {
+        version: 1,
+        tipoEvento: contenido.tipoEvento,
+        titulo: contenido.titulo,
+        cuerpoTexto: contenido.cuerpoTexto,
+        metadata: contenido.metadata ?? {},
+        emitidoEn: new Date().toISOString(),
+      };
+      const resultado = await enviarWebhook(config.url, secreto, payloadWebhook, opciones.opcionesWebhook);
       webhookEntregado = resultado.entregado;
+
+      if (!resultado.entregado) {
+        // A3-NOTIF-03: el único intento síncrono falló — se encola para
+        // reintento con backoff en vez de descartarse. Envuelto en su
+        // propio try/catch: un fallo al ENCOLAR (p. ej. la BD caída en
+        // ese instante) nunca debe convertirse en una excepción que
+        // tumbe la operación de negocio que disparó la notificación —
+        // el contrato best-effort de este dispatcher se preserva incluso
+        // para el propio mecanismo de reintento.
+        try {
+          await encolarReintento(ejecutor, {
+            tenantId,
+            payload: payloadWebhook,
+            motivoRechazo: resultado.motivoRechazo,
+          });
+        } catch (error) {
+          console.error(
+            JSON.stringify({
+              evento: "webhook_reintento_encolar_fallo",
+              tenantId,
+              mensaje: error instanceof Error ? error.message : String(error),
+            }),
+          );
+        }
+      }
     } else {
       webhookEntregado = null;
     }
