@@ -32,6 +32,7 @@ import type { KeyringCifradoCanal } from "../seguridad/cifrado.js";
 import { hashContrasena, verificarContrasena } from "../seguridad/contrasenas.js";
 import { correoRestablecerPassword, correoVerificacion, type InterfazCorreo } from "../seguridad/correo.js";
 import {
+  derivarTokenCsrf,
   DURACION_REFRESH_TOKEN_MS,
   emitirAccessToken,
   emitirMfaPendienteToken,
@@ -277,7 +278,7 @@ export function crearRutasAuth(deps: DependenciasAuth): Hono {
   ) {
     if (cliente === "web") {
       fijarCookieRefresh(c, tokens.refreshToken, { segura: cookieSegura, maxAgeMs: DURACION_REFRESH_TOKEN_MS });
-      fijarCookieCsrf(c, generarValorAleatorio(16), { segura: cookieSegura, maxAgeMs: DURACION_REFRESH_TOKEN_MS });
+      fijarCookieCsrf(c, derivarTokenCsrf(tokens.refreshToken, jwtSecret), { segura: cookieSegura, maxAgeMs: DURACION_REFRESH_TOKEN_MS });
       return c.json({ accessToken: tokens.accessToken, expiraEn: tokens.expiraEn, usuario }, 200);
     }
     return c.json({ ...tokens, usuario }, 200);
@@ -461,7 +462,7 @@ export function crearRutasAuth(deps: DependenciasAuth): Hono {
       const tokens = await emitirParDeTokens(cliente, usuario, { aud: "web" });
       await registrarEventoAuth(cliente, { usuarioId: usuario.id, tenantId: usuario.tenant_id, tipo: `login_${opciones.proveedor}_exitoso` });
       fijarCookieRefresh(c, tokens.refreshToken, { segura: cookieSegura, maxAgeMs: DURACION_REFRESH_TOKEN_MS });
-      fijarCookieCsrf(c, generarValorAleatorio(16), { segura: cookieSegura, maxAgeMs: DURACION_REFRESH_TOKEN_MS });
+      fijarCookieCsrf(c, derivarTokenCsrf(tokens.refreshToken, jwtSecret), { segura: cookieSegura, maxAgeMs: DURACION_REFRESH_TOKEN_MS });
     });
   }
 
@@ -620,7 +621,7 @@ export function crearRutasAuth(deps: DependenciasAuth): Hono {
   // ---------------------------------------------------------------------
   // Refresh — rotación con detección de reutilización (revoca familia).
   // ---------------------------------------------------------------------
-  app.post("/refresh", verificarCsrf(), async (c) => {
+  app.post("/refresh", verificarCsrf(jwtSecret), async (c) => {
     const cuerpo = CuerpoRefreshExtendido.parse(await c.req.json().catch(() => ({})));
     const refreshTokenCrudo = cuerpo.refreshToken ?? obtenerCookieRefresh(c);
     if (!refreshTokenCrudo) {
@@ -708,7 +709,7 @@ export function crearRutasAuth(deps: DependenciasAuth): Hono {
   // ---------------------------------------------------------------------
   // Logout — revoca un refresh token (cookie o cuerpo).
   // ---------------------------------------------------------------------
-  app.post("/logout", verificarCsrf(), async (c) => {
+  app.post("/logout", verificarCsrf(jwtSecret), async (c) => {
     const cuerpo = CuerpoRefreshExtendido.parse(await c.req.json().catch(() => ({})));
     const refreshTokenCrudo = cuerpo.refreshToken ?? obtenerCookieRefresh(c);
     if (!refreshTokenCrudo) {
@@ -935,7 +936,7 @@ export function crearRutasAuth(deps: DependenciasAuth): Hono {
   // rutas públicas que NO deben exigir autenticación — se prefiere ser
   // explícito en cada ruta antes que depender de ese orden.
   const auth1 = requiereAutenticacion(jwtSecret);
-  const auth2 = verificarCsrf();
+  const auth2 = verificarCsrf(jwtSecret);
 
   app.post("/cambiar-password", auth1, auth2, async (c) => {
     const auth = c.get("auth");

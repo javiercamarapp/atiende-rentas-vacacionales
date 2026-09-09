@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { jwtVerify, SignJWT } from "jose";
 import type { ColaboradorNivel, RolUsuario } from "../contrato/tipos.js";
 
@@ -112,4 +112,48 @@ export function generarRefreshToken(): { token: string; hash: string } {
 
 export function hashearRefreshToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
+}
+
+// --- CSRF de doble envío ligado criptográficamente a la sesión (A3-AUTH-02) ---
+//
+// `rv_csrf` YA NO es un valor aleatorio independiente (como antes,
+// `generarValorAleatorio(16)` en cada emisión de sesión): se deriva como
+// HMAC-SHA256 del `refreshToken` de ESA sesión concreta, con una subclave
+// propia derivada de `JWT_SECRET` (nunca el secreto crudo directamente,
+// para no reutilizar la misma clave HMAC entre dominios de uso distintos
+// — firma de JWT vs. derivación de CSRF). Efecto: el token CSRF válido
+// para una sesión es *función* de su refresh token, así que:
+//   - Un CSRF robado/fijado por otra vía (p. ej. "cookie tossing" desde
+//     un subdominio hermano, ver A3-AUTH-02) para una sesión NUNCA es
+//     válido combinado con el refresh cookie de otra sesión — antes
+//     `verificarCsrf()` solo comparaba cookie===cabecera, sin mirar la
+//     sesión en absoluto.
+//   - Un atacante que fija un valor `rv_csrf` de su elección (y el mismo
+//     valor en la cabecera `X-CSRF-Token`, que sí puede controlar en una
+//     petición cross-site) ya no pasa la verificación: el servidor
+//     recalcula el HMAC a partir del `rv_refresh` real que trae la
+//     petición y exige que coincida — sin conocer `JWT_SECRET`, un
+//     atacante no puede producir ese valor por mucho que controle cookie
+//     y cabecera a la vez.
+function derivarSubclaveCsrf(secretoEnv: string): Buffer {
+  return createHmac("sha256", secretoEnv).update("rv_csrf:subclave:v1").digest();
+}
+
+/** Calcula el valor de `rv_csrf` correcto para un `refreshToken` dado. Se
+ * usa tanto al emitir la cookie (`entregarSesion`) como al verificarla
+ * (`verificarCsrf`) — nunca se guarda en BD, es puramente derivado. */
+export function derivarTokenCsrf(refreshToken: string, secretoEnv: string): string {
+  const subclave = derivarSubclaveCsrf(secretoEnv);
+  return createHmac("sha256", subclave).update(refreshToken).digest("hex");
+}
+
+/** Compara en tiempo constante (evita side-channel de timing sobre la
+ * longitud/contenido del token CSRF) el valor candidato contra el
+ * esperado para el `refreshToken` de la sesión actual. */
+export function csrfTokenValidoParaRefresh(candidato: string, refreshToken: string, secretoEnv: string): boolean {
+  const esperado = derivarTokenCsrf(refreshToken, secretoEnv);
+  const bufCandidato = Buffer.from(candidato);
+  const bufEsperado = Buffer.from(esperado);
+  if (bufCandidato.length !== bufEsperado.length) return false;
+  return timingSafeEqual(bufCandidato, bufEsperado);
 }
