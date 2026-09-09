@@ -5,7 +5,9 @@ import EmbeddedPostgres from "embedded-postgres";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { aplicarMigraciones, migraciones, type EjecutorSql } from "@atiende-rv/db";
+import { FLAG_AGENTES_HABILITADO } from "@atiende-rv/domain/agentes";
 import { crearApp } from "../../src/app.js";
+import { registroFlagsAgentesInstancia } from "../../src/agentes/servicio.js";
 import { crearEmpresaGestora, crearOwner, crearPropiedad, crearTenant, crearUnidad, crearUsuario } from "../soporte/fixtures.js";
 
 /**
@@ -474,6 +476,88 @@ describe("plantillas (H-056): solo aprobadas por el tenant pueden programarse", 
       }),
     );
     expect(programarDespues.status).toBe(201);
+  });
+});
+
+/**
+ * fix/mensajeria-nativa-por-canal (auditoría de producción 2026-09-09):
+ * conecta el motor de intención real de Lote 9 (`invocarRondaAgente` →
+ * `EjecutorTools` → `proveedorClaude.ts` si el flag+API key están
+ * habilitados para el tenant, o `ProveedorLLMSimulado` si no) a esta MISMA
+ * cola de aprobación humana vía `usarIa: true` — antes de este fix, el
+ * único generador conectado a `borrador_mensaje` era el determinista
+ * `GeneradorBorradorPlantillas` y el motor de intención real solo
+ * respondía en `POST /agentes/unidades/:unidadId/mensajes`, sin insertar
+ * nada en la cola de aprobación.
+ */
+describe("usarIa: motor de intención real conectado a la cola de aprobación humana", () => {
+  it("usarIa=true con agentes.habilitado=false responde 403 agentes_deshabilitado, no genera ningún borrador", async () => {
+    const { accessToken } = await login(fx.emailAdmin, fx.passwordAdmin);
+    const conversacionId = await crearConversacion(accessToken!, "booking");
+
+    const res = await app.request(
+      `/mensajeria/conversaciones/${conversacionId}/borradores`,
+      autenticado(accessToken!, { method: "POST", body: JSON.stringify({ usarIa: true }) }),
+    );
+    expect(res.status).toBe(403);
+    const cuerpo = (await res.json()) as { error: { codigo: string } };
+    expect(cuerpo.error.codigo).toBe("agentes_deshabilitado");
+
+    const filas = await pool.query(`SELECT id FROM borrador_mensaje WHERE conversacion_id = $1`, [conversacionId]);
+    expect(filas.rows).toHaveLength(0);
+  });
+
+  describe("con agentes.habilitado activo para el tenant", () => {
+    beforeAll(async () => {
+      await superusuario.query(
+        `INSERT INTO agente_cuota_tenant (tenant_id, techo_tokens_periodo, techo_llamadas_periodo) VALUES ($1, 1000000, 1000)
+         ON CONFLICT (tenant_id) DO NOTHING`,
+        [fx.tenantId],
+      );
+      registroFlagsAgentesInstancia().establecer({
+        flagId: FLAG_AGENTES_HABILITADO,
+        valor: true,
+        tenantId: fx.tenantId,
+        actor: "test-mensajeria-nativa",
+        motivo: "habilitar para pruebas de integración de usarIa",
+      });
+    });
+
+    it("genera un borrador real (generadoPor='agente_llm'), pendiente de aprobación, y sigue el mismo flujo de aprobar/enviar de siempre", async () => {
+      const { accessToken } = await login(fx.emailAdmin, fx.passwordAdmin);
+      const conversacionId = await crearConversacion(accessToken!, "booking");
+
+      const entrante = await app.request(
+        `/mensajeria/conversaciones/${conversacionId}/mensajes`,
+        autenticado(accessToken!, {
+          method: "POST",
+          body: JSON.stringify({ texto: "¿Cuál es la clave del wifi?", origen: "canal" }),
+        }),
+      );
+      expect(entrante.status).toBe(201);
+      const { id: mensajeEntranteId } = (await entrante.json()) as { id: string };
+
+      const borrador = await app.request(
+        `/mensajeria/conversaciones/${conversacionId}/borradores`,
+        autenticado(accessToken!, { method: "POST", body: JSON.stringify({ usarIa: true, mensajeEntranteId }) }),
+      );
+      expect(borrador.status).toBe(201);
+      const cuerpoBorrador = (await borrador.json()) as { id: string; texto: string; generadoPor: string; estado: string };
+      expect(cuerpoBorrador.generadoPor).toBe("agente_llm");
+      expect(cuerpoBorrador.estado).toBe("pendiente_aprobacion");
+      expect(typeof cuerpoBorrador.texto).toBe("string");
+      expect(cuerpoBorrador.texto.length).toBeGreaterThan(0);
+
+      // Nunca se auto-envía: sigue exactamente el mismo camino de
+      // aprobación humana que un borrador determinista.
+      const aprobar = await app.request(
+        `/mensajeria/borradores/${cuerpoBorrador.id}/aprobar`,
+        autenticado(accessToken!, { method: "POST" }),
+      );
+      expect(aprobar.status).toBe(200);
+      const cuerpoAprobado = (await aprobar.json()) as { estado: string };
+      expect(cuerpoAprobado.estado).toBe("enviado");
+    });
   });
 });
 

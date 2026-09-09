@@ -85,6 +85,7 @@ import { migracion0126FacturacionMrr } from "./0126_facturacion_mrr.js";
 import { migracion0127RateLimitBucket } from "./0127_rate_limit_bucket.js";
 import { migracion0128DelegacionServicioSistema } from "./0128_delegacion_servicio_sistema.js";
 import { migracion0129FacturacionOrdenWebhook } from "./0129_facturacion_orden_webhook.js";
+import { migracion0130MensajeriaBorradorAgenteLlm } from "./0130_mensajeria_borrador_agente_llm.js";
 
 // Orden fijo, nunca reordenar migraciones ya aplicadas en algún entorno
 // (patrón expand/contract real llega en Lote 10 — H-088). Cada lote
@@ -215,4 +216,7 @@ export const migraciones: Migracion[] = [
   // aplicado (Stripe entrega webhooks fuera de orden por diseño). Ver
   // comentario de cabecera en 0129_facturacion_orden_webhook.ts.
   migracion0129FacturacionOrdenWebhook,
+  // 0130: fix/mensajeria-nativa-por-canal — ver comentario de cabecera en
+  // 0130_mensajeria_borrador_agente_llm.ts.
+  migracion0130MensajeriaBorradorAgenteLlm,
 ];

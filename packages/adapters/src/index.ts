@@ -103,6 +103,25 @@ export type {
   EstadoReservaBookingOta,
   ReservaSimuladaComoOta,
 } from "./booking/otaXml.js";
+// Mensajería nativa de Booking.com (fix/mensajeria-nativa-por-canal) — ver
+// cabecera de `./booking/mensajeria.ts` para el estado "NO VERIFICADO
+// contra el proveedor real" y qué credenciales hacen falta.
+export {
+  BookingMessagingClient,
+  BookingMessagingChannelAdapter,
+  ErrorClienteBookingMensajeria,
+  ErrorHostNoPermitidoBooking,
+  MensajeriaBookingFaltaIdentificadorExternoError,
+  CAPACIDADES_BOOKING_MENSAJERIA,
+  HOST_AUTENTICACION_BOOKING_MENSAJERIA,
+  HOST_MENSAJERIA_BOOKING,
+  ACCEPT_VERSION_MENSAJERIA_BOOKING,
+} from "./booking/mensajeria.js";
+export type {
+  CredencialesBookingMensajeria,
+  MensajeEntranteBookingApi,
+  OpcionesClienteBookingMensajeria,
+} from "./booking/mensajeria.js";
 
 // Lote 3.4 (RV22, Fase 3): canales de distribución usados en México.
 export {

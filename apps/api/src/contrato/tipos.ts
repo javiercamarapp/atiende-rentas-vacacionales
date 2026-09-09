@@ -571,7 +571,13 @@ export type CuerpoCrearConversacion = z.infer<typeof CuerpoCrearConversacion>;
 // interprete como comando, solo el texto tal cual llegó.
 export const CuerpoRegistrarMensajeEntrante = z.object({
   texto: z.string().min(1).max(8000),
-  origen: z.enum(["simulador", "manual"]),
+  // "canal": el mensaje llegó de verdad vía un adaptador real (Lote
+  // "mensajería nativa por canal", ver
+  // `packages/adapters/src/booking/mensajeria.ts`) — nunca lo declara un
+  // huésped ni un tercero sin autenticar: esta ruta ya exige
+  // `exigirPuedeGestionarMensajeria(auth)`, así que solo un operador/
+  // proceso interno autenticado puede marcar un mensaje como "de canal".
+  origen: z.enum(["canal", "simulador", "manual"]),
   idioma: z.enum(["es", "en"]).default("es"),
 });
 export type CuerpoRegistrarMensajeEntrante = z.infer<typeof CuerpoRegistrarMensajeEntrante>;
@@ -581,6 +587,15 @@ export const CuerpoCrearBorrador = z.object({
   // de una plantilla programada (H-056), sin mensaje entrante disparador.
   mensajeEntranteId: z.string().uuid().optional(),
   reservaConfirmada: z.boolean().default(false),
+  // fix/mensajeria-nativa-por-canal: cuando es `true`, el borrador se genera
+  // con el motor de intención real (Lote 9, `EjecutorTools` + `proveedorClaude`
+  // si el flag+API key están habilitados para el tenant, o el proveedor
+  // simulado si no) en vez de `GeneradorBorradorPlantillas` — sigue
+  // aterrizando en `pendiente_aprobacion`, nunca se envía sin aprobación
+  // humana (D-006). Si el tenant tiene `agentes.habilitado` en `false`,
+  // la ruta responde `agentes_deshabilitado` en vez de degradar en
+  // silencio al motor determinista.
+  usarIa: z.boolean().default(false),
 });
 export type CuerpoCrearBorrador = z.infer<typeof CuerpoCrearBorrador>;
 
@@ -621,7 +636,7 @@ export const BorradorMensajeContrato = z.object({
   texto: z.string(),
   canalCodigo: CanalMensajeriaContrato,
   estado: EstadoBorradorContrato,
-  generadoPor: z.enum(["motor_borrador", "plantilla", "manual"]),
+  generadoPor: z.enum(["motor_borrador", "plantilla", "manual", "agente_llm"]),
   redactado: z.boolean(),
   necesitaEscalamiento: z.boolean().optional(),
   aprobadoPor: z.string().uuid().nullable(),

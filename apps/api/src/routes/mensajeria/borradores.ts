@@ -15,6 +15,7 @@ import {
   type ContextoBorrador,
 } from "@atiende-rv/domain";
 import { SimuladorMensajeria } from "@atiende-rv/sim";
+import { agentesHabilitadoParaTenant, invocarRondaAgente } from "../../agentes/servicio.js";
 import { CuerpoCrearBorrador, CuerpoRechazarBorrador, ErrorDominio } from "../../contrato/tipos.js";
 import { conSesion } from "../../db/contexto.js";
 import { requiereAutenticacion } from "../../middleware/autenticacion.js";
@@ -38,6 +39,14 @@ function traducirErrorMensajeria(error: unknown): ErrorDominio {
 
 interface FilaContexto {
   canal_codigo: CanalMensajeriaCodigo;
+  // Solo necesarios para construir el `ToolContext` del motor de intención
+  // real cuando `usarIa: true` (fix/mensajeria-nativa-por-canal) — D-008:
+  // estos identificadores SIEMPRE se resuelven aquí, en el servidor, a
+  // partir de la conversación autenticada, nunca del cuerpo de la request.
+  unidad_id: string;
+  propiedad_id: string;
+  huesped_id: string | null;
+  ocupacion_unidad_id: string | null;
   propiedad_nombre: string;
   huesped_nombre: string | null;
   fecha_check_in: string | null;
@@ -47,6 +56,10 @@ interface FilaContexto {
 
 const CONTEXTO_SELECT = `
   ca.codigo AS canal_codigo,
+  u.id AS unidad_id,
+  p.id AS propiedad_id,
+  h.id AS huesped_id,
+  c.ocupacion_unidad_id AS ocupacion_unidad_id,
   p.nombre AS propiedad_nombre,
   h.nombre AS huesped_nombre,
   lower(o.rango)::text AS fecha_check_in,
@@ -76,6 +89,23 @@ export function crearRutasBorradores(pool: pg.Pool, jwtSecret: string): Hono {
     const conversacionId = c.req.param("conversacionId");
     const cuerpo = CuerpoCrearBorrador.parse(await c.req.json().catch(() => ({})));
 
+    // fix/mensajeria-nativa-por-canal: `usarIa` conecta el motor de
+    // intención REAL de Lote 9 (`invocarRondaAgente` → `EjecutorTools` →
+    // `proveedorClaude.ts` si está habilitado, o el proveedor simulado si
+    // no) a esta misma cola de aprobación humana — mismo chequeo de flag
+    // que `POST /agentes/unidades/:unidadId/mensajes`, para no degradar en
+    // silencio al motor determinista cuando un operador pidió
+    // explícitamente el motor de IA.
+    if (cuerpo.usarIa) {
+      if (!auth.tenantId) throw new ErrorDominio("recurso_no_encontrado", "Sesión sin tenant asociado");
+      if (!agentesHabilitadoParaTenant(auth.tenantId)) {
+        throw new ErrorDominio(
+          "agentes_deshabilitado",
+          "La automatización agéntica está desactivada para este tenant (flag agentes.habilitado)",
+        );
+      }
+    }
+
     const resultado = await conSesion(pool, sesionDeAuth(auth), async (cliente) => {
       const contexto = await cliente.query<FilaContexto>(
         `SELECT ${CONTEXTO_SELECT}
@@ -99,6 +129,68 @@ export function crearRutasBorradores(pool: pg.Pool, jwtSecret: string): Hono {
         );
         if (mensaje.rows.length === 0) throw new ErrorDominio("recurso_no_encontrado", "Mensaje entrante no encontrado");
         textoEntrada = mensaje.rows[0]!.texto;
+      }
+
+      if (cuerpo.usarIa) {
+        // Motor de intención real (Lote 9): la MISMA orquestación que
+        // `POST /agentes/unidades/:unidadId/mensajes` (loop-guard, cuota,
+        // matriz rol×tool, defensa de "confirmación no verificada" — ver
+        // `packages/domain/src/agentes/ejecutor.ts`), aquí conectada por
+        // primera vez a `borrador_mensaje` en vez de devolver la salida
+        // cruda al llamador sin pasar por la cola de aprobación.
+        const resultadoAgente = await invocarRondaAgente(cliente, process.env, {
+          contexto: {
+            tenantId: auth.tenantId!,
+            unidadId: fila.unidad_id,
+            propiedadId: fila.propiedad_id,
+            huespedId: fila.huesped_id,
+            reservaId: fila.ocupacion_unidad_id,
+            conversationId: conversacionId,
+            canal: fila.canal_codigo,
+          },
+          actor: { usuarioId: auth.usuarioId, rol: auth.rol, colaboradorNivel: auth.colaboradorNivel },
+          mensajeHuesped: textoEntrada ? { origen: "mensaje_huesped", texto: textoEntrada } : null,
+          contextoResumen: {
+            propiedadNombre: fila.propiedad_nombre,
+            fechaCheckIn: fila.fecha_check_in,
+            fechaCheckOut: fila.fecha_check_out,
+          },
+        });
+
+        if (resultadoAgente.tipo === "presupuesto_agotado") {
+          throw new ErrorDominio("cuota_ia_agotada", resultadoAgente.mensaje);
+        }
+        if (resultadoAgente.tipo === "bloqueado") {
+          throw new ErrorDominio("tool_bloqueada", resultadoAgente.mensaje, { motivo: resultadoAgente.motivo });
+        }
+        // D-006/D-007: la tool de propuesta (`mensajeria_proponer_borrador`)
+        // NUNCA envía nada por sí misma — devuelve texto que esta ruta
+        // inserta como 'pendiente_aprobacion', exactamente igual que el
+        // camino determinista de abajo. Si el modelo invocó una tool
+        // distinta (ej. consultar disponibilidad) para esta ronda, su
+        // salida no es texto de respuesta al huésped — se rechaza
+        // explícitamente en vez de insertarla como si lo fuera.
+        if (typeof resultadoAgente.salida !== "string" || resultadoAgente.salida.length === 0) {
+          throw new ErrorDominio(
+            "validacion",
+            "El motor de intención no produjo un borrador de texto para este mensaje (probablemente invocó " +
+              "una tool distinta a mensajeria_proponer_borrador) — genera el borrador manualmente o reintenta",
+          );
+        }
+
+        const insertadoAgente = await cliente.query<FilaBorrador>(
+          `INSERT INTO borrador_mensaje (conversacion_id, mensaje_entrante_id, canal_codigo, texto, generado_por)
+           VALUES ($1, $2, $3, $4, 'agente_llm')
+           RETURNING ${BORRADOR_SELECT}`,
+          [conversacionId, cuerpo.mensajeEntranteId ?? null, fila.canal_codigo, resultadoAgente.salida],
+        );
+        return {
+          fila: insertadoAgente.rows[0]!,
+          generado: {
+            necesitaEscalamiento: resultadoAgente.necesitaEscalamiento,
+            senales: resultadoAgente.motivoEscalamiento ? [resultadoAgente.motivoEscalamiento] : [],
+          },
+        };
       }
 
       const ctxBorrador: ContextoBorrador = {

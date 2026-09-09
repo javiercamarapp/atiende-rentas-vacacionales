@@ -63,4 +63,11 @@ export type {
   ResultadoMarcarEnviado,
 } from "./colaAprobacion.js";
 
-export type { CanalMensajeria, ResultadoEnvioMensaje, EntradaEnviarMensajeAprobado } from "./canalMensajeria.js";
+export type {
+  CanalMensajeria,
+  ResultadoEnvioMensaje,
+  EntradaEnviarMensajeAprobado,
+  CanalMensajeriaEntrante,
+  MensajeCanalEntrante,
+  ResultadoRecepcionMensajes,
+} from "./canalMensajeria.js";
