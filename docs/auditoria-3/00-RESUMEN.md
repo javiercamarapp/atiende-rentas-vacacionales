@@ -17,8 +17,16 @@ Con esto, el estado real de `main` en este momento es:
   A3-AUTH-01 (severidad Alto) y A3-AUTH-02, A3-DESP-01, A3-NOTIF-01, A3-NOTIF-02
   (severidad Medio).
 - **Sin fix iniciado, quedan como deuda documentada, no bloqueante**: A3-FACT-01
-  (orden de webhooks de Stripe), A3-AUTH-03 (SOSPECHA, no confirmado), A3-NOTIF-03
-  (bajo, sin reintentos, decisión de diseño declarada).
+  (orden de webhooks de Stripe), A3-NOTIF-03 (bajo, sin reintentos, decisión de
+  diseño declarada).
+- **A3-AUTH-03 reproducido y descartado (9-sep-2026, rama
+  `fix/auth03-carrera-invitacion`)**: repro real con `Promise.all` contra
+  `embedded-postgres` confirma que la carrera NO produce doble alta — el índice
+  único `usuario_email_key` la previene de forma robusta. Ver
+  `docs/auditoria-3/seguridad-auth.md` sección A3-AUTH-03 para el detalle técnico
+  y `tests/auditoria-3/auth/carreraInvitacion.test.ts` para el repro (ahora test de
+  regresión permanente). Sin código de producción cambiado — no había bug que
+  corregir.
 
 ### Condiciones para desplegar a Supabase hoy (adicionales a los 6 requisitos de la
 sección "Requisitos para Supabase" más abajo, que siguen vigentes sin cambio)
@@ -53,8 +61,9 @@ sección "Requisitos para Supabase" más abajo, que siguen vigentes sin cambio)
   (regresión de Fase 2) **no se re-ejecutaron en ninguna sesión de esta auditoría**
   — sigue pendiente, no se tocó en esta sesión de cierre tampoco (fuera del alcance
   dado: solo se pidió re-verificar `apps/api` unit+integration).
-- A3-AUTH-03 sigue como SOSPECHA sin repro — no se intentó reproducir en esta sesión
-  de cierre (fuera del alcance dado).
+- A3-AUTH-03 se reprodujo y se descartó como riesgo real en una sesión posterior
+  (9-sep-2026, rama `fix/auth03-carrera-invitacion`) — ver detalle en
+  `docs/auditoria-3/seguridad-auth.md`.
 
 ## 1) Re-verificación de la alerta de la suite de `apps/api` (2026-09-09)
 
@@ -159,8 +168,6 @@ consolidar la lista priorizada A3-nn con severidades definitivas.
 - Completar la muestra de ≥30 historias `H-096+` contra código real (hoy ~23
   verificadas en profundidad vía los otros rubros).
 - Resolver A3-FACT-01 (orden de webhooks de Stripe) — sin fix iniciado todavía.
-- Confirmar/descartar A3-AUTH-03 (SOSPECHA, carrera en aceptación de invitación) con
-  un repro real contra Postgres.
 - Decidir sobre A3-NOTIF-03 (sin reintentos de webhook saliente) — declarado
   no-bloqueante por diseño, decisión de producto pendiente de ratificar.
 - Vercel: el repo despliega a producción en cada push a `main` vía la integración
@@ -168,7 +175,7 @@ consolidar la lista priorizada A3-nn con severidades definitivas.
   `ignoreCommand` en `vercel.json` para `docs/**`-only si se quiere evitar deploys
   innecesarios (ver sección de bloqueo de push arriba).
 
-### Tabla consolidada de hallazgos A3-nn (9 confirmados + 1 sospecha), por severidad
+### Tabla consolidada de hallazgos A3-nn (10 confirmados/descartados), por severidad
 
 | ID | Severidad | Rubro | Resumen | Repro | Estado en `main` HOY (2026-09-09) |
 |---|---|---|---|---|---|
@@ -180,7 +187,7 @@ consolidar la lista priorizada A3-nn con severidades definitivas.
 | A3-NOTIF-01 | Medio | Notificaciones | Firma HMAC de webhook saliente sin componente de tiempo (sin anti-replay estructural, a diferencia de Stripe) | Verificado por lectura (`packages/domain/src/notificaciones/webhookFirma.ts`) | **CERRADO** — firma liga `timestamp` con tolerancia de 300s (`TOLERANCIA_TIMESTAMP_SEGUNDOS`); fusionado en `main`, replay confirmado bloqueado por ataque real del auditor |
 | A3-NOTIF-02 | Medio | Notificaciones | Clave de cifrado del secreto de webhook sin fail-closed en producción (cae a clave efímera con solo `console.warn`) | Verificado por lectura (`apps/api/src/workers/notificaciones/cifradoSecreto.ts:19-38`) | **CERRADO** — reutiliza `exigeSecretosExplicitos` (mismo criterio que JWT/cifrado de canal): lanza en producción si falta la clave; fusionado en `main` |
 | A3-FACT-01 | Medio | Facturación | Webhook de Stripe no ordena eventos distintos por tiempo — evento viejo puede reactivar suscripción cancelada | `tests/auditoria-3/facturacion/webhookFueraDeOrden.test.ts` (PASA) | **PENDIENTE** — sin rama de fix iniciada |
-| A3-AUTH-03 | SOSPECHA | Auth | Posible carrera en aceptación de invitación (doble alta, no account-takeover) | No reproducido — declarado SOSPECHA | **PENDIENTE** — sin confirmar, sin fix |
+| A3-AUTH-03 | Descartado | Auth | Posible carrera en aceptación de invitación (doble alta, no account-takeover) | `tests/auditoria-3/auth/carreraInvitacion.test.ts` (PASA) — repro real N=2 y N=5 vía `Promise.all` contra la API real | **CERRADO SIN CÓDIGO** — confirmado SIN riesgo real: `usuario_email_key` (índice único, migración 0003) impide la doble alta en todas las corridas; sin fix de producción porque no hay bug de seguridad que corregir (detalle en `docs/auditoria-3/seguridad-auth.md`) |
 | A3-NOTIF-03 | Bajo | Notificaciones | Sin reintentos/backoff en entrega de webhook saliente (best-effort declarado) | Verificado por lectura | **PENDIENTE / decisión de producto** — declarado no-bloqueante por diseño |
 
 **Lectura del veredicto:** de los 3 hallazgos de severidad **Alto**, los 3 (100%)
