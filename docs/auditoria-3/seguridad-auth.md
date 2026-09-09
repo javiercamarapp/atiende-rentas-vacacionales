@@ -71,28 +71,47 @@ MFA, invitaciones) y se marcan como SOSPECHA los puntos no verificados con repro
   de intentos por email de `/auth/login`; documentar explícitamente el riesgo en
   `docs/despliegue/README.md` si se decide no resolverlo antes de producción.
 
-### A3-AUTH-02 — MEDIO — Token CSRF de doble envío no ligado criptográficamente a la sesión
+### A3-AUTH-02 — MEDIO — Token CSRF de doble envío no ligado criptográficamente a la sesión — **CORREGIDO**
 
+- **Estado:** corregido. `rv_csrf` ya NO es un valor aleatorio independiente: se deriva
+  como HMAC-SHA256 del `refreshToken` de esa sesión concreta, con una subclave propia
+  derivada de `JWT_SECRET` (`derivarTokenCsrf`/`csrfTokenValidoParaRefresh`,
+  `apps/api/src/seguridad/jwt.ts`) — nunca el secreto crudo directamente, para no reutilizar
+  la misma clave HMAC entre dominios de uso distintos (firma de JWT vs. derivación de CSRF).
+  `verificarCsrf(jwtSecret)` (`apps/api/src/middleware/cookiesAuth.ts`) ahora recibe el
+  secreto de servidor y recalcula el HMAC esperado a partir del `rv_refresh` REAL que trae
+  la petición, exigiendo que tanto la cookie `rv_csrf` como la cabecera `X-CSRF-Token`
+  coincidan con ese valor (comparación en tiempo constante,
+  `timingSafeEqual`) — ya no basta con que cookie y cabecera coincidan solo entre sí.
+  `entregarSesion`/el callback OIDC (`apps/api/src/routes/auth.ts`) fijan `rv_csrf` con
+  `derivarTokenCsrf(tokens.refreshToken, jwtSecret)` en vez de `generarValorAleatorio(16)`.
+- **Repro actualizado:** `tests/auditoria-3/auth/csrfNoLigadoASesion.test.ts` — PASA (6
+  tests). Confirma: (1) el par legítimo csrf+refresh de una misma sesión sigue aceptándose;
+  (2) la combinación cruzada del hallazgo original (CSRF de la sesión A + refresh de la
+  sesión B) que ANTES pasaba (200) ahora se RECHAZA (403 `csrf_invalido`); (3) el vector de
+  explotación real descrito abajo ("cookie tossing": un atacante fija su propio valor,
+  igual en cookie y cabecera, sobre el `rv_refresh` real de la víctima) también se rechaza,
+  porque ese valor no es el HMAC correcto y el atacante no conoce `JWT_SECRET` para
+  producirlo; (4)/(5) `derivarTokenCsrf`/`csrfTokenValidoParaRefresh` no aceptan un token
+  calculado con un secreto o un refresh token distintos. La suite de integración existente
+  (`test/integration/authExtendido.test.ts`, que ejercita el flujo real login→CSRF
+  real→refresh con cookies HTTP reales) sigue en verde con el nuevo esquema.
+- **Hallazgo original (contexto, ya no vigente):**
 - **Archivo:** `apps/api/src/middleware/cookiesAuth.ts:59-95`; emisión en
   `apps/api/src/routes/auth.ts:269,453` (`fijarCookieCsrf(c, generarValorAleatorio(16), ...)`).
-- **Problema:** `rv_csrf` es un valor aleatorio puro, sin relación (HMAC) con `rv_refresh`
-  ni con ningún identificador de sesión server-side. `verificarCsrf()` solo compara
-  `cookie rv_csrf === header X-CSRF-Token`, nunca verifica que ese CSRF se haya emitido
-  junto con la sesión que trae la petición.
-- **Repro:** `tests/auditoria-3/auth/csrfNoLigadoASesion.test.ts` — PASA. Se emiten dos
-  pares de cookies para dos "sesiones" distintas (A y B) y se demuestra que combinar el
-  refresh de B con el CSRF de A (más la cabecera igual al CSRF de A) pasa la verificación
-  sin error. Salida real: `1 passed`.
-- **Impacto:** por sí solo el doble-envío sigue mitigando CSRF cross-site clásico (un
+- **Problema:** `rv_csrf` era un valor aleatorio puro, sin relación (HMAC) con `rv_refresh`
+  ni con ningún identificador de sesión server-side. `verificarCsrf()` solo comparaba
+  `cookie rv_csrf === header X-CSRF-Token`, nunca verificaba que ese CSRF se hubiera emitido
+  junto con la sesión que traía la petición.
+- **Impacto:** por sí solo el doble-envío seguía mitigando CSRF cross-site clásico (un
   atacante en otro origen no puede leer `rv_csrf` por same-origin policy). El riesgo
-  adicional exigiría una vía secundaria para que el atacante fije `rv_csrf` en el
+  adicional exigía una vía secundaria para que el atacante fijara `rv_csrf` en el
   navegador de la víctima (cookie no es `httpOnly` a propósito) — p. ej. "cookie tossing"
   desde un subdominio hermano vulnerable, o cabeceras `Set-Cookie` inyectables en algún
   otro endpoint del mismo dominio registrable. No se encontró tal vía en este repo, por lo
-  que el riesgo hoy es teórico/defensa en profundidad, no explotable de forma aislada.
-- **Corrección sugerida:** derivar `rv_csrf` como HMAC del `refreshToken`/`familiaId` con
-  una clave de servidor (o firmar el token con `jwt.ts`), para que un CSRF cookie robado o
-  fijado por otra vía nunca sea válido para una sesión distinta a la que lo emitió.
+  que el riesgo era teórico/defensa en profundidad, no explotable de forma aislada — pero el
+  hallazgo real (la falta de ligadura criptográfica) se cierra con esta corrección, no solo
+  se documenta.
 
 ### A3-AUTH-03 — SOSPECHA (no confirmado) — Posible carrera en aceptación de invitación
 
