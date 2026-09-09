@@ -2,26 +2,20 @@
 
 ## VEREDICTO FINAL (2026-09-09, sesión de cierre)
 
-**APTO para producción con Supabase, CONDICIONADO.** Ninguno de los 9 hallazgos de
-esta auditoría es, por severidad individual, un bloqueante de "no lanzar nunca", y
-las dos condiciones que sí se consideraban innegociables antes de aceptar
-pagos/usuarios reales (A3-FACT-03, A3-AUTH-01) **ya están corregidas y fusionadas en
-`main` hoy** — verificado por lectura de código (`apps/api/src/app.ts:76-90`,
-`apps/api/src/routes/auth.ts:62,194`) y por la suite completa en verde (ver abajo).
+**APTO para producción con Supabase.** Ninguno de los 9 hallazgos de esta
+auditoría es, por severidad individual, un bloqueante de "no lanzar nunca". Los 3
+de severidad **Alto** (A3-FACT-02, A3-FACT-03, A3-AUTH-01) y los 4 de severidad
+**Medio** con fix escrito (A3-AUTH-02, A3-DESP-01, A3-NOTIF-01, A3-NOTIF-02) están
+**todos corregidos, auditados de forma adversarial de forma independiente (con
+ataque real ejecutado por el auditor contra el código pre-fix y post-fix en
+A3-AUTH-02 y A3-NOTIF-01) y fusionados en `main`** — verificado por lectura de
+código y por la suite completa en verde (ver abajo).
 
 Con esto, el estado real de `main` en este momento es:
 
-- **Ya no bloqueante para producción**: A3-FACT-03 (PagosSimulado sin fail-closed) y
-  A3-AUTH-01 (rate limit de MFA no distribuido) — ambos corregidos y en `main`
-  (commits `eb9fd0b`, `20555c3`).
-- **Siguen abiertos en `main` HOY** (código en ramas `fix/*` sin fusionar, NO
-  reflejado todavía en lo que correría en producción si se desplegara este commit):
-  A3-AUTH-02 (CSRF no ligado a sesión), A3-DESP-01 (cron banaliza "romper cristal"),
-  A3-NOTIF-01 (HMAC sin timestamp), A3-NOTIF-02 (clave de cifrado sin fail-closed).
-  Ninguno de los cuatro es, por sí solo, razón para bloquear un primer despliegue —
-  son defensa en profundidad / higiene operativa — pero **no están en `main`
-  todavía** y este veredicto no se los atribuye hasta que esas 4 ramas se fusionen y
-  se re-verifiquen.
+- **Cerrados y fusionados en `main`** (7 de 9 hallazgos): A3-FACT-02, A3-FACT-03,
+  A3-AUTH-01 (severidad Alto) y A3-AUTH-02, A3-DESP-01, A3-NOTIF-01, A3-NOTIF-02
+  (severidad Medio).
 - **Sin fix iniciado, quedan como deuda documentada, no bloqueante**: A3-FACT-01
   (orden de webhooks de Stripe), A3-AUTH-03 (SOSPECHA, no confirmado), A3-NOTIF-03
   (bajo, sin reintentos, decisión de diseño declarada).
@@ -181,21 +175,19 @@ consolidar la lista priorizada A3-nn con severidades definitivas.
 | A3-FACT-02 | **Alto** | Facturación | Carrera TOCTOU en límite de plan: 2 altas concurrentes contra límite=1 crean 2 unidades | `tests/auditoria-3/facturacion/limitePlanRace.test.ts` (PASA) | **CERRADO** — advisory lock transaccional (`pg_advisory_xact_lock`) en `apps/api/src/routes/facturacionLimites.ts`, commit `eb9fd0b`, fusionado en `main` |
 | A3-FACT-03 | **Alto** | Facturación | `PagosSimulado` es el fallback silencioso en producción si faltan credenciales de Stripe, sin fail-closed ni aviso en UI | Verificado por lectura (`apps/api/src/app.ts:79-82` original) | **CERRADO** — `apps/api/src/app.ts:76-90` ahora lanza en `entorno === "production"` si faltan las credenciales, commit `eb9fd0b`, fusionado en `main` |
 | A3-AUTH-01 | **Alto** | Auth | Rate limiting en memoria, no distribuido — ineficaz en Vercel serverless; único freno de `/mfa/verificar` | `tests/auditoria-3/auth/rateLimitNoDistribuido.test.ts` (PASA) | **CERRADO** — `LimitadorVentanaPostgres` sobre tabla `rate_limit_bucket`, `apps/api/src/routes/auth.ts:62,194`, commit `20555c3`, fusionado en `main` |
-| A3-AUTH-02 | Medio | Auth | Token CSRF de doble envío no ligado criptográficamente a la sesión | `tests/auditoria-3/auth/csrfNoLigadoASesion.test.ts` (PASA) | **PENDIENTE DE MERGE** — fix en rama `fix/auth02-csrf`, no fusionada; en `main` hoy el hallazgo sigue vigente |
-| A3-DESP-01 | Medio | Despliegue | Cron de sync iCal se auto-otorga "romper cristal" a todos los tenants cada 15 min, desensibilizando esa señal de auditoría | Verificado por lectura (`apps/api/src/rutas/internas/cronSync.ts:26-51`) | **PENDIENTE DE MERGE** — fix en rama `fix/desp01-cron-romper-cristal`, no fusionada; en `main` hoy el hallazgo sigue vigente |
-| A3-NOTIF-01 | Medio | Notificaciones | Firma HMAC de webhook saliente sin componente de tiempo (sin anti-replay estructural, a diferencia de Stripe) | Verificado por lectura (`packages/domain/src/notificaciones/webhookFirma.ts`) | **PENDIENTE DE MERGE** — fix en rama `fix/notif01-hmac-timestamp`, no fusionada; en `main` hoy el hallazgo sigue vigente |
-| A3-NOTIF-02 | Medio | Notificaciones | Clave de cifrado del secreto de webhook sin fail-closed en producción (cae a clave efímera con solo `console.warn`) | Verificado por lectura (`apps/api/src/workers/notificaciones/cifradoSecreto.ts:19-38`) | **PENDIENTE DE MERGE** — fix en rama `fix/notif02-clave-cifrado-failclosed`, no fusionada; en `main` hoy el hallazgo sigue vigente |
+| A3-AUTH-02 | Medio | Auth | Token CSRF de doble envío no ligado criptográficamente a la sesión | `tests/auditoria-3/auth/csrfNoLigadoASesion.test.ts` (PASA) | **CERRADO** — `rv_csrf` ahora es HMAC-SHA256 del `refreshToken` real de la sesión (`derivarTokenCsrf`), cierra cruce de sesión y cookie-tossing; fusionado en `main`, auditoría adversarial con ataque real ejecutado por el auditor |
+| A3-DESP-01 | Medio | Despliegue | Cron de sync iCal se auto-otorga "romper cristal" a todos los tenants cada 15 min, desensibilizando esa señal de auditoría | Verificado por lectura (`apps/api/src/rutas/internas/cronSync.ts:26-51`) | **CERRADO** — delegación de servicio de sistema dedicada (migración `0128`), separada del canal de romper-cristal humano; fusionado en `main` |
+| A3-NOTIF-01 | Medio | Notificaciones | Firma HMAC de webhook saliente sin componente de tiempo (sin anti-replay estructural, a diferencia de Stripe) | Verificado por lectura (`packages/domain/src/notificaciones/webhookFirma.ts`) | **CERRADO** — firma liga `timestamp` con tolerancia de 300s (`TOLERANCIA_TIMESTAMP_SEGUNDOS`); fusionado en `main`, replay confirmado bloqueado por ataque real del auditor |
+| A3-NOTIF-02 | Medio | Notificaciones | Clave de cifrado del secreto de webhook sin fail-closed en producción (cae a clave efímera con solo `console.warn`) | Verificado por lectura (`apps/api/src/workers/notificaciones/cifradoSecreto.ts:19-38`) | **CERRADO** — reutiliza `exigeSecretosExplicitos` (mismo criterio que JWT/cifrado de canal): lanza en producción si falta la clave; fusionado en `main` |
 | A3-FACT-01 | Medio | Facturación | Webhook de Stripe no ordena eventos distintos por tiempo — evento viejo puede reactivar suscripción cancelada | `tests/auditoria-3/facturacion/webhookFueraDeOrden.test.ts` (PASA) | **PENDIENTE** — sin rama de fix iniciada |
 | A3-AUTH-03 | SOSPECHA | Auth | Posible carrera en aceptación de invitación (doble alta, no account-takeover) | No reproducido — declarado SOSPECHA | **PENDIENTE** — sin confirmar, sin fix |
 | A3-NOTIF-03 | Bajo | Notificaciones | Sin reintentos/backoff en entrega de webhook saliente (best-effort declarado) | Verificado por lectura | **PENDIENTE / decisión de producto** — declarado no-bloqueante por diseño |
 
 **Lectura del veredicto:** de los 3 hallazgos de severidad **Alto**, los 3 (100%)
-están cerrados y fusionados en `main` hoy. De los 5 de severidad **Medio**, 4 tienen
-fix escrito pero sin fusionar (código real, en ramas `fix/*`, pendiente de merge —
-NO es "sin corregir", es "corregido pero no desplegable todavía") y 1
-(A3-FACT-01) no tiene fix iniciado. Ninguno de los pendientes es, por severidad
-individual, razón para bloquear un primer despliegue a Supabase, pero deben
-fusionarse/resolverse antes de dar la Fase 3 por cerrada de forma definitiva.
+están cerrados y fusionados en `main`. De los 5 de severidad **Medio**, 4 (80%)
+están cerrados y fusionados (A3-AUTH-02, A3-DESP-01, A3-NOTIF-01, A3-NOTIF-02) y 1
+(A3-FACT-01) no tiene fix iniciado — queda como deuda documentada, no bloqueante
+para un primer despliegue a Supabase.
 
 ### Verificado como correcto (regresión + Fase 3), no repetir como pendiente
 

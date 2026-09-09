@@ -88,14 +88,23 @@ export async function enviarWebhookFirmado(
   }
 
   const serializado = serializarPayloadWebhook(payload);
-  const firma = encabezadoFirmaWebhook(firmarPayloadWebhook(secretoHmac, serializado));
+  // A3-NOTIF-01: timestamp de ENVÍO (no `payload.emitidoEn`, que es dato
+  // de negocio) como componente estructural de la firma — anti-replay,
+  // mismo algoritmo que Stripe. Viaja en su propio header para que el
+  // receptor pueda reproducir exactamente `${timestamp}.${cuerpo}`.
+  const timestampEnvio = Math.floor(Date.now() / 1000);
+  const firma = encabezadoFirmaWebhook(firmarPayloadWebhook(secretoHmac, timestampEnvio, serializado));
 
   const controlador = new AbortController();
   const temporizador = setTimeout(() => controlador.abort(), timeoutMs);
   try {
     const respuesta = await fetchReal(urlValidada.toString(), {
       method: "POST",
-      headers: { "content-type": "application/json", "x-atiende-signature": firma },
+      headers: {
+        "content-type": "application/json",
+        "x-atiende-signature": firma,
+        "x-atiende-timestamp": String(timestampEnvio),
+      },
       body: serializado,
       redirect: "manual",
       signal: controlador.signal,

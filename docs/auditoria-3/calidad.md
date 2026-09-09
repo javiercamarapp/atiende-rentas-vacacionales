@@ -6,9 +6,34 @@ límite de tiempo de esta sesión — ver `00-RESUMEN.md` para el estado de tras
 
 ## Hallazgos — Notificaciones / Webhooks salientes (H-054)
 
-### A3-NOTIF-01 — MEDIO — Firma HMAC del webhook saliente sin componente de tiempo (sin anti-replay estructural)
+### A3-NOTIF-01 — MEDIO — Firma HMAC del webhook saliente sin componente de tiempo (sin anti-replay estructural) — **CORREGIDO**
 
-- **Archivo:** `packages/domain/src/notificaciones/webhookFirma.ts:14-36`.
+- **Estado:** corregido. `firmarPayloadWebhook`/`verificarFirmaWebhook`
+  (`packages/domain/src/notificaciones/webhookFirma.ts`) ahora firman
+  `"${timestampUnixSegundos}.${payloadSerializado}"` — el timestamp de ENVÍO es
+  componente ESTRUCTURAL de la cadena firmada, exactamente el mismo algoritmo que
+  este repo ya implementaba correctamente para Stripe
+  (`packages/domain/src/facturacion/pagos/stripe.ts`,
+  `verificarYParsearWebhook`/`TOLERANCIA_TIMESTAMP_SEGUNDOS`). `webhookSaliente.ts`
+  genera el timestamp en el momento del envío (`Math.floor(Date.now() / 1000)`,
+  nunca el `emitidoEn` del payload, que es dato de negocio) y lo manda en un header
+  dedicado (`x-atiende-timestamp`), junto a `x-atiende-signature`.
+  `verificarFirmaWebhook` rechaza (`false`, nunca lanza) cualquier timestamp fuera
+  de `TOLERANCIA_TIMESTAMP_SEGUNDOS` (5 min, mismo valor que Stripe) ANTES de tocar
+  la firma — una firma criptográficamente correcta pero de un timestamp viejo (una
+  repetición) se rechaza igual.
+- **Repro real de replay:** `packages/domain/test/notificaciones/webhookFirma.test.ts`
+  ("REPLAY: una firma+timestamp VÁLIDOS pero más viejos que la tolerancia se
+  RECHAZAN, aunque el HMAC en sí sea correcto" + prueba de borde de tolerancia +
+  timestamp del futuro) y
+  `apps/api/test/notificaciones/webhookSaliente.test.ts` ("A3-NOTIF-01 (REPLAY): un
+  timestamp+firma real y VÁLIDO en el momento del envío deja de verificar como
+  válido fuera de la ventana de tolerancia" — captura los headers/body reales que
+  produce `enviarWebhookFirmado` y confirma que los mismos bytes, repetidos 10
+  minutos después, ya no verifican). Las dos suites completas PASAN (11 tests en
+  `webhookFirma.test.ts`, 9 en `webhookSaliente.test.ts`).
+- **Hallazgo original** (antes de la corrección), por lectura:
+  `packages/domain/src/notificaciones/webhookFirma.ts:14-36`.
 - **Problema:** a diferencia del patrón de Stripe (que el propio repo replica
   correctamente en `packages/domain/src/facturacion/pagos/stripe.ts` — timestamp
   dentro de la cadena firmada + tolerancia de 5 min), el header
