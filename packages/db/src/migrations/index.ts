@@ -82,6 +82,7 @@ import { migracion0123FacturacionRls } from "./0123_facturacion_rls.js";
 import { migracion0124FacturacionWebhook } from "./0124_facturacion_webhook.js";
 import { migracion0125FacturacionWebhookLookup } from "./0125_facturacion_webhook_lookup.js";
 import { migracion0126FacturacionMrr } from "./0126_facturacion_mrr.js";
+import { migracion0127RateLimitBucket } from "./0127_rate_limit_bucket.js";
 
 // Orden fijo, nunca reordenar migraciones ya aplicadas en algún entorno
 // (patrón expand/contract real llega en Lote 10 — H-088). Cada lote
@@ -193,4 +194,10 @@ export const migraciones: Migracion[] = [
   migracion0124FacturacionWebhook,
   migracion0125FacturacionWebhookLookup,
   migracion0126FacturacionMrr,
+  // 0127: A3-AUTH-01 (docs/auditoria-3/seguridad-auth.md) — backend de
+  // rate-limit persistido en Postgres para POST /auth/mfa/verificar
+  // (el limitador en memoria de rateLimit.ts no sobrevive cold starts en
+  // el despliegue serverless real). Ver comentario de cabecera en
+  // 0127_rate_limit_bucket.ts.
+  migracion0127RateLimitBucket,
 ];

@@ -25,6 +25,12 @@ export interface ConfiguracionApi {
    * independiente del límite genérico por IP — evita fuerza bruta contra
    * una sola cuenta desde múltiples IPs/proxies. */
   rateLimitLoginPorEmail: { ventanaMs: number; maximo: number };
+  /** A3-AUTH-01 (docs/auditoria-3/seguridad-auth.md): límite de
+   * POST /auth/mfa/verificar (segundo factor), persistido en Postgres
+   * (rate_limit_bucket, migración 0127) — a diferencia de
+   * rateLimitLoginPorEmail, en memoria, este debe sobrevivir cold starts
+   * serverless. Ver apps/api/src/seguridad/rateLimitPostgres.ts. */
+  rateLimitMfaVerificar: { ventanaMs: number; maximo: number };
   /** Base pública de esta API (Lote 11B, corrección #3: URL de
    * exportación iCal) — usada SOLO para componer la URL absoluta del feed
    * `.ics` que se le muestra al usuario; la ruta pública en sí
@@ -226,6 +232,14 @@ export function cargarConfiguracion(env: NodeJS.ProcessEnv = process.env): Confi
     rateLimitLoginPorEmail: {
       ventanaMs: Number.parseInt(env.RATE_LIMIT_LOGIN_EMAIL_VENTANA_MS ?? "900000", 10),
       maximo: Number.parseInt(env.RATE_LIMIT_LOGIN_EMAIL_MAXIMO ?? "20", 10),
+    },
+    // A3-AUTH-01: por defecto, la misma ventana que la vida del mfaToken
+    // (DURACION_MFA_PENDIENTE_SEGUNDOS = 5 min, seguridad/jwt.ts) — un
+    // mfaToken vencido obliga a un login nuevo de todos modos, así que no
+    // tiene sentido una ventana de rate-limit más larga que su propia vida.
+    rateLimitMfaVerificar: {
+      ventanaMs: Number.parseInt(env.RATE_LIMIT_MFA_VERIFICAR_VENTANA_MS ?? "300000", 10),
+      maximo: Number.parseInt(env.RATE_LIMIT_MFA_VERIFICAR_MAXIMO ?? "5", 10),
     },
     urlPublicaApi: env.API_PUBLIC_URL ?? `http://localhost:${Number.parseInt(env.PORT ?? "8787", 10)}`,
     google: {

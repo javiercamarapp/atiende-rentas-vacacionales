@@ -13,8 +13,34 @@ MFA, invitaciones) y se marcan como SOSPECHA los puntos no verificados con repro
 
 ## Hallazgos
 
-### A3-AUTH-01 — ALTO — Rate limiting en memoria, no distribuido: ineficaz en Vercel serverless
+### A3-AUTH-01 — ALTO — Rate limiting en memoria, no distribuido: ineficaz en Vercel serverless — **CORREGIDO**
 
+- **Estado:** corregido. `POST /auth/mfa/verificar` ahora usa `LimitadorVentanaPostgres`
+  (`apps/api/src/seguridad/rateLimitPostgres.ts`), con el contador persistido en la tabla
+  `rate_limit_bucket` (`packages/db/src/migrations/0127_rate_limit_bucket.ts`) en vez de un
+  `Map` en memoria — sobrevive cold starts porque vive en Postgres, igual que el bloqueo de
+  cuenta de `/auth/login`. Clave doble: por `usuario_id` (identificador fuerte, ligado al
+  `mfaToken` firmado — un atacante no puede rotarlo) y por IP (`ipHashDeRequest`, defensa
+  adicional). El incremento es atómico (`INSERT ... ON CONFLICT DO UPDATE` protegido por el
+  lock de fila de Postgres), verificado con un test de concurrencia real (10 intentos
+  simultáneos desde dos pools de conexión distintos contra la misma clave, `maximo=5`: exactamente
+  5 permitidos y 5 bloqueados, nunca más). Limpieza perezosa/probabilística
+  (`rate_limit_limpiar_expirados`, ~1% de las llamadas) evita que la tabla crezca sin límite
+  sin requerir un cron dedicado. Config: `RATE_LIMIT_MFA_VERIFICAR_VENTANA_MS`/
+  `RATE_LIMIT_MFA_VERIFICAR_MAXIMO` (por defecto 5 intentos / 5 min, la misma ventana que la
+  vida del `mfaToken`).
+- **Repro actualizado:** `tests/auditoria-3/auth/rateLimitNoDistribuido.test.ts` — PASA (4
+  tests). El bloque original (limitador GENÉRICO en memoria, `LimitadorVentana`/
+  `crearRateLimit`) se conserva sin cambios de fondo: sigue sin ser distribuido, por diseño,
+  como defensa en profundidad — pero ya NO es el único freno de una ruta sensible. Un bloque
+  nuevo reproduce el mismo experimento "dos instancias / cold starts" contra
+  `LimitadorVentanaPostgres`, con dos `pg.Pool` independientes (simulando dos contenedores
+  serverless distintos) apuntando al mismo backend Postgres real (`embedded-postgres`,
+  mismas migraciones que producción): agotar el límite en la "instancia A" bloquea de
+  inmediato a la "instancia B", sin esperar la ventana — lo opuesto exacto del bug original.
+  Confirmado además que `test/integration/authExtendido.test.ts` (flujo MFA completo, HTTP
+  real) sigue en verde con el nuevo límite activo.
+- **Hallazgo original (contexto, ya no vigente para MFA):**
 - **Archivo:** `apps/api/src/seguridad/rateLimit.ts:41-64` (clase `LimitadorVentana`, `Map` en memoria del proceso).
 - **Uso crítico:** protege `/auth/login` (`limitadorPorEmail`, `auth.ts:478`) y, sobre todo,
   `POST /mfa/verificar` (segundo factor TOTP de 6 dígitos, `auth.ts:542-595`), que **no tiene
