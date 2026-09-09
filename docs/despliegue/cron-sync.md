@@ -54,78 +54,111 @@ que este documento se entere.
 - **`CRON_SYNC_SUPERADMIN_ID`** — UUID de un usuario ya existente con
   `usuario.rol = 'superadmin'` y `activo = true`. Ver la sección
   siguiente para el porqué. Sin esta variable (o si el id no resuelve a
-  un superadmin activo), el endpoint responde **500 explícito** — nunca
-  un 200 fingido con `{procesados: 0}` silencioso.
+  un superadmin activo, o no tiene delegación de servicio activa), el
+  endpoint responde **500 explícito** — nunca un 200 fingido con
+  `{procesados: 0}` silencioso.
 
 Ambas están documentadas en `apps/api/.env.example`.
 
-## Cómo lee canales de todos los tenants (⚠️ requiere revisión humana)
+## Cómo lee canales de todos los tenants
 
 `apps/api` se conecta a Postgres como el rol `app_rv`
 (`packages/db/src/migrations/0012_rol_aplicacion.ts`): `NOSUPERUSER
 NOBYPASSRLS`, con Row-Level Security `FORCE`ado en toda tabla de negocio.
 Desde la migración `0061_acceso_romper_cristal.ts` (H-075/H-076), un
 `superadmin` **dejó de ser miembro honorario** de cualquier tenant que no
-sea el suyo — `is_tenant_member(...)` exige una fila vigente en
-`acceso_romper_cristal` (motivo + ventana temporal, auditada) por cada
-tenant al que quiera acceder. Sin una concesión así, `unidad_canal_feed`/
-`cuenta_canal`/`unidad`/`propiedad` devuelven **0 filas** para cualquier
-identidad — superadmin incluido.
+sea el suyo — `is_tenant_member(...)` exige, para tenants de negocio,
+o bien una concesión humana vigente en `acceso_romper_cristal`, o bien
+(desde `0128_delegacion_servicio_sistema.ts`, A3-DESP-01) una delegación
+de servicio activa en `delegacion_servicio_sistema`. Sin ninguna de las
+dos, `unidad_canal_feed`/`cuenta_canal`/`unidad`/`propiedad` devuelven
+**0 filas** para cualquier identidad — superadmin incluido.
 
-No existe en el esquema actual ninguna función `SECURITY DEFINER` que
-haga este fan-out cross-tenant sin pasar por RLS (la forma "correcta" a
-largo plazo sería añadir una vía una migración nueva — fuera del alcance
-del paquete que construyó este endpoint, que no toca
-`packages/db/migrations/**`). Así que `crearProveedorSesionPostgres`
-(`cronSync.ts`) usa el único mecanismo que el esquema ya expone:
+### A3-DESP-01: por qué ya NO usa `acceso_romper_cristal`
 
-1. Fija la sesión RLS con la identidad `CRON_SYNC_SUPERADMIN_ID`.
-2. Verifica con `rol_actual()` (función `SECURITY DEFINER` ya otorgada a
-   `app_rv`) que esa identidad de verdad resuelve a un superadmin activo
-   — si no, lanza antes de tocar cualquier tabla de negocio.
-3. **Se auto-otorga** una concesión "romper cristal" a **todos los
-   tenants a la vez** (una sola sentencia `INSERT ... SELECT FROM
-   tenant`), con:
-   - `motivo` fijo y distinguible como generado por el sistema
-     (`MOTIVO_ROMPER_CRISTAL_CRON` en el código — nunca se confunde con
-     un "romper cristal" humano real en el panel de back office).
-   - `alcance = 'cron_sync_ical'`.
-   - Vigencia de 5 minutos (`MINUTOS_VIGENCIA_GRANT_CRON`) — bastante más
-     holgada que el presupuesto de 22s del propio lote, solo como
-     respaldo si el paso 5 no llega a ejecutarse (crash del proceso).
-4. Lee y procesa los canales activos usando esa misma sesión/conexión.
-5. **Revoca explícitamente** la concesión al terminar (`cerrar()`), tanto
-   en éxito como en fallo.
-
-### El tradeoff
-
-Este mecanismo (`acceso_romper_cristal`) fue diseñado para accesos
+Versión original de este cron: cada corrida se AUTO-OTORGABA, con la
+identidad `CRON_SYNC_SUPERADMIN_ID`, una concesión `acceso_romper_cristal`
+a **todos los tenants a la vez**, la usaba, y la revocaba explícitamente
+al terminar. `acceso_romper_cristal` fue diseñado para accesos
 **humanos, raros, justificados y con ventana corta** — el panel de back
 office lo usa así (un superadmin explica por qué necesita ver un tenant
 concreto, por cuánto tiempo, y queda auditado). Usarlo para un cron que
-corre **cada 15 minutos, para siempre, sobre todos los tenants** cambia
-su naturaleza: convierte un control de excepción en parte de la
-operación rutinaria del sistema, y genera una fila nueva en
-`acceso_romper_cristal`/`auditoria_mutacion` por tenant en cada corrida.
+corre **cada 15 minutos, para siempre** convertía un control de
+excepción en ruido rutinario: un humano auditando el panel de "romper
+cristal" tenía que aprender a filtrar filas del cron para no perder de
+vista una excepción real — exactamente el tipo de banalización de una
+señal de auditoría de emergencia que este diseño debía evitar.
 
-Mitigaciones ya aplicadas en el código:
-- El motivo es literal y grepeable (`[sistema] cron automático...`),
-  así que un humano auditando el log distingue de inmediato una fila del
-  cron de una intervención real.
-- La ventana de vigencia es corta (5 min) y se revoca explícitamente al
-  terminar — nunca queda una concesión "abierta" más tiempo del
-  necesario.
-- El endpoint solo se activa con `CRON_SECRET` configurado — no hay
-  forma de disparar este flujo desde fuera de Vercel Cron sin el secreto.
+`0128_delegacion_servicio_sistema.ts` separa los dos casos:
 
-**Antes de activar `CRON_SYNC_SUPERADMIN_ID` en producción**, alguien con
-autoridad sobre el diseño de seguridad debe decidir explícitamente si
-este tradeoff es aceptable, o si prefiere invertir en la alternativa
-correcta a largo plazo: una migración nueva (`packages/db/migrations/`)
-con una función `SECURITY DEFINER` dedicada (mismo patrón que
-`backoffice_metricas_tenants`, `packages/db/src/migrations/0063_backoffice_metricas_tenant.ts`)
-que haga el fan-out cross-tenant sin tocar `acceso_romper_cristal` en
-absoluto.
+1. **`delegacion_servicio_sistema`** — el acceso cross-tenant del cron no
+   es una excepción caso-por-caso: es una delegación **estable**,
+   conocida de antemano ("la identidad X sincroniza calendarios de todos
+   los tenants, siempre, mientras este despliegue exista"). Es una fila
+   persistente (sin `expira_en` que se recree por corrida) que **solo un
+   operador con acceso directo a Postgres puede crear o revocar** — la
+   tabla NO tiene política INSERT/UPDATE/DELETE para `app_rv`, así que ni
+   este endpoint ni ninguna otra ruta de `apps/api` puede auto-otorgarse
+   la delegación. `is_tenant_member` la reconoce como membresía de
+   cualquier tenant mientras siga activa (`revocado_en IS NULL`).
+2. **`auditoria_ejecucion_servicio_sistema`** — el mecanismo de auditoría
+   DEDICADO para el uso real de esa delegación: cada corrida inserta una
+   fila con el resumen del lote (tenants alcanzados, feeds procesados/
+   con error/pendientes). Vive separado de `acceso_romper_cristal` y de
+   `auditoria_mutacion` a propósito, para que revisar "romper cristal"
+   siga mostrando solo excepciones humanas reales, y revisar "¿qué tocó
+   el cron?" tenga su propio lugar sin mezclar ambas señales.
+
+`crearProveedorSesionPostgres` (`cronSync.ts`) hoy:
+
+1. Fija la sesión RLS con la identidad `CRON_SYNC_SUPERADMIN_ID`.
+2. Verifica con `rol_actual()` que esa identidad de verdad resuelve a un
+   superadmin activo — si no, lanza antes de tocar cualquier tabla de
+   negocio.
+3. Verifica que exista una fila activa en `delegacion_servicio_sistema`
+   para esa identidad y el servicio `cron_sync_ical` — si no, lanza
+   (fail-closed) con instrucciones de cómo crearla (ver más abajo). Esta
+   verificación NUNCA crea ni modifica esa fila.
+4. Lee y procesa los canales activos usando esa misma sesión/conexión.
+5. Al terminar (`cerrar()`), inserta la fila de resumen en
+   `auditoria_ejecucion_servicio_sistema` — nunca toca
+   `acceso_romper_cristal`.
+
+### Delegación de servicio del cron (acción operativa única)
+
+Antes de activar `CRON_SYNC_SUPERADMIN_ID` en un despliegue nuevo, un
+operador con acceso directo a Postgres (el mismo rol con el que corren
+las migraciones, no `app_rv`) debe crear la delegación una sola vez:
+
+```sql
+INSERT INTO delegacion_servicio_sistema (servicio, superadmin_id, motivo)
+VALUES (
+  'cron_sync_ical',
+  '<CRON_SYNC_SUPERADMIN_ID>',
+  'Delegación estable para GET /internal/cron/sync-ical — sincroniza ' ||
+  'configuración de canal iCal de todos los tenants cada 15 minutos.'
+);
+```
+
+Para retirarla (rotar de identidad, desactivar el cron permanentemente):
+
+```sql
+UPDATE delegacion_servicio_sistema
+SET revocado_en = now()
+WHERE servicio = 'cron_sync_ical' AND revocado_en IS NULL;
+```
+
+Consultar el historial de uso real (auditoría dedicada, no mezclada con
+`acceso_romper_cristal`):
+
+```sql
+SELECT iniciado_en, finalizado_en, tenants_alcanzados, feeds_procesados,
+       feeds_error, feeds_pendientes
+FROM auditoria_ejecucion_servicio_sistema
+WHERE servicio = 'cron_sync_ical'
+ORDER BY iniciado_en DESC
+LIMIT 20;
+```
 
 ## Comportamiento del lote
 

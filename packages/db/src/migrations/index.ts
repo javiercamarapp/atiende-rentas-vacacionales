@@ -83,6 +83,7 @@ import { migracion0124FacturacionWebhook } from "./0124_facturacion_webhook.js";
 import { migracion0125FacturacionWebhookLookup } from "./0125_facturacion_webhook_lookup.js";
 import { migracion0126FacturacionMrr } from "./0126_facturacion_mrr.js";
 import { migracion0127RateLimitBucket } from "./0127_rate_limit_bucket.js";
+import { migracion0128DelegacionServicioSistema } from "./0128_delegacion_servicio_sistema.js";
 
 // Orden fijo, nunca reordenar migraciones ya aplicadas en algún entorno
 // (patrón expand/contract real llega en Lote 10 — H-088). Cada lote
@@ -200,4 +201,11 @@ export const migraciones: Migracion[] = [
   // el despliegue serverless real). Ver comentario de cabecera en
   // 0127_rate_limit_bucket.ts.
   migracion0127RateLimitBucket,
+  // 0128: A3-DESP-01 (docs/despliegue/cron-sync.md) — el cron de sync
+  // iCal deja de reutilizar acceso_romper_cristal (humano) para su
+  // acceso cross-tenant rutinario; delegacion_servicio_sistema +
+  // auditoria_ejecucion_servicio_sistema son su propio canal, separado y
+  // dedicado. Ver comentario de cabecera en
+  // 0128_delegacion_servicio_sistema.ts.
+  migracion0128DelegacionServicioSistema,
 ];
