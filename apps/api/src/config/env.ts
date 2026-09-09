@@ -145,7 +145,14 @@ function leerEntorno(valor: string | undefined): ConfiguracionApi["entorno"] {
  * exige secretos explícitos (fail-closed), nunca se trata como desarrollo. */
 const ENTORNOS_CON_SECRETOS_RELAJADOS = new Set(["development", "desarrollo", "test", "pruebas", "dev", "testing"]);
 
-function exigeSecretosExplicitos(valorCrudoNodeEnv: string | undefined): boolean {
+/** Exportada (A3-NOTIF-02, docs/auditoria-3/calidad.md) para que
+ * `apps/api/src/workers/notificaciones/cifradoSecreto.ts` clasifique el
+ * entorno con el MISMO criterio que `resolverJwtSecret`/
+ * `resolverCifradoCanalClaves` en vez de reimplementarlo — esa clave de
+ * cifrado se lee directo de `process.env` en cada llamada (fuera de
+ * `cargarConfiguracion()`), pero la decisión de qué cuenta como
+ * "productivo" debe ser una sola en todo el proceso. */
+export function exigeSecretosExplicitos(valorCrudoNodeEnv: string | undefined): boolean {
   if (valorCrudoNodeEnv === undefined) return false;
   return !ENTORNOS_CON_SECRETOS_RELAJADOS.has(normalizarEntornoTexto(valorCrudoNodeEnv));
 }
