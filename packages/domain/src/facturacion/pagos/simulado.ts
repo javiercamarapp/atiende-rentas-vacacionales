@@ -55,6 +55,7 @@ export class PagosSimulado implements AdaptadorPagos {
       suscripcionExternaId: `sub_sim_${randomUUID()}`,
       checkoutSessionId: id,
       eventoId: `evt_sim_${randomUUID()}`,
+      creadoEnEpoch: Math.floor(Date.now() / 1000),
     });
     const url = new URL(params.urlExito);
     url.searchParams.set("sesion", id);

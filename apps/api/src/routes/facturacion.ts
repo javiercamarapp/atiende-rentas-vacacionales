@@ -439,12 +439,20 @@ export function crearRutasFacturacion(deps: DependenciasFacturacion): Hono {
       return c.json({ recibido: true, ignorado: true, motivo: "cliente_externo_sin_tenant" });
     }
 
-    await pool.query("SELECT facturacion_registrar_pago($1, 'stripe', $2, $3, $4, $5)", [
+    // A3-FACT-01: `evento.creadoEnEpoch` (epoch del campo `created` de
+    // Stripe) deja que facturacion_registrar_pago() ignore un evento
+    // NUEVO que llegó fuera de orden cronológico respecto al último ya
+    // aplicado — ver comentario de cabecera de la migración
+    // 0129_facturacion_orden_webhook.ts. `?? null` cuando el proveedor no
+    // lo trae: la función SQL cae a su propio DEFAULT (aplica de todas
+    // formas, no puede ordenar lo que no tiene).
+    await pool.query("SELECT facturacion_registrar_pago($1, 'stripe', $2, $3, $4, $5, $6)", [
       tenantId,
       evento.eventoId,
       evento.clienteExternoId,
       evento.suscripcionExternaId,
       estado,
+      evento.creadoEnEpoch ?? null,
     ]);
 
     return c.json({ recibido: true });

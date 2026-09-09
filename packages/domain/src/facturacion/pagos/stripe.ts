@@ -173,6 +173,9 @@ export class PagosStripe implements AdaptadorPagos {
     const evento = JSON.parse(params.cuerpoCrudo) as {
       id: string;
       type: string;
+      /** Epoch (segundos) — Stripe SIEMPRE lo incluye en eventos reales;
+       * opcional aquí solo porque algunos fixtures de prueba lo omiten. */
+      created?: number;
       data: { object: Record<string, unknown> };
     };
     const objeto = evento.data.object as {
@@ -187,6 +190,7 @@ export class PagosStripe implements AdaptadorPagos {
       suscripcionExternaId: objeto.subscription ?? (evento.type.startsWith("customer.subscription") ? objeto.id ?? null : null),
       checkoutSessionId: evento.type === "checkout.session.completed" ? objeto.id : undefined,
       eventoId: evento.id,
+      creadoEnEpoch: typeof evento.created === "number" ? evento.created : undefined,
     };
   }
 }

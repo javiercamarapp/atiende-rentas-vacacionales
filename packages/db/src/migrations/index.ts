@@ -84,6 +84,7 @@ import { migracion0125FacturacionWebhookLookup } from "./0125_facturacion_webhoo
 import { migracion0126FacturacionMrr } from "./0126_facturacion_mrr.js";
 import { migracion0127RateLimitBucket } from "./0127_rate_limit_bucket.js";
 import { migracion0128DelegacionServicioSistema } from "./0128_delegacion_servicio_sistema.js";
+import { migracion0129FacturacionOrdenWebhook } from "./0129_facturacion_orden_webhook.js";
 
 // Orden fijo, nunca reordenar migraciones ya aplicadas en algún entorno
 // (patrón expand/contract real llega en Lote 10 — H-088). Cada lote
@@ -208,4 +209,10 @@ export const migraciones: Migracion[] = [
   // dedicado. Ver comentario de cabecera en
   // 0128_delegacion_servicio_sistema.ts.
   migracion0128DelegacionServicioSistema,
+  // 0129: A3-FACT-01 (docs/auditoria-3/facturacion-onboarding.md) —
+  // facturacion_registrar_pago() ya no pisa el estado de suscripcion_tenant
+  // con un evento de webhook cronológicamente más viejo que el último ya
+  // aplicado (Stripe entrega webhooks fuera de orden por diseño). Ver
+  // comentario de cabecera en 0129_facturacion_orden_webhook.ts.
+  migracion0129FacturacionOrdenWebhook,
 ];

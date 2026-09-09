@@ -38,6 +38,14 @@ export interface EventoWebhookPago {
    * reintentos de webhook (idempotencia, ver `apps/api/src/routes/
    * facturacion.ts`). */
   eventoId: string;
+  /** Epoch (segundos) del campo `created` del evento en el proveedor —
+   * usado para IGNORAR (sin perder idempotencia) un evento nuevo que
+   * llega fuera de orden cronológico respecto al último ya aplicado
+   * (A3-FACT-01, ver migración 0129_facturacion_orden_webhook.ts).
+   * `undefined` si el proveedor/fixture no lo trae — la función SQL
+   * trata la ausencia como "aplicar de todas formas" (no puede
+   * comparar lo que no tiene). */
+  creadoEnEpoch?: number;
 }
 
 export class ErrorFirmaWebhookInvalida extends Error {
