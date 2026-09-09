@@ -130,3 +130,5 @@
 2026-09-08 21:53:46 | DESPERTAR | auditoría-3 activa (4 agentes: auditor + 3 sub); sin acción
 2026-09-08 21:57:42 | 429 | auditor #49 cortado en regresiones; reanudado
 2026-09-08 22:30:39 | REANUDACION | #49 secuencial; sub-auditores muertos por estancamiento
+2026-09-08 22:55:33 | DESPERTAR | comprobando auditoría-3 secuencial
+2026-09-08 23:06:40 | TRASPASO | orquestación cedida a otra sesión; cron 95b67309 eliminado; bucle detenido

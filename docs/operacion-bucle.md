@@ -40,3 +40,6 @@ Reanudar desde `docs/PROGRESO.md` (último paso), `docs/BLOQUEOS.md`, `docs/AGEN
 ## Parada del bucle — 2026-09-06 08:08
 - Condición 1 satisfecha: cierre auditado de Fase 2 aprobado (docs/auditoria-2/00-SINTESIS.md), sin defectos críticos/altos abiertos, evidencia de alcance en docs/logs, docs/capturas y pruebas. Lo no cerrable es exclusivamente externo (B-001..B-005).
 - Acciones: `ScheduleWakeup(stop:true)`, `CronDelete 71e0bad6`, `PushNotification` al usuario, entrada final en docs/PROGRESO.md.
+
+## Traspaso — 2026-09-08 23:00
+- La orquestación de Fase 3 pasa a la sesión que corre en `~/Desktop/supabase/rentas` (a petición del usuario, comunicada por esa sesión). Cron `95b67309` eliminado; bucle dinámico detenido. Esta sesión no vuelve a empujar a main salvo el cierre del auditor #49 (docs/auditoria-3).
