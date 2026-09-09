@@ -156,6 +156,7 @@ export function crearApp(opciones: OpcionesCrearApp = {}) {
       politicaContrasenaHibp: config.politicaContrasenaHibp,
       bloqueoCuenta: config.bloqueoCuenta,
       entorno: config.entorno,
+      rateLimitMfaVerificar: config.rateLimitMfaVerificar,
     },
   });
 

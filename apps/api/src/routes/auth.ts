@@ -59,6 +59,7 @@ import {
   type CodigoRecuperacionAlmacenado,
 } from "../seguridad/totp.js";
 import { LimitadorVentana, type OpcionesRateLimit } from "../seguridad/rateLimit.js";
+import { LimitadorVentanaPostgres, type OpcionesRateLimitPostgres } from "../seguridad/rateLimitPostgres.js";
 import type { ColaboradorNivel, RolUsuario } from "../contrato/tipos.js";
 
 // S-13 (docs/auditoria-2/seguridad.md): hash "señuelo" con el mismo
@@ -151,6 +152,11 @@ export interface DependenciasAuth {
   keyring: KeyringCifradoCanal;
   correo: InterfazCorreo;
   rateLimitLoginPorEmail: OpcionesRateLimit;
+  /** A3-AUTH-01: límite del segundo factor (POST /auth/mfa/verificar),
+   * persistido en Postgres (rate_limit_bucket, migración 0127) — a
+   * diferencia de rateLimitLoginPorEmail (en memoria), este SÍ debe
+   * sobrevivir cold starts serverless. Ver seguridad/rateLimitPostgres.ts. */
+  rateLimitMfaVerificar: OpcionesRateLimitPostgres;
   urlPublicaApi: string;
   urlPublicaWeb: string;
   google: { clientId: string | null; clientSecret: string | null; redirectUri: string | null };
@@ -167,6 +173,7 @@ export function crearRutasAuth(deps: DependenciasAuth): Hono {
     keyring,
     correo,
     rateLimitLoginPorEmail,
+    rateLimitMfaVerificar,
     urlPublicaApi,
     urlPublicaWeb,
     google,
@@ -181,6 +188,10 @@ export function crearRutasAuth(deps: DependenciasAuth): Hono {
   // S-06: límite adicional por email/usuario, independiente del rate
   // limit genérico por IP (apps/api/src/seguridad/rateLimit.ts).
   const limitadorPorEmail = new LimitadorVentana(rateLimitLoginPorEmail);
+  // A3-AUTH-01: límite del segundo factor persistido en Postgres — SIN
+  // esto, el único freno de /mfa/verificar era el rate limit genérico por
+  // IP en memoria (app.ts, crearRateLimit), ineficaz entre cold starts.
+  const limitadorMfaVerificar = new LimitadorVentanaPostgres(rateLimitMfaVerificar);
 
   const googleHabilitado = Boolean(google.clientId && google.clientSecret && google.redirectUri);
 
@@ -552,6 +563,18 @@ export function crearRutasAuth(deps: DependenciasAuth): Hono {
 
     const resultado = await conConexion(pool, async (cliente) => {
       await limpiarSesion(cliente);
+
+      // A3-AUTH-01: límite persistido en Postgres, ANTES de gastar ciclos
+      // en verificar el código — por usuario (identificador fuerte, ligado
+      // al mfaToken firmado; un atacante que ya llegó aquí no puede
+      // rotarlo) y por IP (defensa adicional, mismo criterio fail-safe de
+      // S-06: nunca confía en una cabecera que el cliente controla — ver
+      // ipHashDeRequest). El límite genérico por IP en memoria
+      // (app.ts, crearRateLimit) sigue aplicando también, pero YA NO es
+      // el único freno de este endpoint.
+      await limitadorMfaVerificar.registrarIntento(cliente, `mfa_verificar:usuario:${usuarioId}`);
+      await limitadorMfaVerificar.registrarIntento(cliente, `mfa_verificar:ip:${ipHash ?? "socket-desconocido"}`);
+
       const { rows } = await cliente.query<FilaUsuarioAuth>("SELECT * FROM autenticar_buscar_usuario_por_id($1)", [usuarioId]);
       const usuario = rows[0];
       if (!usuario || !usuario.activo || !usuario.mfa_totp_habilitado) {
