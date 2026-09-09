@@ -124,3 +124,5 @@
 2026-09-06 17:34:15 | FASE3 | 3.3 completo; reanudando #45 3.0
 2026-09-06 17:50:08 | FASE3 | Supabase solicitado; sin sesión CLI; pidiendo login al usuario
 2026-09-06 17:56:58 | FASE3 | construcción completa; despachando auditoría-3
+2026-09-06 17:57:59 | DESPACHO | auditoría-3 #49:    2 "model":"claude-sonnet-5" 
+2026-09-08 21:23:38 | REANUDACION | límite semanal reseteado; reanudando auditoría-3 #49
