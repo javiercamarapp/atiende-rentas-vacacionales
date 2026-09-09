@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { exigeSecretosExplicitos } from "../../config/env.js";
 
 /**
  * H-054: cifrado AES-256-GCM del secreto HMAC de `webhook_tenant` —
@@ -8,11 +9,29 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
  * algoritmo y forma de 3 columnas (cifrado/iv/tag) que esa clase, pero sin
  * compartir código para no arriesgar tocar un archivo fuera de este lote.
  *
- * Clave: `NOTIFICACIONES_WEBHOOK_CIFRADO_CLAVE` (base64 de 32 bytes). Sin
- * definir, se genera una clave EFÍMERA en memoria con una advertencia
- * explícita — mismo patrón exacto que `JWT_SECRET`/`CANAL_CIFRADO_CLAVES`
- * en `apps/api/src/config/env.ts` (nunca falla en desarrollo/pruebas,
- * nunca silencioso: cada arranque sin la variable imprime el aviso).
+ * Clave: `NOTIFICACIONES_WEBHOOK_CIFRADO_CLAVE` (base64 de 32 bytes).
+ *
+ * A3-NOTIF-02 (docs/auditoria-3/calidad.md), corregido: ANTES, sin la
+ * variable definida, esta función degradaba SIEMPRE a una clave EFÍMERA
+ * generada en memoria — incluida en producción, sin abortar el arranque,
+ * a diferencia de `JWT_SECRET`/`CANAL_CIFRADO_CLAVES`
+ * (`apps/api/src/config/env.ts`, S-02/S-03) y de `STRIPE_SECRET_KEY`/
+ * `STRIPE_WEBHOOK_SECRET` (`construirAdaptadorPagosDesdeEntorno`,
+ * A3-FACT-03), que sí exigen el secreto explícito en un entorno
+ * productivo. El efecto real: cada arranque productivo sin esta variable
+ * usaba una clave distinta y NUNCA persistida — cualquier secreto de
+ * webhook cifrado en ese proceso queda indescifrable en cuanto el proceso
+ * se recicla (serverless: en cada invocación), rompiendo en silencio el
+ * envío de notificaciones salientes firmadas.
+ *
+ * Ahora, igual que esas dos correcciones previas: si falta la variable Y
+ * el entorno es productivo (`exigeSecretosExplicitos`, mismo criterio
+ * fail-closed que clasifica NODE_ENV en `apps/api/src/config/env.ts` —
+ * cualquier valor ausente o development/test explícito es "no
+ * productivo"; cualquier otro, incluido uno desconocido o mal escrito,
+ * cuenta como productivo), LANZA en vez de degradar. La clave efímera
+ * sigue disponible SOLO fuera de producción (desarrollo/pruebas), con el
+ * mismo aviso explícito que antes.
  */
 const ALGORITMO = "aes-256-gcm";
 const LONGITUD_IV = 12;
@@ -27,6 +46,14 @@ function obtenerClave(): Buffer {
       throw new Error("NOTIFICACIONES_WEBHOOK_CIFRADO_CLAVE debe decodificar a exactamente 32 bytes (AES-256)");
     }
     return clave;
+  }
+  if (exigeSecretosExplicitos(process.env.NODE_ENV)) {
+    throw new Error(
+      "NOTIFICACIONES_WEBHOOK_CIFRADO_CLAVE es obligatorio cuando NODE_ENV no es 'development'/'test' " +
+        "explícito (fail-closed, A3-NOTIF-02). Sin ella, cada arranque productivo cifraría/descifraría " +
+        "secretos de webhook con una clave efímera distinta y no persistida. Defínela en la configuración " +
+        "del despliegue — ver apps/api/.env.example.",
+    );
   }
   if (!claveEfimeraAdvertida) {
     claveEfimeraAdvertida = true;
