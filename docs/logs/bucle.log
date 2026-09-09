@@ -126,3 +126,4 @@
 2026-09-06 17:56:58 | FASE3 | construcción completa; despachando auditoría-3
 2026-09-06 17:57:59 | DESPACHO | auditoría-3 #49:    2 "model":"claude-sonnet-5" 
 2026-09-08 21:23:38 | REANUDACION | límite semanal reseteado; reanudando auditoría-3 #49
+2026-09-08 21:28:51 | INTEGRACION | 25 commits externos integrados; auditoría-3 re-escopeada; Supabase sin token
