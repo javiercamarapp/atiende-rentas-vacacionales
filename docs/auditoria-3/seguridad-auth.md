@@ -113,22 +113,59 @@ MFA, invitaciones) y se marcan como SOSPECHA los puntos no verificados con repro
   hallazgo real (la falta de ligadura criptográfica) se cierra con esta corrección, no solo
   se documenta.
 
-### A3-AUTH-03 — SOSPECHA (no confirmado) — Posible carrera en aceptación de invitación
+### A3-AUTH-03 — CONFIRMADO SIN RIESGO REAL — Carrera en aceptación de invitación
 
 - **Archivo:** `packages/db/src/migrations/0107_auth_invitacion_y_politica_tenant.ts:49-53`
-  (`autenticar_aceptar_invitacion`) + `apps/api/src/routes/auth.ts:745-767`.
-- **Observación:** la comprobación de invitación (`autenticar_buscar_invitacion`, SELECT sin
-  `FOR UPDATE`) y la creación del usuario (`autenticar_registrar_usuario`) ocurren en
-  sentencias separadas antes de marcar `autenticar_aceptar_invitacion`, sin lock explícito
-  de fila. La función de aceptación en sí es correcta (`WHERE aceptada_en IS NULL AND
-  revocada_en IS NULL`), así que como mucho podría permitir que **dos** llamadas
-  concurrentes con el mismo token creen dos cuentas de usuario para el mismo email/tenant
-  antes de que la segunda vea `aceptada_en` ya puesto — no es account takeover, pero sí
-  duplicaría el alta. No se construyó un repro con `Promise.all` contra Postgres real por
-  límite de tiempo de esta sesión (ver `docs/BLOQUEOS.md` continuidad). Severidad estimada
-  si se confirma: BAJO/MEDIO (duplicidad de alta, no escalación de privilegio).
-- **Corrección sugerida si se confirma:** `SELECT ... FOR UPDATE` sobre la fila de
-  invitación antes de crear el usuario, dentro de la misma transacción.
+  (`autenticar_aceptar_invitacion`) + `apps/api/src/routes/auth.ts:745-767` (rama
+  `cuerpo.invitacionToken` de `POST /auth/registro`).
+- **Observación original (SOSPECHA):** la comprobación de invitación
+  (`autenticar_buscar_invitacion`, SELECT sin `FOR UPDATE`) y la creación del usuario
+  (`autenticar_registrar_usuario`) ocurren en sentencias separadas — de hecho ni siquiera
+  envueltas en una transacción explícita (`conConexion` no abre `BEGIN`; cada
+  `cliente.query(...)` de esa rama es autocommit por su cuenta) — antes de marcar
+  `autenticar_aceptar_invitacion`. La sospecha era que **dos** llamadas concurrentes con el
+  mismo token crearan dos cuentas de usuario para el mismo email/tenant.
+- **Repro construido y ejecutado** (sesión 9-sep-2026,
+  `tests/auditoria-3/auth/carreraInvitacion.test.ts`): 2 y, por separado, 5 llamadas
+  `POST /auth/registro` disparadas con `Promise.all` (nunca llamando las funciones SQL
+  directamente) con el **mismo** `invitacionToken`/email, contra `embedded-postgres` real
+  con el catálogo completo de migraciones aplicado y el rol `app_rv` (no el superusuario) —
+  exactamente el patrón de `apps/api/test/integration/authExtendido.test.ts`.
+  - **Resultado contra el código tal cual estaba (sin ningún cambio):** en las 3 corridas de
+    N=2 y en la corrida de N=5, se creó **exactamente 1** fila en `usuario` para ese email —
+    nunca 2. La `invitacion_usuario.aceptada_en` queda fijada por la petición ganadora.
+  - **Por qué no se confirma la duplicidad:** `usuario` tiene un índice único global
+    `usuario_email_key` sobre `lower(email)` (migración `0003_usuario.ts`) — la invitación
+    ya obliga a que `cuerpo.email` coincida con `inv.email` (línea 777 de `auth.ts`), así
+    que las N llamadas concurrentes que aceptan el MISMO token compiten siempre por el
+    MISMO email; la segunda inserción que llega a Postgres siempre choca contra ese índice
+    único, sin importar el orden de llegada ni la ausencia de `FOR UPDATE`. No hay ventana
+    en la que dos `INSERT` con el mismo email puedan tener éxito.
+  - **Cómo se resuelve cada petición perdedora, en la práctica (N=5, 4 perdedoras):**
+    típicamente 3 de las 4 reciben `401 token_invalido` ("Invitación inválida, expirada o
+    ya usada") — un error de dominio limpio, porque su propio `autenticar_buscar_invitacion`
+    corrió después de que la ganadora ya había marcado `aceptada_en`. Solo la que cae en la
+    ventana estrecha entre el SELECT de la ganadora y su `INSERT`/`UPDATE` recibe un
+    **500 genérico** (`{"codigo":"error_interno", ...}`) — el log interno capturado en el
+    repro confirma la causa exacta: `duplicate key value violates unique constraint
+    "usuario_email_key"`. Ese error de Postgres no está mapeado a un `ErrorDominio`
+    específico en esta ruta, así que cae en la rama genérica de `app.onError()`
+    (`apps/api/src/app.ts:178-203`).
+  - Verificado también que la 2ª/3ª/4ª/5ª petición nunca devuelve 2×201 (no hay doble alta
+    exitosa) en ninguna corrida.
+- **Veredicto:** el riesgo de seguridad descrito (duplicidad de alta / dos cuentas para el
+  mismo email) **no es explotable** — está prevenido de forma robusta por el índice único
+  de `usuario.email`, independiente del `FOR UPDATE` que la sospecha original proponía.
+  Severidad real: **ninguna** (no hay duplicidad posible). Nota aparte, de calidad y no de
+  seguridad: la petición que cae en la ventana estrecha de la carrera recibe un 500 genérico
+  en vez de un error de dominio (`409`/`token_invalido`) — un defecto de robustez menor y
+  cosmético (no crea riesgo, no filtra datos), que se deja documentado aquí pero
+  **deliberadamente sin corregir** en este cierre (no hay bug de seguridad que arreglar; no
+  se fabricó un fix para un hallazgo que no se confirmó).
+- **No se requiere ninguna corrección de código.** Se conserva el repro como test de
+  regresión permanente de esta garantía (si algún día el índice único se relaja o el flujo
+  de invitación deja de exigir que el email coincida con la invitación, este test lo
+  detectaría).
 
 ## Puntos verificados y BIEN implementados (para no repetirlos como pendientes)
 
