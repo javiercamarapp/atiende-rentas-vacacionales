@@ -33,7 +33,7 @@ export interface FilaBorrador {
   texto: string;
   canal_codigo: "airbnb" | "vrbo" | "booking";
   estado: "pendiente_aprobacion" | "aprobado" | "rechazado" | "enviado";
-  generado_por: "motor_borrador" | "plantilla" | "manual";
+  generado_por: "motor_borrador" | "plantilla" | "manual" | "agente_llm";
   redactado: boolean;
   aprobado_por: string | null;
   rechazado_por: string | null;

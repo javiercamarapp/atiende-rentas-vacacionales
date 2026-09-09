@@ -32,7 +32,7 @@ export interface BorradorMensaje {
   texto: string;
   canalCodigo: CanalMensajeria;
   estado: EstadoBorrador;
-  generadoPor: "motor_borrador" | "plantilla" | "manual";
+  generadoPor: "motor_borrador" | "plantilla" | "manual" | "agente_llm";
   redactado: boolean;
   aprobadoPor: string | null;
   rechazadoPor: string | null;

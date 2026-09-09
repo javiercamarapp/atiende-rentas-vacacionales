@@ -15,6 +15,7 @@ export { VrboIcalChannelSimulator } from "./vrbo-ical/index.js";
 export { BookingIcalChannelSimulator } from "./booking-ical/index.js";
 export { BookingApiSimulator } from "./booking-api/index.js";
 export type { ReservaSimuladaBooking } from "./booking-api/index.js";
+export { BookingMessagingApiSimulator } from "./booking-api/mensajeria.js";
 
 // Lote 3.4 (RV22, Fase 3): canales de distribución usados en México.
 export { AgodaIcalChannelSimulator } from "./agoda-ical/index.js";

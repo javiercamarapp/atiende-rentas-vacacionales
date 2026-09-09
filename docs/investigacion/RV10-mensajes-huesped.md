@@ -1,5 +1,16 @@
 # RV10 — Mensajería y experiencia del huésped
 
+> **Actualización 2026-09-09 (fix/mensajeria-nativa-por-canal):** este documento sigue vigente tal cual
+> para políticas de contenido/aprobación humana/límites — NO se modificó ninguna de sus afirmaciones
+> dedatadas al 2026-09-05. La pregunta que quedó como laguna aquí ("¿existe una vía técnica de API real y
+> accesible hoy por canal, más allá de la política de contenido?") se investigó y respondió por separado
+> en `RV23-mensajeria-api-canales-2026-09.md` (2026-09-09): Booking.com SÍ tiene una Messaging API real y
+> pública del lado de Connectivity Partners (mismo programa que ya usa `booking/otaXml.ts`), Airbnb y
+> Vrbo confirman NO tener ninguna vía accesible hoy (Vrbo con una fuente primaria nueva que este
+> documento no tenía). Ver ese documento antes de asumir que la sección "Booking.com (evidencia
+> limitada...)" de abajo sigue siendo el estado completo del conocimiento — sigue siendo correcta para
+> políticas de contenido, pero quedó incompleta para la pregunta de "vía técnica de API".
+>
 > Investigación de fuentes primarias realizada el 2026-09-05 mediante WebSearch + WebFetch. Regla de evidencia aplicada: solo se afirma en "Contenido" lo que fue efectivamente leído con WebFetch. Todo lo que provino solo de un resumen de WebSearch (no verificado con WebFetch) se marca explícitamente como no verificado y se traslada a "Lagunas"/"Supuestos". Convención de etiquetas: `[DATO]` = leído literalmente en fuente primaria/oficial; `[R]` = fuente secundaria (vendor/proveedor de PMS); `[E]` = estimación o decisión de producto propia sin fuente publicada (ver `00-PLAN.md` §2). Ledger completo con URL, cita y confianza por fila: `docs/fuentes/rv01-02-09-10-11.md`, sección RV10.
 
 ## Resumen ejecutivo
