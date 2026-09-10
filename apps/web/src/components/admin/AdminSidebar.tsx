@@ -14,10 +14,15 @@
 // están activas; el resto documenta su lote de origen en el título.
 import { useState } from "react";
 import {
+  Bell,
   ChevronDown,
+  CreditCard,
+  HelpCircle,
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
+  Settings,
+  UserRound,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { AtiendeMark, AtiendeWordmark, ThemeSelector, cn } from "@atiende-rv/ui-atiende";
@@ -201,15 +206,86 @@ export function AdminSidebar({
         })}
       </nav>
 
-      <div className="p-2 space-y-1 shrink-0 border-t border-sidebar-border">
+      {/* Bloque de cuenta — mismo patrón de dos capas que dashboard/chrome.tsx
+          de Likida (y el mismo fix ya aplicado en atiende-restaurantes/
+          citas-reservaciones/licitaciones/hoteles): zona hundida a todo lo
+          ancho (bg-sidebar-accent + sombra interior) y tarjeta de usuario
+          SOBREPUESTA (margen negativo, fondo/borde/sombra propios). */}
+      <div className="shrink-0 border-t border-sidebar-border">
         {!collapsed && (
-          <div className="flex justify-center py-1">
-            <ThemeSelector />
+          <div className="bg-sidebar-accent/60 px-2 pt-2 pb-5 space-y-0.5 shadow-[inset_0_2px_5px_-2px_rgba(0,0,0,0.08)]">
+            <button
+              type="button"
+              disabled
+              title="Centro de ayuda: todavía no existe esta sección en Atiende Rentas."
+              className="mb-1 flex min-h-11 w-full cursor-not-allowed items-center justify-center gap-2 rounded-full border border-sidebar-border bg-sidebar px-3 py-1.5 text-[13px] text-sidebar-foreground/50"
+            >
+              <HelpCircle className="w-3.5 h-3.5 shrink-0" strokeWidth={1.75} />
+              <span className="truncate">Centro de ayuda</span>
+            </button>
+            {/* Mismos 5 ítems y mismo orden que el bloque ABAJO real de
+                Likida; activo = píldora sólida bg-primary (azul de
+                atiende). "Mi perfil" es la única ruta real hoy (/cuenta) —
+                el resto sigue "Pronto". */}
+            <button
+              type="button"
+              disabled
+              title="Notificaciones: todavía no existe una sección propia en Atiende Rentas."
+              className="flex min-h-11 w-full items-center justify-between gap-2 rounded-full px-3 py-1.5 text-[13px] text-sidebar-foreground/40 cursor-not-allowed"
+            >
+              <span className="flex items-center gap-2.5">
+                <Bell className="w-4 h-4 shrink-0" strokeWidth={1.75} />
+                <span className="truncate">Notificaciones</span>
+              </span>
+              <span className="font-mono text-[9px] uppercase tracking-[0.06em] text-sidebar-foreground/40 shrink-0">Pronto</span>
+            </button>
+            <NavLink
+              to="/cuenta"
+              className={({ isActive }) =>
+                cn(
+                  "flex min-h-11 w-full items-center gap-2.5 rounded-full px-3 py-1.5 text-[13px] transition-colors",
+                  isActive
+                    ? "bg-primary text-primary-foreground font-medium"
+                    : "text-sidebar-foreground/80 hover:bg-sidebar-accent",
+                )
+              }
+            >
+              <UserRound className="w-4 h-4 shrink-0" strokeWidth={1.75} />
+              <span className="truncate">Mi perfil</span>
+            </NavLink>
+            <button
+              type="button"
+              disabled
+              title="Plan y facturación: todavía no existe esta pantalla en Atiende Rentas."
+              className="flex min-h-11 w-full items-center justify-between gap-2 rounded-full px-3 py-1.5 text-[13px] text-sidebar-foreground/40 cursor-not-allowed"
+            >
+              <span className="flex items-center gap-2.5">
+                <CreditCard className="w-4 h-4 shrink-0" strokeWidth={1.75} />
+                <span className="truncate">Plan y facturación</span>
+              </span>
+              <span className="font-mono text-[9px] uppercase tracking-[0.06em] text-sidebar-foreground/40 shrink-0">Pronto</span>
+            </button>
+            <button
+              type="button"
+              disabled
+              title="Configuración: todavía no existe esta pantalla en Atiende Rentas."
+              className="flex min-h-11 w-full items-center justify-between gap-2 rounded-full px-3 py-1.5 text-[13px] text-sidebar-foreground/40 cursor-not-allowed"
+            >
+              <span className="flex items-center gap-2.5">
+                <Settings className="w-4 h-4 shrink-0" strokeWidth={1.75} />
+                <span className="truncate">Configuración</span>
+              </span>
+              <span className="font-mono text-[9px] uppercase tracking-[0.06em] text-sidebar-foreground/40 shrink-0">Pronto</span>
+            </button>
+            <div className="pt-1.5 pb-0.5 flex justify-center">
+              <ThemeSelector />
+            </div>
           </div>
         )}
-        <div className={cn("pt-1", collapsed ? "px-0" : "px-1")}>
+
+        <div className={cn("relative px-2 pb-2", collapsed ? "-mt-1" : "-mt-3.5")}>
           {!collapsed ? (
-            <div className="flex items-center gap-2 px-2 py-1">
+            <div className="flex items-center gap-2 rounded-xl border border-sidebar-border bg-sidebar p-2 shadow-sm">
               <NavLink
                 to="/cuenta"
                 className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-medium shrink-0"
@@ -237,7 +313,7 @@ export function AdminSidebar({
               type="button"
               onClick={logout}
               aria-label="Cerrar sesión"
-              className="w-full flex items-center justify-center py-1.5 text-sidebar-foreground/70 hover:text-destructive"
+              className="w-full flex items-center justify-center py-1.5 rounded-xl border border-sidebar-border bg-sidebar shadow-sm text-sidebar-foreground/70 hover:text-destructive"
             >
               <LogOut className="w-4 h-4" />
             </button>
