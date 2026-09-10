@@ -61,7 +61,10 @@ export function registrarRutas(app: Hono, deps: DependenciasRutas): Hono {
   app.route("/usuarios", crearRutasUsuarios(pool, jwtSecret));
   app.route("/propiedades", crearRutasPropiedades(pool, jwtSecret));
   app.route("/unidades", crearRutasUnidades(pool, jwtSecret));
-  app.route("/reservas", crearRutasReservas(pool, jwtSecret));
+  app.route(
+    "/reservas",
+    crearRutasReservas(pool, jwtSecret, { correo: auth.correo, urlPublicaWeb: auth.urlPublicaWeb }),
+  );
   app.route("/bloqueos", crearRutasBloqueos(pool, jwtSecret));
   app.route("/conflictos", crearRutasConflictos(pool, jwtSecret));
   app.route("/canales", crearRutasCanales(pool, jwtSecret, keyring));

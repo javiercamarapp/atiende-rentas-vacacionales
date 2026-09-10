@@ -7,6 +7,90 @@ import { comoEjecutor } from "../db/ejecutorPg.js";
 import { requiereAutenticacion } from "../middleware/autenticacion.js";
 import { exigirEscrituraCalendario, exigirPuedeCancelar } from "../middleware/roles.js";
 import { sesionDeAuth } from "../middleware/tenant.js";
+import { correoConfirmacionReservaHuesped, pareceCorreo } from "../seguridad/correoHuesped.js";
+import type { InterfazCorreo } from "../seguridad/correo.js";
+
+/** Mínimo común para las consultas de solo lectura que necesita el correo
+ * de confirmación — mismo criterio que `EjecutorConsultaMinimo` de
+ * `workers/notificaciones/dispatcher.ts` (evita acoplar esta función a
+ * `pg.PoolClient` concreto, así se puede probar con un fake sin Postgres). */
+export interface EjecutorConsultaMinimoReservas {
+  query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
+}
+
+interface FilaReservaParaCorreo {
+  nombre_unidad: string;
+  nombre_propiedad: string;
+  check_in: string;
+  check_out: string;
+}
+
+/** Adaptador mínimo propio (en vez de `comoEjecutor`/`EjecutorTransaccional`
+ * de `db/ejecutorPg.ts`, tipado a `FilaSql` — incompatible con el genérico
+ * `<T>` de `EjecutorConsultaMinimoReservas`): mismo criterio de "adaptador
+ * diminuto por caso de uso" que `ejecutorDeCliente` en
+ * `workers/notificaciones/dispatcher.ts`/`rutas/internas/cronSync.ts`. */
+function comoEjecutorMinimo(cliente: pg.PoolClient): EjecutorConsultaMinimoReservas {
+  return {
+    async query<T = Record<string, unknown>>(sql: string, params?: unknown[]) {
+      const resultado = await cliente.query(sql, params as unknown[] | undefined);
+      return { rows: resultado.rows as T[] };
+    },
+  };
+}
+
+/**
+ * Correo de confirmación de reserva al huésped (best-effort, D-huesped-01):
+ * NUNCA debe tumbar `POST /reservas` — un fallo aquí (correo caído, dato
+ * faltante) se registra y se traga, la reserva ya se creó y sigue siendo
+ * válida sin importar si el correo salió o no. Solo se intenta cuando
+ * `huespedContacto` PARECE un correo (`pareceCorreo`, `huesped_minimo.
+ * contacto` es texto libre sin tipo — puede ser un teléfono) — no hay
+ * ningún otro campo de "huésped no tiene correo" que consultar.
+ */
+export async function enviarConfirmacionReservaHuesped(
+  ejecutor: EjecutorConsultaMinimoReservas,
+  correo: InterfazCorreo,
+  urlPublicaWeb: string,
+  params: { ocupacionId: string; huespedNombre: string | null; huespedContacto: string | null | undefined },
+): Promise<{ enviado: boolean }> {
+  if (!pareceCorreo(params.huespedContacto)) return { enviado: false };
+  try {
+    const { rows } = await ejecutor.query<FilaReservaParaCorreo>(
+      `SELECT u.nombre AS nombre_unidad, p.nombre AS nombre_propiedad,
+              lower(o.rango)::text AS check_in, upper(o.rango)::text AS check_out
+       FROM ocupacion_unidad o
+       JOIN unidad u ON u.id = o.unidad_id
+       JOIN propiedad p ON p.id = u.propiedad_id
+       WHERE o.id = $1`,
+      [params.ocupacionId],
+    );
+    const fila = rows[0];
+    if (!fila) return { enviado: false };
+
+    const { asunto, textoPlano, html } = correoConfirmacionReservaHuesped(
+      {
+        nombreHuesped: params.huespedNombre,
+        nombreUnidad: fila.nombre_unidad,
+        nombrePropiedad: fila.nombre_propiedad,
+        checkIn: fila.check_in,
+        checkOut: fila.check_out,
+      },
+      urlPublicaWeb,
+    );
+    await correo.enviar({ para: params.huespedContacto, asunto, textoPlano, html });
+    return { enviado: true };
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        evento: "correo_confirmacion_reserva_fallo",
+        ocupacionId: params.ocupacionId,
+        mensaje: error instanceof Error ? error.message : String(error),
+      }),
+    );
+    return { enviado: false };
+  }
+}
 
 /** D-006/D-011: la API nunca cancela ni modifica una reserva cuyo origen
  * sea un canal externo — solo reservas DIRECTAS (creadas por esta misma
@@ -34,7 +118,16 @@ async function exigirReservaDirecta(cliente: pg.PoolClient, ocupacionId: string)
   return { unidadId: fila.unidad_id };
 }
 
-export function crearRutasReservas(pool: pg.Pool, jwtSecret: string): Hono {
+export interface DependenciasReservas {
+  /** `InterfazCorreo`/`urlPublicaWeb` ya construidos por `app.ts`/`routes/
+   * index.ts` para auth (`auth.correo`, `auth.urlPublicaWeb`) — se
+   * reutilizan aquí tal cual para el correo de confirmación de reserva,
+   * nunca un adaptador de correo aparte. */
+  correo: InterfazCorreo;
+  urlPublicaWeb: string;
+}
+
+export function crearRutasReservas(pool: pg.Pool, jwtSecret: string, deps: DependenciasReservas): Hono {
   const app = new Hono();
   app.use("*", requiereAutenticacion(jwtSecret));
 
@@ -85,6 +178,14 @@ export function crearRutasReservas(pool: pg.Pool, jwtSecret: string): Hono {
           huesped.rows[0]!.id,
           salida.ocupacionId,
         ]);
+
+        // Best-effort, nunca bloquea ni revierte la reserva ya creada —
+        // ver el comentario de cabecera de `enviarConfirmacionReservaHuesped`.
+        await enviarConfirmacionReservaHuesped(comoEjecutorMinimo(cliente), deps.correo, deps.urlPublicaWeb, {
+          ocupacionId: salida.ocupacionId,
+          huespedNombre: cuerpo.huespedNombre ?? null,
+          huespedContacto: cuerpo.huespedContacto ?? null,
+        });
       }
 
       return salida;

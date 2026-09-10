@@ -3,3 +3,15 @@ export { layoutCorreoHtml, type OpcionesLayoutCorreo } from "./layout.js";
 export { correoVerificacionHtml } from "./verificacion.js";
 export { correoRestablecerPasswordHtml } from "./restablecerPassword.js";
 export { correoNotificacionHtml, type DatosNotificacionCorreo } from "./notificacion.js";
+export {
+  correoConfirmacionReservaHuespedHtml,
+  type DatosConfirmacionReservaHuesped,
+} from "./confirmacionReservaHuesped.js";
+export {
+  correoRecordatorioCheckinHuespedHtml,
+  type DatosRecordatorioCheckinHuesped,
+} from "./recordatorioCheckinHuesped.js";
+export {
+  correoAlertaPagoFallidoHuespedHtml,
+  type DatosAlertaPagoFallidoHuesped,
+} from "./alertaPagoFallidoHuesped.js";
