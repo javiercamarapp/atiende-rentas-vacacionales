@@ -9,6 +9,7 @@ import { crearRutasCronSyncIcal } from "../../rutas/internas/cronSync.js";
 import { crearRutasCronWebhooksReintento } from "../../rutas/internas/cronWebhooksReintento.js";
 import { crearRutasCronLimpiezaCheckout } from "../../rutas/internas/cronLimpiezaCheckout.js";
 import { crearRutasCronOutboxWorker } from "../../rutas/internas/cronOutboxWorker.js";
+import { crearRutasCronRecordatorioCheckin } from "../../rutas/internas/cronRecordatorioCheckin.js";
 import { contarWebhookReintentoPorEstado } from "../notificaciones/webhookReintento.js";
 
 /**
@@ -154,6 +155,13 @@ export function rutasObservabilidad(deps: DependenciasRutasObservabilidad): Hono
   // dos funciones de métricas de arriba) — ver
   // apps/api/src/rutas/internas/cronOutboxWorker.ts.
   app.route("/internal/cron", crearRutasCronOutboxWorker({ pool: deps.pool, metricas: deps.metricas }));
+
+  // GET /internal/cron/recordatorio-checkin: correo de recordatorio de
+  // check-in al huésped para reservas directas próximas — ver
+  // apps/api/src/rutas/internas/cronRecordatorioCheckin.ts para el diseño
+  // completo. Mismo punto de montaje y mismo criterio de protección
+  // (CRON_SECRET) que los dos crons de arriba.
+  app.route("/internal/cron", crearRutasCronRecordatorioCheckin({ pool: deps.pool }));
 
   return app;
 }

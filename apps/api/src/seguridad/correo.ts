@@ -134,7 +134,12 @@ export class AdaptadorCorreoSmtp implements InterfazCorreo {
  * inventar un dominio de referencia en el pie del correo). */
 const URL_PUBLICA_POR_DEFECTO = "https://atiende-rentas-vacacionales.vercel.app";
 
-function urlPublicaDelEntorno(): string {
+/** Exportada (no solo interna) para que otros módulos que arman correo con
+ * esta misma infraestructura pero que están fuera del alcance documentado
+ * de este archivo (avisos de seguridad de auth) — p. ej.
+ * `./correoHuesped.ts`, correos al huésped final — reutilicen el mismo
+ * criterio de URL de marca en vez de duplicar `APP_PUBLIC_URL || <default>`. */
+export function urlPublicaDelEntorno(): string {
   return process.env.APP_PUBLIC_URL || URL_PUBLICA_POR_DEFECTO;
 }
 

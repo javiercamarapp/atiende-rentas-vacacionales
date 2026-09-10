@@ -87,6 +87,7 @@ import { migracion0128DelegacionServicioSistema } from "./0128_delegacion_servic
 import { migracion0129FacturacionOrdenWebhook } from "./0129_facturacion_orden_webhook.js";
 import { migracion0130MensajeriaBorradorAgenteLlm } from "./0130_mensajeria_borrador_agente_llm.js";
 import { migracion0131WebhookSalienteReintento } from "./0131_webhook_saliente_reintento.js";
+import { migracion0132RecordatorioCheckinHuesped } from "./0132_recordatorio_checkin_huesped.js";
 
 // Orden fijo, nunca reordenar migraciones ya aplicadas en algún entorno
 // (patrón expand/contract real llega en Lote 10 — H-088). Cada lote
@@ -224,4 +225,8 @@ export const migraciones: Migracion[] = [
   // con backoff acotado para webhooks salientes fallidos. Ver comentario
   // de cabecera en 0131_webhook_saliente_reintento.ts.
   migracion0131WebhookSalienteReintento,
+  // 0132: notificaciones huésped-facing — marca de envío único del
+  // recordatorio de check-in sobre `ocupacion_unidad`. Ver comentario de
+  // cabecera en 0132_recordatorio_checkin_huesped.ts.
+  migracion0132RecordatorioCheckinHuesped,
 ];
