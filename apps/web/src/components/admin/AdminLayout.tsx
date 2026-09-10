@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Menu } from "lucide-react";
 import { AtiendeMark } from "@atiende-rv/ui-atiende";
+import { AdminHeader } from "./AdminHeader";
 import { AdminSidebar } from "./AdminSidebar";
 import { BannerEntornoDesarrollo } from "../BannerEntornoDesarrollo";
 import { useQueryLigero } from "../../lib/api/queryLigero";
@@ -23,7 +24,10 @@ interface RespuestaSalud {
  * decide por lo que la propia API declara en `GET /health`
  * (`etiquetaEntorno`) — nunca se asume "producción" del lado del cliente;
  * si la API no responde, el default es mostrar el banner (el estado más
- * conservador, D-017). */
+ * conservador, D-017). Además de la barra móvil, un `<AdminHeader/>`
+ * real solo-escritorio (`hidden md:flex`, ver ese archivo) — hasta ahora
+ * el panel no tenía ningún header de escritorio, solo la barra móvil de
+ * abajo. */
 export function AdminLayout({ children }: { children: ReactNode }) {
   const { datos } = useQueryLigero<RespuestaSalud>(() => peticion("/health"), []);
   const esProduccion = datos?.entorno === "production" && datos?.etiquetaEntorno === "producción";
@@ -44,6 +48,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
           </button>
           <AtiendeMark className="h-5 w-auto" />
         </header>
+        <AdminHeader />
         <main className="flex-1 overflow-y-auto overflow-x-hidden">
           <div className="p-4 pb-0">{!esProduccion && <BannerEntornoDesarrollo />}</div>
           {children}
