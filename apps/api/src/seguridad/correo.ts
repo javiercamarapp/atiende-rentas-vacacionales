@@ -1,6 +1,7 @@
 import nodemailer, { type Transporter } from "nodemailer";
 import { AdaptadorCorreoResend } from "./correoResend.js";
 import { correoRestablecerPasswordHtml, correoVerificacionHtml } from "./plantillasCorreo/index.js";
+import { redactarPiiEnTexto } from "../workers/observabilidad/otel.js";
 
 export { AdaptadorCorreoResend, ErrorCorreoResend, type ConfiguracionResend } from "./correoResend.js";
 
@@ -76,7 +77,7 @@ export class AdaptadorCorreoSimulado implements InterfazCorreo {
     console.log(
       JSON.stringify({
         evento: "correo-simulado",
-        para: correo.para,
+        para: redactarPiiEnTexto(correo.para),
         asunto: correo.asunto,
         // Nunca se loggea el cuerpo completo (podría llevar un token de un
         // solo uso) — solo su longitud, suficiente para depurar sin crear
