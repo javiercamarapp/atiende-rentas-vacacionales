@@ -9,7 +9,7 @@ import type { PlanFacturacion } from "./tipos.js";
  * cambiar precios/escalones/límites vía `PATCH /facturacion/planes/:codigo`
  * (`apps/api/src/routes/facturacionAdmin.ts`) sin requerir un despliegue.
  *
- * ⚠️ BORRADOR COMERCIAL (RV16, docs/investigacion/RV16-modelo-negocio-
+ * BORRADOR COMERCIAL (RV16, docs/investigacion/RV16-modelo-negocio-
  * costos.md) — NINGUNA de estas cifras es un precio definitivo. Ancladas
  * en el rango de mercado observado en competidores con precio público
  * (§2: ~15–60 USD/mes/unidad en planes de entrada/medios, bajando en

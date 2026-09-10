@@ -13,7 +13,7 @@ import type { Migracion } from "../runner/tipos.js";
 // forma exacta la valida `zod` en la capa de rutas
 // (`apps/api/src/contrato/tipos.ts`), no un CHECK de Postgres.
 //
-// ⚠️ BORRADOR COMERCIAL (RV16) — el seed de abajo son las mismas cifras
+// BORRADOR COMERCIAL (RV16) — el seed de abajo son las mismas cifras
 // de `planesPorDefecto`, ancladas en rangos de mercado observados, NUNCA
 // precios definitivos (ver el comentario de cabecera de
 // `packages/domain/src/facturacion/planes.ts`).
