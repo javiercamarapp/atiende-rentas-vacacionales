@@ -14,6 +14,8 @@
   ],
   "crons": [
     { "path": "/api/internal/cron/sync-ical", "schedule": "*/15 * * * *" },
-    { "path": "/api/internal/cron/webhooks-retry", "schedule": "*/5 * * * *" }
+    { "path": "/api/internal/cron/webhooks-retry", "schedule": "*/5 * * * *" },
+    { "path": "/api/internal/cron/limpieza-checkout", "schedule": "*/15 * * * *" },
+    { "path": "/api/internal/cron/outbox-worker", "schedule": "*/10 * * * *" }
   ]
 }

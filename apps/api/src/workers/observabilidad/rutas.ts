@@ -7,6 +7,8 @@ import { contarPendientesOutbox, edadPendienteMasViejoMs } from "./outboxWorker.
 import { reconocerAlerta, resolverAlerta } from "./alertas.js";
 import { crearRutasCronSyncIcal } from "../../rutas/internas/cronSync.js";
 import { crearRutasCronWebhooksReintento } from "../../rutas/internas/cronWebhooksReintento.js";
+import { crearRutasCronLimpiezaCheckout } from "../../rutas/internas/cronLimpiezaCheckout.js";
+import { crearRutasCronOutboxWorker } from "../../rutas/internas/cronOutboxWorker.js";
 import { contarWebhookReintentoPorEstado } from "../notificaciones/webhookReintento.js";
 
 /**
@@ -137,6 +139,21 @@ export function rutasObservabilidad(deps: DependenciasRutasObservabilidad): Hono
   // punto de montaje ("/internal/cron") y mismo criterio de protección
   // (CRON_SECRET, nunca requiereAutenticacion) que sync-ical de arriba.
   app.route("/internal/cron", crearRutasCronWebhooksReintento({ pool: deps.pool }));
+
+  // GET /internal/cron/limpieza-checkout (H-049, disparo automático):
+  // genera la tarea de limpieza al checkout de una reserva sin depender
+  // del botón manual "Refrescar" del panel de staff — ver
+  // apps/api/src/rutas/internas/cronLimpiezaCheckout.ts para el diseño
+  // completo (misma delegación de servicio de cronSync.ts, servicio
+  // propio `cron_limpieza_checkout`).
+  app.route("/internal/cron", crearRutasCronLimpiezaCheckout({ pool: deps.pool }));
+
+  // GET /internal/cron/outbox-worker: procesa en background la cola de
+  // `outbox_evento` con el motor idempotente de Lote 10
+  // (`outboxWorker.ts`), huérfano hasta ahora (solo se usaban de él las
+  // dos funciones de métricas de arriba) — ver
+  // apps/api/src/rutas/internas/cronOutboxWorker.ts.
+  app.route("/internal/cron", crearRutasCronOutboxWorker({ pool: deps.pool, metricas: deps.metricas }));
 
   return app;
 }
