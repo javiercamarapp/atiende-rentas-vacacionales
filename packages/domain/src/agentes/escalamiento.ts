@@ -49,6 +49,32 @@ export function contieneConfirmacionNoVerificada(texto: string): boolean {
   return PATRON_CONFIRMACION_NO_VERIFICADA.test(texto);
 }
 
+/**
+ * Patrón 8 (rescatado de Likida/atiende.ai): detección léxica de
+ * intención de ejercicio de derechos ARCO (Acceso, Rectificación,
+ * Cancelación, Oposición — LFPDPPP, la ley mexicana de protección de
+ * datos personales en posesión de particulares) en el texto de un
+ * huésped. `EjecutorTools` usa esto como fast-path: si el mensaje
+ * menciona explícitamente sus derechos ARCO, o pide acceder/rectificar/
+ * cancelar/oponerse a sus datos personales, o revocar su consentimiento,
+ * NUNCA se invoca al proveedor LLM para ese mensaje (ver `ejecutor.ts`) —
+ * es un trámite legal con plazos de ley, no un caso que un borrador
+ * generado automáticamente deba intentar resolver.
+ *
+ * Deliberadamente estrecho (exige "datos personales" o "ARCO"/
+ * "consentimiento" explícitos, nunca una palabra suelta como "acceso" o
+ * "cancela" sola — esas ya las cubre `debeEscalarPorTexto`/
+ * `contieneConfirmacionNoVerificada` con su propio criterio) para no
+ * disparar en falso sobre un mensaje que solo menciona "cancelar mi
+ * reserva" o "no puedo acceder al departamento".
+ */
+const PATRON_INTENCION_ARCO =
+  /\bderechos?\s+arco\b|\b(?:acceso|rectificaci[oó]n|cancelaci[oó]n|oposici[oó]n)\s+(?:a|de)\s+mis?\s+datos\s+personales\b|\b(?:elimin|borr|cancel)\w*\s+mis?\s+datos\s+personales\b|\bportabilidad\s+de\s+mis?\s+datos(?:\s+personales)?\b|\brevocar\s+(?:mi\s+)?consentimiento\b|\baviso\s+de\s+privacidad\b.*\bsolicit/i;
+
+export function detectarIntencionArco(texto: string): boolean {
+  return PATRON_INTENCION_ARCO.test(texto);
+}
+
 // ---------------------------------------------------------------------------
 // Loop-guard (H-083, REQ-149): tope de rondas de tool-calling por
 // conversación, verificado ANTES de ejecutar la ronda siguiente y no

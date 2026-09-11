@@ -25,7 +25,7 @@ import { crearRutasSolicitudesArco } from "./solicitudesArco.js";
 import { crearRutasTenants } from "./tenants.js";
 import { crearRutasUnidades } from "./unidades.js";
 import { crearRutasUsuarios } from "./usuarios.js";
-import type { OpcionesRateLimit } from "../seguridad/rateLimit.js";
+import type { OpcionesRateLimitPostgres } from "../seguridad/rateLimitPostgres.js";
 
 export interface DependenciasRutas {
   pool: pg.Pool;
@@ -39,9 +39,10 @@ export interface DependenciasRutas {
    * esta API para componer la URL absoluta del feed que se le entrega al
    * usuario. */
   urlPublicaApi: string;
-  /** S-06: límite adicional de intentos de /auth/login por email,
-   * independiente del rate limit genérico por IP. */
-  rateLimitLoginPorEmail: OpcionesRateLimit;
+  /** S-06 + patrón 3: límite adicional de intentos de /auth/login por
+   * email, independiente del rate limit genérico por IP. Persistido en
+   * Postgres desde el patrón 3 (ver seguridad/rateLimitPostgres.ts). */
+  rateLimitLoginPorEmail: OpcionesRateLimitPostgres;
   /** Lote 3.2 (H-096+, auth extendida): resto de dependencias de
    * apps/api/src/routes/auth.ts (Google OIDC, correo, política de
    * contraseñas/bloqueo, proveedor OIDC simulado) — agrupadas aparte para

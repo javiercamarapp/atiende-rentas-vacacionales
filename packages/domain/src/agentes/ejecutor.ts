@@ -5,6 +5,7 @@ import {
   debeEscalarPorDatoFaltante,
   debeEscalarPorMonto,
   debeEscalarPorTexto,
+  detectarIntencionArco,
   LoopGuardConversacion,
   TopeRondasExcedidoError,
 } from "./escalamiento.js";
@@ -12,6 +13,7 @@ import { toolsDisponiblesParaActor } from "./matrizRoles.js";
 import { esCampoIdentificadorProhibido } from "./patronesIdentificador.js";
 import type { ProveedorLLM } from "./proveedorLLM.js";
 import { construirRegistroTraza, type RegistroTrazaToolCall } from "./trazabilidad.js";
+import { TOOLS_SUJETAS_A_VERIFICACION_DE_HECHOS, verificarHechosCitados } from "./verificacionHechos.js";
 import type {
   ActorAgente,
   ContenidoNoConfiable,
@@ -25,6 +27,16 @@ import type {
  * Ejecutor de tools en servidor (H-078/H-079/H-080/H-081/H-083, RV18 §3-8).
  * Orquesta, para cada ronda de una conversación:
  * 1. Loop-guard (verificado ANTES de ejecutar, H-083).
+ * 1b. Patrón 8 (rescatado de Likida/atiende.ai): fast-path determinista
+ *    para intents de alto riesgo — señal de escalamiento léxica
+ *    (queja/emergencia/reembolso/vip) o intención de ejercicio de
+ *    derechos ARCO sobre datos personales. Corre ANTES de construir la
+ *    lista de tools, reservar presupuesto e invocar al proveedor: para
+ *    estos casos el LLM NUNCA se invoca, se devuelve un resultado
+ *    bloqueado de inmediato (antes de este patrón, esta clasificación
+ *    corría DESPUÉS de generar la respuesta completa, paso 9 — el LLM
+ *    siempre se invocaba primero y solo se le ponía una bandera de
+ *    prioridad al resultado).
  * 2. Matriz rol×tool resuelta en servidor ANTES de construir la lista de
  *    tools para el modelo (H-078, RV18-R-04) — nunca como filtro
  *    posterior sobre lo que el modelo "decidió".
@@ -39,13 +51,23 @@ import type {
  *    `inputSchema.properties` sin ningún campo que parezca un
  *    identificador — defensa en profundidad aunque el catálogo ya lo
  *    prohíba estructuralmente (D-008).
+ * 5c. Patrón 4 (rescatado de Likida/atiende.ai, ver verificacionHechos.ts):
+ *    para `mensajeria_proponer_borrador` — la única tool de texto libre
+ *    cuyo propósito es restablecer hechos YA CONOCIDOS de la reserva/
+ *    unidad (nunca proponer un valor nuevo, a diferencia de
+ *    `precio_sugerir_ajuste`) — todo monto/fecha citado en el texto debe
+ *    coincidir con un valor real en `entrada.contextoResumen`; si no,
+ *    guardia anti-alucinación en capas, bloqueado antes de la cola de
+ *    aprobación humana.
  * 6. Ejecución del handler (determinista vía `manejadoresDeterministas`
  *    inyectados, o el propio `texto` generado por el proveedor para tools
  *    `requiereLlm`).
  * 7. Liquidación de cuota con el costo/tokens REALES.
  * 8. Registro de traza completo (H-080).
- * 9. Clasificación de escalamiento "blando" (RV18 §5, puntos 1-3): el
- *    contenido se genera igual, pero se marca con prioridad alta.
+ * 9. Clasificación de escalamiento "blando" (RV18 §5, puntos 1 y 3 — el
+ *    punto 2, escalada emocional por texto, se movió al fast-path del
+ *    paso 1b desde el patrón 8): el contenido se genera igual, pero se
+ *    marca con prioridad alta.
  *
  * Ningún paso de este archivo tiene forma de invocar `cancelar_reserva`,
  * `contactar_huesped_directo`, ni ninguna tool fuera del catálogo — el
@@ -139,6 +161,35 @@ export class EjecutorTools {
       throw error;
     }
 
+    // 1b. Patrón 8 (rescatado de Likida/atiende.ai): fast-path determinista
+    // — corte ESTRUCTURAL antes de que el proveedor LLM "decida" nada.
+    // Ninguna de las dos ramas gasta presupuesto (paso 3) ni construye la
+    // lista de tools (paso 2): ambas retornan aquí mismo.
+    if (entrada.mensajeHuesped) {
+      if (detectarIntencionArco(entrada.mensajeHuesped.texto)) {
+        this.registrarTraza(entrada, "no_autorizado", null, 0, inicioEn, new Date());
+        return {
+          tipo: "bloqueado",
+          motivo: "solicitud_arco_detectada",
+          mensaje:
+            "El mensaje del huésped parece ejercer un derecho ARCO (acceso, rectificación, cancelación u " +
+            "oposición sobre datos personales) — escalado directamente para manejo manual por el equipo de " +
+            "privacidad, sin invocar al proveedor LLM (patrón 8, fast-path determinista).",
+        };
+      }
+      if (debeEscalarPorTexto(entrada.mensajeHuesped.texto)) {
+        this.registrarTraza(entrada, "no_autorizado", null, 0, inicioEn, new Date());
+        return {
+          tipo: "bloqueado",
+          motivo: "escalamiento_urgente_sin_generar",
+          mensaje:
+            "El mensaje del huésped contiene una señal de escalamiento (queja/emergencia/reembolso/vip) — " +
+            "escalado directamente a revisión humana sin invocar al proveedor LLM (patrón 8, fast-path " +
+            "determinista).",
+        };
+      }
+    }
+
     // 2. Matriz rol×tool resuelta en servidor ANTES de construir la lista
     // de tools del modelo (H-078, RV18-R-04).
     const toolsDisponibles = toolsDisponiblesParaActor(entrada.actor);
@@ -190,6 +241,40 @@ export class EjecutorTools {
       };
     }
 
+    // 5c. Patrón 4 (rescatado de Likida/atiende.ai): guardia anti-alucinación
+    // en capas — solo para las tools cuyo texto libre DEBE restablecer
+    // hechos ya conocidos (mensajeria_proponer_borrador, ver
+    // verificacionHechos.ts). precio_sugerir_ajuste/limpieza_proponer_tarea
+    // quedan fuera a propósito: su trabajo legítimo es citar un valor NUEVO
+    // que nunca va a coincidir con contextoResumen.
+    if (
+      respuesta.texto &&
+      respuesta.toolInvocada &&
+      TOOLS_SUJETAS_A_VERIFICACION_DE_HECHOS.has(respuesta.toolInvocada.nombre)
+    ) {
+      const verificacion = verificarHechosCitados(respuesta.texto, entrada.contextoResumen);
+      if (!verificacion.verificado) {
+        this.registrarTraza(
+          entrada,
+          "no_autorizado",
+          respuesta.modeloReal,
+          respuesta.costoUsdEstimado,
+          inicioEn,
+          finEn,
+          respuesta.toolInvocada.nombre,
+        );
+        const citasCrudas = verificacion.hechosNoVerificados.map((h) => h.textoOriginal).join(", ");
+        return {
+          tipo: "bloqueado",
+          motivo: "cita_no_verificada",
+          mensaje:
+            `El borrador cita ${verificacion.hechosNoVerificados.length} dato(s) (${citasCrudas}) que no ` +
+            "coinciden con ningún valor real conocido por el servidor — bloqueado antes de mostrarse " +
+            "para aprobación humana (patrón 4, guardia anti-alucinación en capas).",
+        };
+      }
+    }
+
     // 5-6. Sin tool invocada: respuesta conversacional directa.
     if (!respuesta.toolInvocada) {
       this.registrarTraza(entrada, "exito", respuesta.modeloReal, respuesta.costoUsdEstimado, inicioEn, finEn);
@@ -239,11 +324,19 @@ export class EjecutorTools {
     return true;
   }
 
+  /**
+   * Clasificación de escalamiento "blando" (RV18 §5, puntos 1 y 3): el
+   * contenido SÍ se genera, solo se marca con prioridad alta. Patrón 8:
+   * `debeEscalarPorTexto` (punto 2, escalada emocional por texto)
+   * DELIBERADAMENTE ya no vive aquí — se movió al fast-path del paso 1b,
+   * ANTES de invocar al proveedor. Si este método se está ejecutando,
+   * `entrada.mensajeHuesped` (cuando existe) YA pasó ese fast-path sin
+   * disparar ninguna señal de escalamiento, así que repetir el chequeo
+   * aquí sería código muerto — nunca podría devolver "escalada_emocional".
+   */
   private clasificarEscalamientoBlando(entrada: EntradaRondaTool): MotivoEscalamientoBlando | null {
     const porDatoFaltante = debeEscalarPorDatoFaltante(entrada.datoFaltanteDeclarado ?? false);
     if (porDatoFaltante) return porDatoFaltante as MotivoEscalamientoBlando;
-    const porTexto = entrada.mensajeHuesped ? debeEscalarPorTexto(entrada.mensajeHuesped.texto) : null;
-    if (porTexto) return porTexto as MotivoEscalamientoBlando;
     if (entrada.montoUsd !== undefined && entrada.umbralMontoUsd !== undefined) {
       const porMonto = debeEscalarPorMonto(entrada.montoUsd, entrada.umbralMontoUsd);
       if (porMonto) return porMonto as MotivoEscalamientoBlando;

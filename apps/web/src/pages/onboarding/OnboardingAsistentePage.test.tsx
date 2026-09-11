@@ -4,9 +4,28 @@ import { MemoryRouter } from "react-router-dom";
 import { OnboardingAsistentePage } from "./OnboardingAsistentePage";
 
 const obtenerEstadoOnboardingMock = vi.fn();
+// Patrón 7 (asistente conversacional, AsistenteConversacional.tsx):
+// mockeada aparte y probada en su propio archivo
+// (AsistenteConversacional.test.tsx) — aquí solo necesita no lanzar para
+// que esta página siga probando el checklist estático sin interferencia.
+const conversarOnboardingMock = vi.fn().mockResolvedValue({
+  onboardingCompleto: false,
+  pasoObjetivo: "primeraPropiedad",
+  pregunta: "¿Cuál es el nombre de tu primera propiedad?",
+  // Deliberadamente SIN cta aquí (a diferencia del caso real): el
+  // checklist de abajo ya trae su propio link "Ir a propiedades" para el
+  // mismo paso — duplicar el texto haría que `findByRole("link", ...)`
+  // encuentre dos coincidencias y falle. El CTA del widget conversacional
+  // se prueba en aislamiento en AsistenteConversacional.test.tsx.
+  ctaTexto: null,
+  ctaRuta: null,
+  datoFaltanteDeclarado: false,
+  pasos: {},
+});
 
 vi.mock("./api", () => ({
   obtenerEstadoOnboarding: () => obtenerEstadoOnboardingMock(),
+  conversarOnboarding: (mensaje?: string) => conversarOnboardingMock(mensaje),
 }));
 
 function renderPagina() {

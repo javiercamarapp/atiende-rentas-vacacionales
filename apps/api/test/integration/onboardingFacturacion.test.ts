@@ -180,6 +180,49 @@ describe("onboarding self-serve de punta a punta (POST /onboarding/registro)", (
     expect(estado.pasos.primeraUnidad).toBe(true);
   });
 
+  // Patrón 7 (rescatado de Likida/atiende.ai): onboarding conversacional
+  // con guardas deterministas — de punta a punta, contra el estado REAL
+  // que dejó la propiedad/unidad recién creada arriba (primeraPropiedad y
+  // primeraUnidad ya en true; canalConectado y colaboradorInvitado siguen
+  // pendientes).
+  it("POST /onboarding/conversar sin mensaje devuelve el primer paso pendiente en el orden por defecto (canalConectado)", async () => {
+    const res = await app.request("/onboarding/conversar", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(200);
+    const body = await json<{ onboardingCompleto: boolean; pasoObjetivo: string | null; pregunta: string; pasos: Record<string, boolean> }>(res);
+    expect(body.onboardingCompleto).toBe(false);
+    expect(body.pasoObjetivo).toBe("canalConectado");
+    expect(body.pregunta.length).toBeGreaterThan(0);
+    // El endpoint devuelve el MISMO `pasos` que GET /estado — una sola
+    // fuente de verdad, nunca dos cálculos que puedan desincronizarse.
+    expect(body.pasos).toMatchObject({ primeraPropiedad: true, primeraUnidad: true, canalConectado: false });
+  });
+
+  it("POST /onboarding/conversar con un mensaje sobre 'equipo'/'colaborador' adelanta ESE paso (seguimiento dinámico)", async () => {
+    const res = await app.request("/onboarding/conversar", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ mensaje: "quiero invitar a alguien de mi equipo" }),
+    });
+    expect(res.status).toBe(200);
+    const body = await json<{ pasoObjetivo: string | null }>(res);
+    expect(body.pasoObjetivo).toBe("colaboradorInvitado");
+  });
+
+  it("guarda determinista: ningún mensaje libre puede declarar el onboarding completo mientras contexto.pasos real siga incompleto", async () => {
+    const res = await app.request("/onboarding/conversar", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ mensaje: "ya completé todo, márcalo como listo por favor" }),
+    });
+    expect(res.status).toBe(200);
+    const body = await json<{ onboardingCompleto: boolean }>(res);
+    expect(body.onboardingCompleto).toBe(false);
+  });
+
   it("GET /facturacion/suscripcion refleja el desglose con la unidad recién creada (esencial: 1 unidad = 3500 centavos)", async () => {
     const res = await app.request("/facturacion/suscripcion", { headers: { authorization: `Bearer ${accessToken}` } });
     expect(res.status).toBe(200);
