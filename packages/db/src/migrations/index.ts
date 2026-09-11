@@ -88,6 +88,7 @@ import { migracion0129FacturacionOrdenWebhook } from "./0129_facturacion_orden_w
 import { migracion0130MensajeriaBorradorAgenteLlm } from "./0130_mensajeria_borrador_agente_llm.js";
 import { migracion0131WebhookSalienteReintento } from "./0131_webhook_saliente_reintento.js";
 import { migracion0132RecordatorioCheckinHuesped } from "./0132_recordatorio_checkin_huesped.js";
+import { migracion0133LiberacionInstruccionesAcceso } from "./0133_liberacion_instrucciones_acceso.js";
 
 // Orden fijo, nunca reordenar migraciones ya aplicadas en algún entorno
 // (patrón expand/contract real llega en Lote 10 — H-088). Cada lote
@@ -229,4 +230,9 @@ export const migraciones: Migracion[] = [
   // recordatorio de check-in sobre `ocupacion_unidad`. Ver comentario de
   // cabecera en 0132_recordatorio_checkin_huesped.ts.
   migracion0132RecordatorioCheckinHuesped,
+  // 0133: REQ-095 — marca de generación única del evento de liberación de
+  // instrucciones de acceso (T-48h aproximado, zona horaria real de la
+  // propiedad). Ver comentario de cabecera en
+  // 0133_liberacion_instrucciones_acceso.ts.
+  migracion0133LiberacionInstruccionesAcceso,
 ];
