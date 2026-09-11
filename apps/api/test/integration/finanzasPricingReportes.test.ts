@@ -589,6 +589,57 @@ describe("Reportes — H-072: el reporte de ocupación cruza tarea_operativa (li
     expect(fila!.nochesDisponiblesVendibles).toBe(7);
   });
 
+  it("fix doble conteo: dos tareas de limpieza con buffers solapados de la MISMA unidad fusionan sus noches (4, no 6)", async () => {
+    // 0005_ocupacion_unidad.ts documenta explícitamente que las filas
+    // capa='bloqueo' NUNCA pasan por el EXCLUDE de Postgres entre sí — el
+    // solape entre dos buffers de limpieza de la misma unidad no se
+    // previene en la base de datos. Reproduce exactamente el caso
+    // reportado: buffer 2026-10-04..07 (3 noches) y buffer 2026-10-05..08
+    // (3 noches), solapados en 2026-10-05 y 2026-10-06 (2 noches). Sumar
+    // por fila cruda da 3+3=6; el correcto, fusionando el solape, es 4
+    // noches únicas (04, 05, 06, 07).
+    const unidadId = await crearUnidad(superusuario, fx.propiedadId, { nombre: "Unidad H-072 solape" });
+    const buffer1 = await superusuario.query<{ id: string }>(
+      `INSERT INTO ocupacion_unidad (unidad_id, rango, capa, razon, estado, bloqueante)
+       VALUES ($1, daterange('2026-10-04', '2026-10-07', '[)'), 'bloqueo', 'BUFFER_LIMPIEZA', 'confirmado', true)
+       RETURNING id`,
+      [unidadId],
+    );
+    const buffer2 = await superusuario.query<{ id: string }>(
+      `INSERT INTO ocupacion_unidad (unidad_id, rango, capa, razon, estado, bloqueante)
+       VALUES ($1, daterange('2026-10-05', '2026-10-08', '[)'), 'bloqueo', 'BUFFER_LIMPIEZA', 'confirmado', true)
+       RETURNING id`,
+      [unidadId],
+    );
+    await superusuario.query(
+      `INSERT INTO tarea_operativa (unidad_id, buffer_ocupacion_id, tipo, estado, programada_para)
+       VALUES ($1, $2, 'limpieza', 'pendiente', '2026-10-04')`,
+      [unidadId, buffer1.rows[0]!.id],
+    );
+    await superusuario.query(
+      `INSERT INTO tarea_operativa (unidad_id, buffer_ocupacion_id, tipo, estado, programada_para)
+       VALUES ($1, $2, 'limpieza', 'pendiente', '2026-10-05')`,
+      [unidadId, buffer2.rows[0]!.id],
+    );
+
+    const token = await login(fx.emailAdmin, fx.passwordAdmin);
+    const res = await app.request(`/reportes/ocupacion?desde=2026-10-01&hasta=2026-10-08`, autenticado(token));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      unidades: {
+        unidadId: string;
+        nochesDisponibles: number;
+        nochesBloqueadasLimpiezaPendiente: number;
+        nochesDisponiblesVendibles: number;
+      }[];
+    };
+    const fila = body.unidades.find((u) => u.unidadId === unidadId);
+    expect(fila).toBeDefined();
+    expect(fila!.nochesDisponibles).toBe(7); // 2026-10-01 al 2026-10-08
+    expect(fila!.nochesBloqueadasLimpiezaPendiente).toBe(4); // 04,05,06,07 fusionadas — NUNCA 6
+    expect(fila!.nochesDisponiblesVendibles).toBe(3); // 7 - 4
+  });
+
   it("GET /reportes/ocupacion?formato=csv incluye las columnas nuevas de H-072", async () => {
     const token = await login(fx.emailAdmin, fx.passwordAdmin);
     const res = await app.request(`/reportes/ocupacion?desde=2026-10-01&hasta=2026-10-08&formato=csv`, autenticado(token));

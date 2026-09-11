@@ -69,17 +69,30 @@ export function crearRutasReportes(pool: pg.Pool, jwtSecret: string): Hono {
          -- (fan-out) — una tarea de limpieza con su tramo de buffer aún
          -- sin completar (tipo='limpieza', Lote 5) que se solape con el
          -- periodo cuenta sus noches como NO vendibles.
+         --
+         -- Corrección doble conteo (post H-072): ocupacion_unidad.rango
+         -- con capa='bloqueo' NUNCA pasa por el EXCLUDE de Postgres entre sí
+         -- (0005_ocupacion_unidad.ts) — dos tareas de limpieza de la MISMA
+         -- unidad pueden tener buffers que se solapen en el tiempo. Sumar
+         -- upper - lower fila por fila cuenta esas noches solapadas más
+         -- de una vez. range_agg fusiona (normaliza) automáticamente los
+         -- rangos solapados/adyacentes en el multirango mínimo que los
+         -- cubre; unnest expone cada tramo YA fusionado y sin solape para
+         -- sumar sus noches una sola vez.
          LEFT JOIN (
-           SELECT t.unidad_id,
-                  SUM(
-                    upper(buf.rango * daterange($1::date, $2::date, '[)')) - lower(buf.rango * daterange($1::date, $2::date, '[)'))
-                  ) AS noches_bloqueadas
-           FROM tarea_operativa t
-           JOIN ocupacion_unidad buf ON buf.id = t.buffer_ocupacion_id
-           WHERE t.tipo = 'limpieza'
-             AND t.estado NOT IN ('completada', 'cancelada')
-             AND buf.rango && daterange($1::date, $2::date, '[)')
-           GROUP BY t.unidad_id
+           SELECT fusionado.unidad_id,
+                  SUM(upper(fusionado.rango_fusionado) - lower(fusionado.rango_fusionado)) AS noches_bloqueadas
+           FROM (
+             SELECT t.unidad_id,
+                    unnest(range_agg(buf.rango * daterange($1::date, $2::date, '[)'))) AS rango_fusionado
+             FROM tarea_operativa t
+             JOIN ocupacion_unidad buf ON buf.id = t.buffer_ocupacion_id
+             WHERE t.tipo = 'limpieza'
+               AND t.estado NOT IN ('completada', 'cancelada')
+               AND buf.rango && daterange($1::date, $2::date, '[)')
+             GROUP BY t.unidad_id
+           ) fusionado
+           GROUP BY fusionado.unidad_id
          ) bl ON bl.unidad_id = u.id
          WHERE ($3::uuid IS NULL OR p.id = $3)
          GROUP BY u.id, u.nombre, p.id, p.nombre, bl.noches_bloqueadas
