@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import type pg from "pg";
 import type { PoolClient } from "pg";
 import type { EjecutorSql } from "@atiende-rv/db";
+import { FLAG_SYNC_PUSH_AUTOMATICO, type RegistroFlags } from "@atiende-rv/domain";
 import { fijarSesion, limpiarSesion } from "../../db/contexto.js";
 import { redactarPiiEnTexto } from "../../workers/observabilidad/otel.js";
 import { procesarPendientesOutbox, type ResultadoProcesarLote } from "../../workers/observabilidad/outboxWorker.js";
@@ -97,6 +98,13 @@ export interface DependenciasCronOutboxWorker {
    * contra `procesarPendientesOutbox`/`aplicarEfectoOutboxProduccion` en
    * `test/observabilidad/outboxWorker.test.ts` y `efectosOutbox.test.ts`. */
   procesar?: () => Promise<ResultadoProcesarLote>;
+  /** H-091/REQ-166: si se pasa, `sync.push_automatico` (§Operación-3) se
+   * consulta ANTES de procesar el lote — en `false` el lote entero se
+   * omite (`pausadoPorModoDegradado: true` en la respuesta 200, nunca un
+   * error) sin abrir siquiera la sesión `superadmin` contra Postgres.
+   * Sin este campo (por defecto), el comportamiento es EXACTAMENTE el de
+   * antes de este lote: siempre procesa. */
+  registroFlags?: RegistroFlags;
 }
 
 export function crearRutasCronOutboxWorker(deps: DependenciasCronOutboxWorker): Hono {
@@ -122,6 +130,18 @@ export function crearRutasCronOutboxWorker(deps: DependenciasCronOutboxWorker): 
     const token = cabeceraAuth.startsWith("Bearer ") ? cabeceraAuth.slice("Bearer ".length) : null;
     if (!token || !tokenValido(token, secreto)) {
       return c.json({ error: { codigo: "no_autorizado", mensaje: "Token de cron inválido o ausente." } }, 401);
+    }
+
+    // H-091/REQ-166 (§Operación-3): "pausa automática de todo push
+    // saliente" hecha efectiva — con `sync.push_automatico` en `false`
+    // (apagado automáticamente por `GET /health/detallado` cuando el
+    // primario no responde, o a mano por un operador), este cron ni
+    // siquiera abre una conexión/sesión `superadmin` contra Postgres.
+    // Responde 200 (nunca un error: "pausado" es un estado esperado, no
+    // una falla) con `pausadoPorModoDegradado: true` para que el propio
+    // log del cron sea la evidencia de que la pausa es real.
+    if (deps.registroFlags && !deps.registroFlags.valor(FLAG_SYNC_PUSH_AUTOMATICO)) {
+      return c.json({ procesados: [], omitidosYaConsumidos: 0, pausadoPorModoDegradado: true }, 200);
     }
 
     let cliente: PoolClient | null = null;

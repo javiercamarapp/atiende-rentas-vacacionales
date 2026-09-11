@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button, Card, CardContent } from "@atiende-rv/ui-atiende";
 import { useQueryLigero } from "../../lib/api/queryLigero";
 import { listarPropiedades, listarUnidades, obtenerCalendarioUnidad } from "./api";
+import { obtenerSaludDetallada } from "../monitor-sync/api";
 import { hoyIso, sumarDias } from "./fechas";
 import { LeyendaCapas } from "./components/LeyendaCapas";
 import { VistaTimeline, type FilaUnidad } from "./components/VistaTimeline";
@@ -10,6 +11,14 @@ import { VistaMes } from "./components/VistaMes";
 import { VistaLista } from "./components/VistaLista";
 import { PanelSeleccion, type SeleccionRango } from "./components/PanelSeleccion";
 import { ErrorApiAlerta } from "./components/ErrorApiAlerta";
+import { ModoDegradadoBanner } from "./components/ModoDegradadoBanner";
+
+// H-091/REQ-166 (§Operación-3): cada cuánto se vuelve a preguntar
+// `GET /health/detallado` mientras la página del calendario esté abierta
+// — sondeo simple (esta capa de datos no tiene WebSocket/push propio, ver
+// `lib/api/queryLigero.ts`), suficiente para que el operador vea el
+// banner aparecer/desaparecer sin tener que recargar la página a mano.
+const INTERVALO_SONDEO_SALUD_MS = 15_000;
 
 type ModoVista = "timeline" | "mes" | "lista";
 const NOCHES_VISIBLES_TIMELINE = 21;
@@ -24,6 +33,19 @@ export function CalendarioMaestroPage() {
 
   const propiedadesQuery = useQueryLigero(() => listarPropiedades(), []);
   const unidadesQuery = useQueryLigero(() => listarUnidades(), []);
+
+  // H-091/REQ-166: sondeo periódico de `/health/detallado` — `.catch`
+  // interno (vía `useQueryLigero`, que ya nunca lanza) hace que un fallo
+  // de ESTA llamada nunca tumbe el resto de la página del calendario; sin
+  // dato todavía (primer render) se asume "no degradado" para no mostrar
+  // un banner falso mientras carga.
+  const saludQuery = useQueryLigero(() => obtenerSaludDetallada(), []);
+  useEffect(() => {
+    const id = setInterval(() => saludQuery.recargar(), INTERVALO_SONDEO_SALUD_MS);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const enModoDegradado = saludQuery.datos?.modoDegradadoCalendario === true;
 
   const zonaHorariaPorPropiedad = useMemo(() => {
     const mapa = new Map<string, string>();
@@ -85,6 +107,8 @@ export function CalendarioMaestroPage() {
           ))}
         </div>
       </div>
+
+      {enModoDegradado && <ModoDegradadoBanner />}
 
       <LeyendaCapas />
 

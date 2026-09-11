@@ -29,6 +29,10 @@ import type { OpcionesRateLimit } from "../seguridad/rateLimit.js";
 
 export interface DependenciasRutas {
   pool: pg.Pool;
+  /** H-091/REQ-166: réplica de lectura opcional — `null` (por defecto, sin
+   * `DATABASE_URL_REPLICA`) deja `crearRutasUnidades` sin ningún cambio de
+   * comportamiento frente a antes de este lote. Ver `EnrutadorLecturaReplica`. */
+  poolReplica: pg.Pool | null;
   jwtSecret: string;
   keyring: KeyringCifradoCanal;
   /** Lote 11B, corrección #3 (URL de exportación iCal): base pública de
@@ -55,13 +59,13 @@ export interface DependenciasRutas {
 // propio `app.route(...)` aquí, en un commit pequeño y separado — nunca
 // reescriben este archivo completo.
 export function registrarRutas(app: Hono, deps: DependenciasRutas): Hono {
-  const { pool, jwtSecret, keyring, urlPublicaApi, rateLimitLoginPorEmail, auth, pagos } = deps;
+  const { pool, poolReplica, jwtSecret, keyring, urlPublicaApi, rateLimitLoginPorEmail, auth, pagos } = deps;
 
   app.route("/auth", crearRutasAuth({ pool, jwtSecret, keyring, rateLimitLoginPorEmail, ...auth }));
   app.route("/tenants", crearRutasTenants(pool, jwtSecret));
   app.route("/usuarios", crearRutasUsuarios(pool, jwtSecret));
   app.route("/propiedades", crearRutasPropiedades(pool, jwtSecret));
-  app.route("/unidades", crearRutasUnidades(pool, jwtSecret));
+  app.route("/unidades", crearRutasUnidades(pool, jwtSecret, poolReplica));
   app.route(
     "/reservas",
     crearRutasReservas(pool, jwtSecret, { correo: auth.correo, urlPublicaWeb: auth.urlPublicaWeb }),

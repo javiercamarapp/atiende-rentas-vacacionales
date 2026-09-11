@@ -1,4 +1,11 @@
 import type { Pool, PoolClient } from "pg";
+// Import por ruta de módulo, NUNCA por el barril `@atiende-rv/db` (mismo
+// criterio documentado en `app.ts`): el barril reexporta también los
+// motores de pruebas (`embedded-postgres`/PGlite), y un import de VALOR
+// desde ahí los arrastra al bundle serverless de Vercel. Este módulo no
+// tiene ninguna dependencia de esos motores, así que el import directo es
+// seguro.
+import type { PoolConsultable } from "@atiende-rv/db/src/runner/enrutadorLecturaReplica.js";
 
 /**
  * Conexión por request que fija los settings de sesión que RLS necesita
@@ -86,6 +93,27 @@ export async function conConexion<T>(pool: Pool, fn: (cliente: PoolClient) => Pr
   } finally {
     cliente.release();
   }
+}
+
+/**
+ * H-091/REQ-166: adapta un `pg.Pool` + una `SesionDb` ya resuelta (la de la
+ * request en curso) a la interfaz `PoolConsultable` que espera
+ * `EnrutadorLecturaReplica` (`packages/db/src/runner/enrutadorLecturaReplica.ts`)
+ * — cada `.query()` abre su PROPIA conexión vía `conSesion` (fija los
+ * mismos settings de sesión RLS que cualquier otra consulta de la API,
+ * `SELECT set_config('app.tenant_id', ...)` etc.) y la libera al terminar.
+ * Es intencionalmente "barato de construir": no abre ninguna conexión por
+ * sí solo, solo hasta que `consultaSoloLectura` invoca `.query()` — así que
+ * construir un `EnrutadorLecturaReplica` nuevo por request (necesario
+ * porque la sesión RLS varía por usuario/tenant) no tiene costo de red
+ * extra frente al `conSesion` directo que reemplaza. */
+export function poolConsultableParaLectura(pool: Pool, sesion: SesionDb | null): PoolConsultable {
+  return {
+    async query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> {
+      const resultado = await conSesion(pool, sesion, (cliente) => cliente.query(sql, params as unknown[] | undefined));
+      return { rows: resultado.rows as T[] };
+    },
+  };
 }
 
 /** Helper para operaciones CRUD simples (no delegadas a `packages/domain`)

@@ -1,7 +1,10 @@
 import { Hono } from "hono";
 import type pg from "pg";
 import type { EjecutorSql, FilaSql } from "@atiende-rv/db";
+import { FLAG_SYNC_PUSH_AUTOMATICO, type RegistroFlags } from "@atiende-rv/domain";
 import { requiereAutenticacion } from "../../middleware/autenticacion.js";
+import { registroFlagsBackoffice } from "../../routes/backoffice/flags.js";
+import { redactarPiiEnTexto } from "./otel.js";
 import { exponerFormatoPrometheus, resumenLatenciaEtiquetada, RegistroMetricas } from "./metricas.js";
 import { contarPendientesOutbox, edadPendienteMasViejoMs } from "./outboxWorker.js";
 import { reconocerAlerta, resolverAlerta } from "./alertas.js";
@@ -31,6 +34,13 @@ export interface DependenciasRutasObservabilidad {
   metricas: RegistroMetricas;
   pool: pg.Pool;
   jwtSecret: string;
+  /** H-091/REQ-166 (§Operación-3): inyectable SOLO para pruebas
+   * (`test/integration/calendarioReplicaModoDegradado.test.ts`) — por
+   * defecto el mismo singleton de proceso que ya usa
+   * `GET /backoffice/flags` (`registroFlagsBackoffice`), para que pausar
+   * `sync.push_automatico` aquí sea el MISMO flag que ve el resto de la
+   * API, nunca uno paralelo invisible para un operador. */
+  registroFlags?: RegistroFlags;
 }
 
 interface FilaAlerta extends FilaSql {
@@ -64,6 +74,7 @@ export function crearEjecutorSoloLectura(pool: pg.Pool): EjecutorSql {
 export function rutasObservabilidad(deps: DependenciasRutasObservabilidad): Hono {
   const app = new Hono();
   const ejecutor = crearEjecutorSoloLectura(deps.pool);
+  const registroFlags = deps.registroFlags ?? registroFlagsBackoffice;
 
   app.get("/metrics", (c) => c.text(exponerFormatoPrometheus(deps.metricas), 200, { "content-type": "text/plain; version=0.0.4" }));
 
@@ -79,13 +90,43 @@ export function rutasObservabilidad(deps: DependenciasRutasObservabilidad): Hono
       tamanoColaOutbox = await contarPendientesOutbox(ejecutor);
       edadPendienteMasViejo = await edadPendienteMasViejoMs(ejecutor);
       webhookReintentoPorEstado = await contarWebhookReintentoPorEstado(ejecutor);
-    } catch {
+    } catch (error) {
       dbOk = false;
+      // H-091/REQ-166 (§Operación-3): "el primario no responde" en la
+      // sonda de salud REAL que ya hacía este endpoint (no una nueva,
+      // separada) — modo degradado de solo-lectura del calendario +
+      // pausa AUTOMÁTICA de todo push saliente. Idempotente a propósito:
+      // solo escribe (y dispara una entrada de auditoría) la PRIMERA vez
+      // que se detecta caído, para que un monitor externo pegándole a
+      // este endpoint cada pocos segundos mientras el primario sigue
+      // abajo no produzca una fila de auditoría por cada poll — la
+      // reactivación NUNCA es automática (mismo criterio que
+      // `packages/db/backup/recuperacion.ts` tras un restore: requiere
+      // que un operador confirme que el primario ya responde de verdad
+      // antes de reanudar push).
+      if (registroFlags.valor(FLAG_SYNC_PUSH_AUTOMATICO)) {
+        registroFlags.establecer({
+          flagId: FLAG_SYNC_PUSH_AUTOMATICO,
+          valor: false,
+          tenantId: undefined,
+          actor: "monitor-salud-primario",
+          motivo: `GET /health/detallado: el primario no respondió (${redactarPiiEnTexto(
+            error instanceof Error ? error.message : String(error),
+          )}) — modo degradado de solo-lectura del calendario, push saliente pausado (REQ-166/H-091).`,
+        });
+      }
     }
 
     return c.json({
       status: dbOk ? "ok" : "degradado",
       db: { conectada: dbOk },
+      // H-091/REQ-166: señal explícita para la UI del calendario
+      // (`apps/web/src/pages/calendario`) — `true` únicamente mientras el
+      // `SELECT`/consultas de arriba contra el PRIMARIO fallan, nunca un
+      // reflejo de la réplica de lectura (que puede seguir sana o caída
+      // por separado, ver `EnrutadorLecturaReplica`).
+      modoDegradadoCalendario: !dbOk,
+      pushAutomaticoHabilitado: registroFlags.valor(FLAG_SYNC_PUSH_AUTOMATICO),
       outbox: { tamanoCola: tamanoColaOutbox, edadPendienteMasViejoMs: edadPendienteMasViejo },
       webhookReintento: webhookReintentoPorEstado,
       metricas: deps.metricas.snapshot(),
@@ -154,7 +195,10 @@ export function rutasObservabilidad(deps: DependenciasRutasObservabilidad): Hono
   // (`outboxWorker.ts`), huérfano hasta ahora (solo se usaban de él las
   // dos funciones de métricas de arriba) — ver
   // apps/api/src/rutas/internas/cronOutboxWorker.ts.
-  app.route("/internal/cron", crearRutasCronOutboxWorker({ pool: deps.pool, metricas: deps.metricas }));
+  app.route(
+    "/internal/cron",
+    crearRutasCronOutboxWorker({ pool: deps.pool, metricas: deps.metricas, registroFlags }),
+  );
 
   // GET /internal/cron/recordatorio-checkin: correo de recordatorio de
   // check-in al huésped para reservas directas próximas — ver
