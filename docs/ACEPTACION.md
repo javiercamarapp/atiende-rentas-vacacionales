@@ -314,6 +314,59 @@ Auditoría de código: grep de dependencias/uso de automatización de navegador
 pruebas E2E propias. Evidencia esperada: 0 coincidencias de automatización de
 sesión contra dominios de producción de Airbnb/Booking.com/Vrbo.
 
+### §Legal-3 — Bandeja de solicitudes ARCO/RGPD (REQ-151, cierre 2026-09-10)
+
+REQ-151 exige una herramienta de FLUJO (no de decisión sustantiva): cola de
+tickets de derechos del interesado (acceso, rectificación, cancelación,
+oposición / RGPD) con plazo por jurisdicción, estado y responsable
+asignado. A diferencia de REQ-150/152/153, este ID **no** depende de la
+revisión legal pendiente (`docs/BLOQUEOS.md`) — no genera ningún texto
+legal, solo registra el ticket y calcula el plazo estatutario citado en
+`docs/REQUISITOS.md` (LFPDPPP Arts. 21-34; RGPD Arts. 15-22).
+
+**Implementación** (rama `closure/req-151-bandeja-arco`):
+- `packages/db/src/migrations/0133_solicitud_arco.ts` — tabla
+  `solicitud_arco` con RLS (`FORCE ROW LEVEL SECURITY`, aislada por
+  tenant+rol ROLES_ADMIN, sin política de DELETE), columna `plazo_limite`
+  `GENERATED ALWAYS AS (fn_calcular_plazo_arco(jurisdiccion, recibida_en))
+  STORED` (no editable a mano), y un `CHECK` que impide marcar un ticket
+  `resuelta`/`rechazada` sin `resolucion_notas` + `resuelta_en`. Trigger de
+  auditoría dedicado que excluye PII del interesado del JSON auditado
+  (§Privacidad-1).
+- `apps/api/src/routes/solicitudesArco.ts` — `GET/POST /solicitudes-arco`,
+  `GET/PATCH /solicitudes-arco/:id`, ROLES_ADMIN, resolver/rechazar exige
+  `resolucionNotas` en la misma petición.
+- `apps/web/src/pages/legal/SolicitudesArcoPage.tsx` — bandeja visual
+  (filtro por estado, alta, panel de gestión con asignación de
+  responsable), ruta `/legal/solicitudes-arco` (ROLES_ADMIN), enlazada
+  desde `AdminSidebar` (grupo PLATAFORMA).
+
+**Evidencia** (comando + resultado, corridos dentro del worktree de
+cierre):
+- `npm run typecheck` (repo completo, 7 workspaces) → 0 errores.
+- `npm run lint` (repo completo) → 0 errores (1 warning preexistente sin
+  relación, `SesionProvider.tsx`).
+- `cd packages/db && npx vitest run test/integration --config
+  vitest.integration.config.ts` → 12 test files, 90 tests, todos en verde,
+  incluido `solicitudArcoRls.test.ts` (13 tests: RLS FORCE activo,
+  aislamiento cross-tenant, un operador no ve la bandeja, INSERT sin sesión
+  rechazado, ninguna política de DELETE existe, plazo LFPDPPP=20 días
+  hábiles desde un lunes cae 4 semanas después, plazo RGPD=+1 mes exacto,
+  `plazo_limite` rechaza un UPDATE directo, jurisdicción desconocida
+  rechazada por el CHECK, e invariantes de resolución con/sin notas).
+- `cd apps/api && npm run test:integration` → 15 test files, 148 tests,
+  todos en verde, incluido `solicitudesArco.test.ts` (9 tests: 403 para rol
+  no-admin, plazo LFPDPPP/RGPD calculado en la respuesta, 422 por
+  jurisdicción inválida, aislamiento cross-tenant en listado y en GET
+  directo, 422 al resolver sin `resolucionNotas`, ciclo de vida completo
+  asignar→en_proceso→resuelta, 404 en id inexistente, filtro por estado).
+- `npm test` (repo completo, 7 workspaces) → verde.
+- `cd apps/web && npm run build` → build de producción exitoso.
+
+Sin credenciales reales ni servicio externo involucrado — REQ-151 es
+puramente interno (BD + API + UI propias), por lo que no hay bloqueo
+externo que reportar.
+
 ### §Automatización-1 — Presupuesto duro de IA reservado antes de llamar
 
 Simular un tenant con saldo insuficiente y disparar una solicitud que

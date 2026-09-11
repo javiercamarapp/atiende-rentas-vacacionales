@@ -21,6 +21,7 @@ import { crearRutasPricing } from "./pricing.js";
 import { crearRutasPropiedades } from "./propiedades.js";
 import { crearRutasReportes } from "./reportes.js";
 import { crearRutasReservas } from "./reservas.js";
+import { crearRutasSolicitudesArco } from "./solicitudesArco.js";
 import { crearRutasTenants } from "./tenants.js";
 import { crearRutasUnidades } from "./unidades.js";
 import { crearRutasUsuarios } from "./usuarios.js";
@@ -94,6 +95,9 @@ export function registrarRutas(app: Hono, deps: DependenciasRutas): Hono {
     }),
   );
   app.route("/facturacion", crearRutasFacturacion({ pool, jwtSecret, pagos, urlPublicaWeb: auth.urlPublicaWeb }));
+  // REQ-151: bandeja de solicitudes ARCO/RGPD — ver comentario de cabecera
+  // en ./solicitudesArco.ts.
+  app.route("/solicitudes-arco", crearRutasSolicitudesArco(pool, jwtSecret));
 
   return app;
 }

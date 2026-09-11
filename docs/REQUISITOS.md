@@ -16,6 +16,10 @@ Convención de estado:
   (Airbnb, Booking.com, Vrbo) fuera del control del proyecto.
 - **bloqueado por laguna legal** — depende de verificación normativa aún no
   confirmada (ver `docs/LAGUNAS.md`, `docs/BLOQUEOS.md`).
+- **construido** — implementado y verificado con evidencia real (comando +
+  resultado) referenciada en la fila; introducido con el cierre de REQ-151
+  (2026-09-10), primer ID de este catálogo en pasar de "por construir" a
+  este estado.
 
 ---
 
@@ -281,7 +285,7 @@ Convención de estado:
 | ID | Enunciado | Prioridad | Origen | Evidencia | Aceptación | Módulo | Estado |
 |---|---|---|---|---|---|---|---|
 | REQ-150 | El producto provee aviso de privacidad configurable con las fracciones de la LFPDPPP (MX) y registro de actividades de tratamiento conforme al RGPD (ES/UE), sin generar contenido legal final sin revisión humana. | MUST | RV19-R-10 | [DATO] LFPDPPP Art.15 (D3); RGPD Art.5-6 (E1) | ACEPTACION §Legal-1 | Legal/Privacidad | bloqueado por laguna legal (revisión humana pendiente) |
-| REQ-151 | El producto incluye bandeja de gestión de solicitudes ARCO/derechos del interesado con plazos legales por jurisdicción, como herramienta de flujo, no de decisión sustantiva. | MUST | RV19-R-11 | [DATO] LFPDPPP Arts. 21-34 (D2); RGPD Arts. 15-22 (E1) | ACEPTACION §Legal-1 | Legal/Privacidad | por construir |
+| REQ-151 | El producto incluye bandeja de gestión de solicitudes ARCO/derechos del interesado con plazos legales por jurisdicción, como herramienta de flujo, no de decisión sustantiva. | MUST | RV19-R-11 | [DATO] LFPDPPP Arts. 21-34 (D2); RGPD Arts. 15-22 (E1) | ACEPTACION §Legal-3 (corrección: la cita anterior, §Legal-1, es el criterio de feature-flag para funciones "bloqueado por laguna legal" como CFDI/registro de viajeros — sin relación con esta bandeja de flujo, que es independiente de la revisión legal pendiente de REQ-150) | Legal/Privacidad | construido — ver evidencia en ACEPTACION.md §Legal-3 |
 | REQ-152 | El producto permite capturar y exportar los datos exigidos por RD 933/2021 (registro de viajeros España) con retención de 3 años, marcado como sujeto a confirmación legal del modelo operativo vigente. | SHOULD | RV19-R-12 | [DATO con laguna] RD 933/2021 (E2); Orden INT no confirmada (E3) | ACEPTACION §Legal-1 | Legal/Compliance | bloqueado por laguna legal |
 | REQ-153 | El producto no muestra ni exige "número de registro" en anuncios de España asumiendo el Registro Único de Arrendamientos hasta confirmar la norma de transposición; se implementa como campo opcional configurable. | MUST | RV19-R-13 | [DATO parcial] Reglamento UE 2024/1028 Art.4.2/7 (E5); RD español no confirmado (E4) | ACEPTACION §Legal-1 | Legal/Compliance | bloqueado por laguna legal |
 | REQ-154 | Ninguna automatización cancela reservas, modifica datos de huéspedes, ni los contacta sin autorización explícita y registrada del anfitrión/administrador. | MUST | RV19-R-15, REQ-000/001 | SUPUESTO reforzado por Airbnb ToS §16 (C4) | ACEPTACION §RV19/21-6 | Legal/Automatización | por construir |
@@ -357,6 +361,7 @@ actualización sustancial del catálogo.
 
 | Estado | Nº de requisitos (aprox.) |
 |---|---|
-| por construir | ~130 |
+| por construir | ~129 |
 | bloqueado por externo | ~35 |
 | bloqueado por laguna legal | ~14 |
+| construido | 1 (REQ-151, cierre 2026-09-10) |
