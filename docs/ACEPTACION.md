@@ -266,6 +266,30 @@ una reserva; para Booking.com/Vrbo, el porcentaje de comisión usado en el
 cálculo es editable por tenant/propiedad, no una constante hardcodeada en el
 código (verificable por inspección de configuración, no de código fuente).
 
+### §Finanzas-3 — Reportes cruzan `tarea_operativa` de limpieza (H-072)
+
+Criterio añadido al cerrar la brecha declarada en `docs/fase2/BACKLOG.md`
+(H-072, Lote 7: "no cruza `tarea_limpieza` de Lote 5") — identifica la
+métrica exacta exigida por RV17 §12 que faltaba conectar con datos reales:
+las noches del periodo en las que una unidad sigue fuera de venta porque su
+tarea de limpieza de turnover (`tarea_operativa.tipo = 'limpieza'`, Lote 5)
+no se ha completado. Con una unidad con una reserva vendida y una tarea de
+limpieza en estado distinto de `completada`/`cancelada` cuyo
+`buffer_ocupacion_id` bloquea noches dentro del rango del reporte, pedir
+`GET /reportes/ocupacion?desde=...&hasta=...`. Evidencia esperada: la fila
+de la unidad incluye `nochesBloqueadasLimpiezaPendiente` (> 0, igual a las
+noches reales bloqueadas por esa tarea) y `revparAjustadoLimpiezaCentavos`
+(ingresos ÷ noches realmente vendibles, mayor que `revparCentavos` porque
+excluye el inventario bloqueado); marcar la tarea como `completada` y
+repetir la petición hace que `nochesBloqueadasLimpiezaPendiente` vuelva a
+0. Verificado en
+`apps/api/test/integration/finanzasPricingReportes.test.ts` (describe
+"Reportes — H-072") contra `embedded-postgres` real — comando:
+`npm run test:integration --workspace=@atiende-rv/api`, resultado: 21/21 en
+verde en ese archivo (incluye los 3 casos de este criterio). Dominio puro
+cubierto en `packages/domain/test/finanzas/metricas.test.ts` — comando:
+`npm run test --workspace=@atiende-rv/domain`, resultado: 308/308 en verde.
+
 ### §Datos-1 — Multi-unidad y mapeo a listing representativo
 
 Crear una propiedad con 3 unidades y verificar que cada una tiene su propio

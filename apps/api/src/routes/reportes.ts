@@ -11,11 +11,24 @@ import { sesionDeAuth } from "../middleware/tenant.js";
 /**
  * Reporting (Lote 7, BACKLOG E12, RV17 §12). Regla no negociable: SOLO
  * lectura de tablas ya pobladas por otros lotes (`ocupacion_unidad`,
- * `reserva_financiero`, `unidad`, `propiedad`, `canal`) — ninguna lógica de
- * cálculo financiero se duplica aquí; los agregados se derivan con SQL
- * (`SUM`/`COUNT`) y las métricas estándar (ocupación/ADR/RevPAR) se
- * calculan con `@atiende-rv/domain/finanzas` (`calcularMetricasPeriodo`),
- * nunca reimplementadas inline.
+ * `reserva_financiero`, `unidad`, `propiedad`, `canal`, `tarea_operativa`)
+ * — ninguna lógica de cálculo financiero se duplica aquí; los agregados se
+ * derivan con SQL (`SUM`/`COUNT`) y las métricas estándar (ocupación/ADR/
+ * RevPAR) se calculan con `@atiende-rv/domain/finanzas`
+ * (`calcularMetricasPeriodo`), nunca reimplementadas inline.
+ *
+ * H-072 (cierre de la brecha declarada en `docs/fase2/BACKLOG.md`: "no
+ * cruza `tarea_limpieza` de Lote 5"): `GET /ocupacion` cruza `tarea_
+ * operativa` (tipo='limpieza', Lote 5) vía su `buffer_ocupacion_id` para
+ * saber cuántas noches del periodo siguen fuera de venta por limpieza de
+ * turnover sin completar, y expone un RevPAR ajustado sobre el inventario
+ * REALMENTE vendible — dato real, no una cifra decorativa. La consulta se
+ * ejecuta bajo la sesión RLS del usuario (`conSesion`, igual que el resto
+ * del reporte): para roles sin visibilidad de `tarea_operativa`
+ * (`0036_rls_operacion.ts` — `contador`, y `operador` con nivel
+ * `solo_calendario`) el cruce degrada de forma segura a 0 noches
+ * bloqueadas — el mismo resultado que antes de H-072 — nunca a un error ni
+ * a una cifra inventada.
  */
 export function crearRutasReportes(pool: pg.Pool, jwtSecret: string): Hono {
   const app = new Hono();
@@ -44,13 +57,32 @@ export function crearRutasReportes(pool: pg.Pool, jwtSecret: string): Hono {
                   CASE WHEN ou.capa = 'reserva' AND ou.bloqueante AND ou.estado <> 'cancelado'
                     THEN COALESCE(rf.monto_bruto_centavos, 0)
                     ELSE 0 END
-                ), 0) AS ingresos_brutos_centavos
+                ), 0) AS ingresos_brutos_centavos,
+                COALESCE(bl.noches_bloqueadas, 0) AS noches_bloqueadas_limpieza_pendiente
          FROM unidad u
          JOIN propiedad p ON p.id = u.propiedad_id
          LEFT JOIN ocupacion_unidad ou ON ou.unidad_id = u.id AND ou.rango && daterange($1::date, $2::date, '[)')
          LEFT JOIN reserva_financiero rf ON rf.ocupacion_unidad_id = ou.id
+         -- H-072: subconsulta agregada por unidad, aparte del JOIN de
+         -- arriba (nunca en la misma fila) para no multiplicar
+         -- ingresos/noches ocupadas por el número de tareas de limpieza
+         -- (fan-out) — una tarea de limpieza con su tramo de buffer aún
+         -- sin completar (tipo='limpieza', Lote 5) que se solape con el
+         -- periodo cuenta sus noches como NO vendibles.
+         LEFT JOIN (
+           SELECT t.unidad_id,
+                  SUM(
+                    upper(buf.rango * daterange($1::date, $2::date, '[)')) - lower(buf.rango * daterange($1::date, $2::date, '[)'))
+                  ) AS noches_bloqueadas
+           FROM tarea_operativa t
+           JOIN ocupacion_unidad buf ON buf.id = t.buffer_ocupacion_id
+           WHERE t.tipo = 'limpieza'
+             AND t.estado NOT IN ('completada', 'cancelada')
+             AND buf.rango && daterange($1::date, $2::date, '[)')
+           GROUP BY t.unidad_id
+         ) bl ON bl.unidad_id = u.id
          WHERE ($3::uuid IS NULL OR p.id = $3)
-         GROUP BY u.id, u.nombre, p.id, p.nombre
+         GROUP BY u.id, u.nombre, p.id, p.nombre, bl.noches_bloqueadas
          ORDER BY p.nombre, u.nombre`,
         [query.desde, query.hasta, query.propiedadId ?? null],
       );
@@ -60,10 +92,12 @@ export function crearRutasReportes(pool: pg.Pool, jwtSecret: string): Hono {
     const nochesDelPeriodo = diasEntre(query.desde, query.hasta);
     const reporte = filas.map((f) => {
       const nochesOcupadas = Number(f.noches_ocupadas);
+      const nochesBloqueadasLimpiezaPendiente = Number(f.noches_bloqueadas_limpieza_pendiente);
       const metricas = calcularMetricasPeriodo({
         ingresosBrutosCentavos: Number(f.ingresos_brutos_centavos),
         nochesOcupadas,
         nochesDisponibles: nochesDelPeriodo,
+        nochesBloqueadasPorLimpiezaPendiente: nochesBloqueadasLimpiezaPendiente,
       });
       return {
         unidadId: f.unidad_id,
@@ -72,9 +106,12 @@ export function crearRutasReportes(pool: pg.Pool, jwtSecret: string): Hono {
         propiedadNombre: f.propiedad_nombre,
         nochesOcupadas,
         nochesDisponibles: nochesDelPeriodo,
+        nochesBloqueadasLimpiezaPendiente,
+        nochesDisponiblesVendibles: metricas.nochesDisponiblesVendibles,
         ocupacionBasisPoints: metricas.ocupacionBasisPoints,
         adrCentavos: metricas.adrCentavos,
         revparCentavos: metricas.revparCentavos,
+        revparAjustadoLimpiezaCentavos: metricas.revparAjustadoLimpiezaCentavos,
       };
     });
 
@@ -82,7 +119,18 @@ export function crearRutasReportes(pool: pg.Pool, jwtSecret: string): Hono {
       return respuestaCsv(
         c,
         "reporte-ocupacion.csv",
-        ["unidadNombre", "propiedadNombre", "nochesOcupadas", "nochesDisponibles", "ocupacionBasisPoints", "adrCentavos", "revparCentavos"],
+        [
+          "unidadNombre",
+          "propiedadNombre",
+          "nochesOcupadas",
+          "nochesDisponibles",
+          "nochesBloqueadasLimpiezaPendiente",
+          "nochesDisponiblesVendibles",
+          "ocupacionBasisPoints",
+          "adrCentavos",
+          "revparCentavos",
+          "revparAjustadoLimpiezaCentavos",
+        ],
         reporte,
       );
     }

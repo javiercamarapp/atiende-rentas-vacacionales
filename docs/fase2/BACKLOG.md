@@ -142,7 +142,7 @@ externa").
 
 | ID | Historia | REQ | Aceptación | Prioridad | Estimación | Estado |
 |---|---|---|---|---|---|---|
-| H-072 | Reportes operativos/financieros derivados de `reserva`/`statement`/`tarea_limpieza` sin duplicar lógica de cálculo | RV17 §12 | §Finanzas-1 | SHOULD | M | hecho (Lote 7, parcial — ocupación/ADR/RevPAR e ingresos por canal/propiedad/mes desde `reserva_financiero`; no cruza `tarea_limpieza` de Lote 5) |
+| H-072 | Reportes operativos/financieros derivados de `reserva`/`statement`/`tarea_limpieza` sin duplicar lógica de cálculo | RV17 §12 | §Finanzas-1, §Finanzas-3 | SHOULD | M | hecho (Lote 7: ocupación/ADR/RevPAR e ingresos por canal/propiedad/mes desde `reserva_financiero`; brecha cerrada en `closure/h072-reportes-cruzan-limpieza` — `GET /reportes/ocupacion` ahora cruza `tarea_operativa` (tipo='limpieza', Lote 5) vía su `buffer_ocupacion_id`: expone `nochesBloqueadasLimpiezaPendiente` y `revparAjustadoLimpiezaCentavos`, RevPAR calculado sobre el inventario REALMENTE vendible cuando una tarea de limpieza de turnover sigue sin completarse, dato real, nunca decorativo — ver `docs/REQUISITOS.md`/`docs/ACEPTACION.md` §Finanzas-1 para la evidencia de comandos) |
 | H-073 | Reporte de latencia interna vs. por canal con percentiles p50/p95/p99 | REQ-039, REQ-171 | §RV19/21-8, §Plan-1 | MUST | M | hecho (Lote 3.0, `a6108a9` — commit del Lote 3.2 concurrente que absorbió estos archivos por índice git compartido, contenido verificado idéntico, ver `docs/BLOQUEOS.md`) — latencia interna medida etiquetada por canal Y cuenta de canal (`latenciaCanalCuenta.ts`), `resumenLatenciaEtiquetada` separa explícitamente "interna medida" de "externa declarada (confianza)" en `/health/detallado`, panel nuevo en el monitor de sync |
 
 ## E13 — Back office / superadmin
@@ -465,8 +465,11 @@ por canal, que depende de instrumentación de sync de Lote 2/10) quedan
   conciliación genérico (referencia externa → monto exacto →
   pendiente/discrepancia), no como un parser del CSV/XLS oficial de Vrbo
   con sus columnas exactas (requiere un archivo de ejemplo real para
-  verificar el formato, RV12 §4). H-072 no cruza `tarea_limpieza` de Lote
-  5. H-071 y H-073 no se implementaron en este lote.
+  verificar el formato, RV12 §4). H-072 no cruzaba `tarea_limpieza` de
+  Lote 5 al cierre de este lote — **brecha cerrada posteriormente en
+  `closure/h072-reportes-cruzan-limpieza`** (ver fila H-072 arriba). H-071
+  y H-073 no se implementaron en este lote (cerrados después, ver sus
+  filas arriba).
 - **Commits:** 994805d (dominio), 037b2ce (migraciones 0050-0055),
   d3553a5 (endpoints HTTP), 2020dc3 (páginas web), 8ebd171 (capturas).
 

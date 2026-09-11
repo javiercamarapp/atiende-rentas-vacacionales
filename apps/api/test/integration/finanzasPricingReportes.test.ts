@@ -508,3 +508,94 @@ describe("Reportes — H-072/H-073: ocupación/ingresos derivados, exportación 
     expect(body.filas.some((f) => f.canalCodigo === "airbnb" && f.mes === "2026-10")).toBe(true);
   });
 });
+
+describe("Reportes — H-072: el reporte de ocupación cruza tarea_operativa (limpieza, Lote 5) — brecha de Lote 7 cerrada", () => {
+  it("resta del RevPAR las noches bloqueadas por una tarea de limpieza pendiente (nunca las trata como vendibles)", async () => {
+    // Unidad propia de este bloque para no interferir con la fila de
+    // fx.unidadId ya usada por el bloque anterior. 2 noches ocupadas y
+    // vendidas en $1,000.00 (2026-10-01 a 2026-10-03), y una tarea de
+    // limpieza de turnover TODAVÍA pendiente cuyo buffer bloquea otras 2
+    // noches (2026-10-06 a 2026-10-08) dentro del mismo periodo de reporte.
+    const unidadId = await crearUnidad(superusuario, fx.propiedadId, { nombre: "Unidad H-072" });
+    const ocupacion = await superusuario.query<{ id: string }>(
+      `INSERT INTO ocupacion_unidad (unidad_id, rango, capa, razon, estado, bloqueante)
+       VALUES ($1, daterange('2026-10-01', '2026-10-03', '[)'), 'reserva', 'RESERVA_CANAL', 'confirmado', true)
+       RETURNING id`,
+      [unidadId],
+    );
+    await superusuario.query(
+      `INSERT INTO reserva_financiero (ocupacion_unidad_id, moneda, monto_bruto_centavos) VALUES ($1, 'MXN', 100000)`,
+      [ocupacion.rows[0]!.id],
+    );
+    const buffer = await superusuario.query<{ id: string }>(
+      `INSERT INTO ocupacion_unidad (unidad_id, rango, capa, razon, estado, bloqueante)
+       VALUES ($1, daterange('2026-10-06', '2026-10-08', '[)'), 'bloqueo', 'BUFFER_LIMPIEZA', 'confirmado', true)
+       RETURNING id`,
+      [unidadId],
+    );
+    await superusuario.query(
+      `INSERT INTO tarea_operativa (unidad_id, buffer_ocupacion_id, tipo, estado, programada_para)
+       VALUES ($1, $2, 'limpieza', 'pendiente', '2026-10-06')`,
+      [unidadId, buffer.rows[0]!.id],
+    );
+
+    const token = await login(fx.emailAdmin, fx.passwordAdmin);
+    const res = await app.request(`/reportes/ocupacion?desde=2026-10-01&hasta=2026-10-08`, autenticado(token));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      unidades: {
+        unidadId: string;
+        nochesOcupadas: number;
+        nochesDisponibles: number;
+        nochesBloqueadasLimpiezaPendiente: number;
+        nochesDisponiblesVendibles: number;
+        revparCentavos: number;
+        revparAjustadoLimpiezaCentavos: number;
+      }[];
+    };
+    const fila = body.unidades.find((u) => u.unidadId === unidadId);
+    expect(fila).toBeDefined();
+    expect(fila!.nochesOcupadas).toBe(2);
+    expect(fila!.nochesDisponibles).toBe(7); // 2026-10-01 al 2026-10-08
+    expect(fila!.nochesBloqueadasLimpiezaPendiente).toBe(2); // 2026-10-06 al 2026-10-08
+    expect(fila!.nochesDisponiblesVendibles).toBe(5); // 7 - 2
+    expect(fila!.revparCentavos).toBe(14286); // 100000/7, sin ajustar
+    expect(fila!.revparAjustadoLimpiezaCentavos).toBe(20000); // 100000/5, cruzando limpieza pendiente
+  });
+
+  it("una tarea de limpieza ya COMPLETADA no resta ninguna noche del inventario vendible", async () => {
+    const unidadId = await crearUnidad(superusuario, fx.propiedadId, { nombre: "Unidad H-072 completada" });
+    const buffer = await superusuario.query<{ id: string }>(
+      `INSERT INTO ocupacion_unidad (unidad_id, rango, capa, razon, estado, bloqueante)
+       VALUES ($1, daterange('2026-10-06', '2026-10-08', '[)'), 'bloqueo', 'BUFFER_LIMPIEZA', 'confirmado', true)
+       RETURNING id`,
+      [unidadId],
+    );
+    await superusuario.query(
+      `INSERT INTO tarea_operativa (unidad_id, buffer_ocupacion_id, tipo, estado, programada_para, completada_en)
+       VALUES ($1, $2, 'limpieza', 'completada', '2026-10-06', now())`,
+      [unidadId, buffer.rows[0]!.id],
+    );
+
+    const token = await login(fx.emailAdmin, fx.passwordAdmin);
+    const res = await app.request(`/reportes/ocupacion?desde=2026-10-01&hasta=2026-10-08`, autenticado(token));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      unidades: { unidadId: string; nochesBloqueadasLimpiezaPendiente: number; nochesDisponiblesVendibles: number }[];
+    };
+    const fila = body.unidades.find((u) => u.unidadId === unidadId);
+    expect(fila).toBeDefined();
+    expect(fila!.nochesBloqueadasLimpiezaPendiente).toBe(0);
+    expect(fila!.nochesDisponiblesVendibles).toBe(7);
+  });
+
+  it("GET /reportes/ocupacion?formato=csv incluye las columnas nuevas de H-072", async () => {
+    const token = await login(fx.emailAdmin, fx.passwordAdmin);
+    const res = await app.request(`/reportes/ocupacion?desde=2026-10-01&hasta=2026-10-08&formato=csv`, autenticado(token));
+    expect(res.status).toBe(200);
+    const texto = await res.text();
+    const encabezado = texto.split("\n")[0]!;
+    expect(encabezado).toContain("nochesBloqueadasLimpiezaPendiente");
+    expect(encabezado).toContain("revparAjustadoLimpiezaCentavos");
+  });
+});
