@@ -309,11 +309,43 @@ export function crearRutasFinanzas(pool: pg.Pool, jwtSecret: string): Hono {
           `owner_statement:${cuerpo.ownerId}:${cuerpo.periodoInicio}:${cuerpo.periodoFin}`,
         ]);
 
+        // H-048/REQ-023: con N:M owner↔empresa_gestora
+        // (0133_owner_empresa_gestora.ts) un owner puede estar vinculado a
+        // más de una empresa_gestora — el JOIN antiguo sobre la columna de
+        // alta `owner.empresa_gestora_id` ya no alcanza para decidir bajo
+        // qué `tenant_id` se genera el statement: hacerlo así fugaría el
+        // dato financiero al tenant de ALTA aunque quien lo pidió sea otra
+        // empresa_gestora vinculada. Cuando la sesión tiene un tenant
+        // propio (admin_gestora/contador, el caso normal), se exige que el
+        // owner esté vinculado A ESE tenant específico vía la tabla puente
+        // — nunca se infiere el tenant desde el owner. Sin tenant propio
+        // (superadmin con acceso "romper cristal"/delegación de servicio,
+        // H-045/A3-DESP-01) se preserva el comportamiento previo, visible
+        // vía RLS, pero se rechaza explícitamente si el owner comparte
+        // varias empresas_gestoras vigentes para esa sesión: no hay forma
+        // de elegir una sin ambigüedad, y elegir la primera en silencio
+        // sería exactamente la fuga cruzada que H-048 previene.
         const owner = await cliente.query<{ id: string; tenant_id: string }>(
-          `SELECT o.id, eg.tenant_id FROM owner o JOIN empresa_gestora eg ON eg.id = o.empresa_gestora_id WHERE o.id = $1`,
-          [cuerpo.ownerId],
+          auth.tenantId
+            ? `SELECT o.id, eg.tenant_id
+               FROM owner o
+               JOIN owner_empresa_gestora oeg ON oeg.owner_id = o.id
+               JOIN empresa_gestora eg ON eg.id = oeg.empresa_gestora_id
+               WHERE o.id = $1 AND eg.tenant_id = $2`
+            : `SELECT o.id, eg.tenant_id
+               FROM owner o
+               JOIN owner_empresa_gestora oeg ON oeg.owner_id = o.id
+               JOIN empresa_gestora eg ON eg.id = oeg.empresa_gestora_id
+               WHERE o.id = $1`,
+          auth.tenantId ? [cuerpo.ownerId, auth.tenantId] : [cuerpo.ownerId],
         );
-        if (!owner.rows[0]) throw new ErrorDominio("recurso_no_encontrado", "Propietario no encontrado");
+        if (owner.rows.length === 0) throw new ErrorDominio("recurso_no_encontrado", "Propietario no encontrado");
+        if (owner.rows.length > 1) {
+          throw new ErrorDominio(
+            "validacion",
+            "El propietario pertenece a varias empresas gestoras; genera el statement desde una sesión de la empresa gestora específica en vez de una sesión sin tenant propio",
+          );
+        }
 
         const { rows: filasReserva } = await cliente.query(
           `SELECT rf.*, ou.id AS ocupacion_id

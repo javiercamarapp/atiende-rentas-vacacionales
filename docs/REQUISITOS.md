@@ -5,7 +5,9 @@ Catálogo trazable REQ-nnn. Cada fila: enunciado verificable, prioridad
 primaria, `[R]` secundaria reverificable, `SUPUESTO` de diseño, o
 `PENDIENTE-EXTERNO` cuando depende de un tercero), criterio de aceptación
 (sección de `docs/ACEPTACION.md`), módulo de producto, y estado (`por
-construir` / `bloqueado por externo` / `bloqueado por laguna legal`).
+construir` / `implementado` [con comando + resultado verificado citados en
+la columna Evidencia] / `bloqueado por externo` / `bloqueado por laguna
+legal`).
 Agrupado por dominio. La sección 0 recoge los requisitos negativos
 (lo que el sistema NUNCA hace) porque aplican transversalmente a todo lo
 demás.
@@ -53,7 +55,7 @@ Convención de estado:
 | REQ-020 | El acceso "romper cristal" de Superadmin Atiende a datos de un tenant queda siempre auditado (quién, cuándo, qué, por qué). | MUST | RV12 §1, RV12-R-08 | SUPUESTO | ACEPTACION §Auditoría-1 | Back office | por construir |
 | REQ-021 | El rol Propietario tiene acceso de solo lectura acotado a sus propias propiedades: reservas, ocupación, ingresos, comisión, gastos, neto, descarga de statement. | MUST | RV12-R-09 | SUPUESTO | ACEPTACION §Roles-4 | Finanzas/Owners | por construir |
 | REQ-022 | El rol Contador tiene acceso a datos financieros consolidados sin permisos operativos, con exportación para uso contable/fiscal externo. | SHOULD | RV12-R-10 | SUPUESTO | ACEPTACION §Roles-4 | Finanzas/Owners | por construir |
-| REQ-023 | El modelo de datos permite que un mismo propietario esté vinculado a más de una empresa gestora (relación N:M, no jerarquía estricta tenant→propietario). | COULD | RV12-R-08 (extensión), RV17 §14 | SUPUESTO | ACEPTACION §Roles-4 | Multitenancy | por construir |
+| REQ-023 | El modelo de datos permite que un mismo propietario esté vinculado a más de una empresa gestora (relación N:M, no jerarquía estricta tenant→propietario). | COULD | RV12-R-08 (extensión), RV17 §14 | SUPUESTO — implementado en `packages/db/src/migrations/0133_owner_empresa_gestora.ts` (tabla puente `owner_empresa_gestora`, migración de los datos 1:N existentes preservada, RLS de `owner`/`owner_empresa_gestora` redefinida sobre `owner_pertenece_a_tenant`) + `apps/api/src/routes/finanzas.ts` (statement financiero ya no infiere el tenant desde la empresa gestora de alta). Verificado con `npm run test:integration -w @atiende-rv/db -- rls.test.ts`: 27/27 tests en verde, incluida la suite nueva "REQ-023/H-048 §Roles-4: multitenancy N:M owner↔empresa_gestora" (owner en 2 empresas_gestoras, cada una ve solo su propia propiedad/unidad, ninguna ve la de la otra, la tabla puente en sí no fuga, INSERT cruzado rechazado con `42501`); sin ese fix la misma suite falla en `adminC ve el MISMO owner compartido... (expected +0 to be 1)`, confirmando que la prueba ejercita el criterio real. | ACEPTACION §Roles-4 | Multitenancy | implementado |
 
 ---
 

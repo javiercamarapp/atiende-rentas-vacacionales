@@ -463,3 +463,148 @@ describe("§Roles-1/§Roles-4: propietario limitado a sus propias unidades", () 
     expect(resultado.rowCount).toBe(0);
   });
 });
+
+describe("REQ-023/H-048 §Roles-4: multitenancy N:M owner↔empresa_gestora (0133_owner_empresa_gestora.ts)", () => {
+  // Un mismo owner vinculado a DOS empresas_gestoras (tenant A y un tenant
+  // C nuevo, dedicado a este bloque para no interferir con las fixtures
+  // compartidas de tenant B): cada empresa_gestora tiene su propia
+  // propiedad/unidad administrando a ese owner. El criterio de aceptación
+  // exacto (docs/ACEPTACION.md §Roles-4) es que cada una vea SOLO lo que
+  // administra de ese propietario, nunca lo de la otra.
+  let tenantC: string;
+  let egC: string;
+  let propiedadC: string;
+  let unidadC: string;
+  let adminC: string;
+  let ownerCompartido: string;
+
+  beforeAll(async () => {
+    const tenant = await superusuario.query<{ id: string }>(
+      "INSERT INTO tenant (nombre) VALUES ('Tenant C (H-048)') RETURNING id",
+    );
+    tenantC = tenant.rows[0]!.id;
+
+    const eg = await superusuario.query<{ id: string }>(
+      "INSERT INTO empresa_gestora (tenant_id, razon_social) VALUES ($1, 'EG C') RETURNING id",
+      [tenantC],
+    );
+    egC = eg.rows[0]!.id;
+
+    // Owner dado de alta originalmente en la empresa_gestora del tenant A
+    // (empresa_gestora_id = egA, como cualquier owner de hoy) — la
+    // vinculación N:M con EG C se añade DESPUÉS, sobre la tabla puente,
+    // simulando "el propietario también le confía propiedades a una
+    // segunda gestora" sin tocar su fila de alta original.
+    const owner = await superusuario.query<{ id: string }>(
+      "INSERT INTO owner (empresa_gestora_id, nombre) VALUES ($1, 'Owner compartido A+C') RETURNING id",
+      [ids.egA],
+    );
+    ownerCompartido = owner.rows[0]!.id;
+
+    await superusuario.query(
+      "INSERT INTO owner_empresa_gestora (owner_id, empresa_gestora_id) VALUES ($1, $2)",
+      [ownerCompartido, egC],
+    );
+
+    const propiedad = await superusuario.query<{ id: string }>(
+      "INSERT INTO propiedad (tenant_id, nombre, zona_horaria) VALUES ($1, 'Prop C', 'America/Cancun') RETURNING id",
+      [tenantC],
+    );
+    propiedadC = propiedad.rows[0]!.id;
+
+    const unidad = await superusuario.query<{ id: string }>(
+      "INSERT INTO unidad (propiedad_id, owner_id, nombre) VALUES ($1, $2, 'Unidad C1') RETURNING id",
+      [propiedadC, ownerCompartido],
+    );
+    unidadC = unidad.rows[0]!.id;
+
+    adminC = await superusuario
+      .query<{ id: string }>(
+        `INSERT INTO usuario (tenant_id, email, rol, password_hash) VALUES ($1, 'admin.c@test.local', 'admin_gestora', 'x') RETURNING id`,
+        [tenantC],
+      )
+      .then((r) => r.rows[0]!.id);
+  });
+
+  it("la migración de datos existentes preservó la relación 1:N previa: ownerA (alta original) sigue vinculado a egA en la tabla puente", async () => {
+    const fila = await superusuario.query(
+      "SELECT 1 FROM owner_empresa_gestora WHERE owner_id = $1 AND empresa_gestora_id = $2",
+      [ids.ownerA, ids.egA],
+    );
+    expect(fila.rowCount).toBe(1);
+  });
+
+  it("el owner compartido queda vinculado a AMBAS empresas_gestoras (egA de alta + egC añadida vía tabla puente)", async () => {
+    const filas = await superusuario.query<{ empresa_gestora_id: string }>(
+      "SELECT empresa_gestora_id FROM owner_empresa_gestora WHERE owner_id = $1 ORDER BY empresa_gestora_id",
+      [ownerCompartido],
+    );
+    expect(filas.rows.map((f) => f.empresa_gestora_id).sort()).toEqual([ids.egA, egC].sort());
+  });
+
+  it("adminA (tenant A) ve el owner compartido y SU propiedad (Prop A), nunca la Prop C de la otra empresa_gestora", async () => {
+    const cliente = await comoUsuario(ids.adminA, ids.tenantA, "admin_gestora");
+
+    const owner = await cliente.query("SELECT * FROM owner WHERE id = $1", [ownerCompartido]);
+    expect(owner.rowCount).toBe(1);
+
+    const propA = await cliente.query("SELECT * FROM propiedad WHERE id = $1", [ids.propiedadA]);
+    expect(propA.rowCount).toBe(1);
+
+    // Núcleo del criterio de aceptación: consulta cruzada rechazada por RLS.
+    const propC = await cliente.query("SELECT * FROM propiedad WHERE id = $1", [propiedadC]);
+    expect(propC.rowCount).toBe(0);
+    const unidadCDesdeA = await cliente.query("SELECT * FROM unidad WHERE id = $1", [unidadC]);
+    expect(unidadCDesdeA.rowCount).toBe(0);
+  });
+
+  it("adminC (tenant C) ve el MISMO owner compartido (antes de H-048 esto era 0 filas: el owner solo pertenecía al tenant de alta) y SU propiedad (Prop C), nunca la Prop A de la otra empresa_gestora", async () => {
+    const cliente = await comoUsuario(adminC, tenantC, "admin_gestora");
+
+    const owner = await cliente.query("SELECT * FROM owner WHERE id = $1", [ownerCompartido]);
+    expect(owner.rowCount).toBe(1);
+
+    const propC = await cliente.query("SELECT * FROM propiedad WHERE id = $1", [propiedadC]);
+    expect(propC.rowCount).toBe(1);
+
+    // Núcleo del criterio de aceptación, en el sentido inverso: la empresa
+    // gestora nueva tampoco fuga los datos de la empresa gestora de alta.
+    const propA = await cliente.query("SELECT * FROM propiedad WHERE id = $1", [ids.propiedadA]);
+    expect(propA.rowCount).toBe(0);
+    const unidadADesdeC = await cliente.query("SELECT * FROM unidad WHERE id = $1", [ids.unidadA]);
+    expect(unidadADesdeC.rowCount).toBe(0);
+  });
+
+  it("adminB (tenant B, sin ninguna vinculación con el owner compartido) no ve ni el owner ni ninguna de sus dos propiedades", async () => {
+    const cliente = await comoUsuario(ids.adminB, ids.tenantB, "admin_gestora");
+
+    const owner = await cliente.query("SELECT * FROM owner WHERE id = $1", [ownerCompartido]);
+    expect(owner.rowCount).toBe(0);
+    const propA = await cliente.query("SELECT * FROM propiedad WHERE id = $1", [ids.propiedadA]);
+    expect(propA.rowCount).toBe(0);
+    const propC = await cliente.query("SELECT * FROM propiedad WHERE id = $1", [propiedadC]);
+    expect(propC.rowCount).toBe(0);
+  });
+
+  it("la tabla puente owner_empresa_gestora en sí no fuga: adminA no ve la fila que vincula al owner con egC (tenant ajeno)", async () => {
+    const cliente = await comoUsuario(ids.adminA, ids.tenantA, "admin_gestora");
+    const soloSuVinculo = await cliente.query(
+      "SELECT empresa_gestora_id FROM owner_empresa_gestora WHERE owner_id = $1",
+      [ownerCompartido],
+    );
+    // Ve la fila (owner, egA) porque es miembro de egA, pero nunca la fila
+    // (owner, egC) — ninguna consulta cruzada revela con qué OTRA
+    // empresa_gestora comparte propietario un tenant ajeno.
+    expect(soloSuVinculo.rows.map((f) => f.empresa_gestora_id)).toEqual([ids.egA]);
+  });
+
+  it("adminA no puede vincular (INSERT) el owner compartido a una empresa_gestora ajena vía la tabla puente", async () => {
+    const cliente = await comoUsuario(ids.adminA, ids.tenantA, "admin_gestora");
+    await expect(
+      cliente.query("INSERT INTO owner_empresa_gestora (owner_id, empresa_gestora_id) VALUES ($1, $2)", [
+        ids.ownerA,
+        egC,
+      ]),
+    ).rejects.toMatchObject({ code: "42501" }); // insufficient_privilege (RLS WITH CHECK)
+  });
+});

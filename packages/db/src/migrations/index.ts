@@ -88,6 +88,7 @@ import { migracion0129FacturacionOrdenWebhook } from "./0129_facturacion_orden_w
 import { migracion0130MensajeriaBorradorAgenteLlm } from "./0130_mensajeria_borrador_agente_llm.js";
 import { migracion0131WebhookSalienteReintento } from "./0131_webhook_saliente_reintento.js";
 import { migracion0132RecordatorioCheckinHuesped } from "./0132_recordatorio_checkin_huesped.js";
+import { migracion0133OwnerEmpresaGestora } from "./0133_owner_empresa_gestora.js";
 
 // Orden fijo, nunca reordenar migraciones ya aplicadas en algún entorno
 // (patrón expand/contract real llega en Lote 10 — H-088). Cada lote
@@ -229,4 +230,9 @@ export const migraciones: Migracion[] = [
   // recordatorio de check-in sobre `ocupacion_unidad`. Ver comentario de
   // cabecera en 0132_recordatorio_checkin_huesped.ts.
   migracion0132RecordatorioCheckinHuesped,
+  // 0133: REQ-023/H-048 (COULD, ACEPTACION.md §Roles-4) — tabla puente
+  // owner_empresa_gestora (N:M) sustituyendo el 1:N documentado como
+  // pendiente en 0002_tenant_empresa_owner.ts. Ver comentario de cabecera
+  // en 0133_owner_empresa_gestora.ts.
+  migracion0133OwnerEmpresaGestora,
 ];
