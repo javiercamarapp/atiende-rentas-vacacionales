@@ -230,3 +230,42 @@ describe("procesarPendientesOutbox — replay idempotente tras crash a mitad de 
     expect(intentos).toBe(2);
   });
 });
+
+describe("procesarPendientesOutbox — pausadoPorModoDegradado (H-091/REQ-166, §Operación-3)", () => {
+  it("con pushAutomaticoHabilitado=false NO procesa ningún evento pendiente, aunque haya pendientes reales en la tabla", async () => {
+    await encolarEventos(3);
+    let invocaciones = 0;
+
+    const resultado = await procesarPendientesOutbox({
+      ejecutor: motor.ejecutor,
+      aplicarEfecto: async () => {
+        invocaciones++;
+      },
+      pushAutomaticoHabilitado: false,
+    });
+
+    expect(resultado).toEqual({ procesados: [], omitidosYaConsumidos: 0, pausadoPorModoDegradado: true });
+    expect(invocaciones).toBe(0);
+    // Los 3 eventos siguen pendientes de verdad — la pausa nunca los
+    // marca como consumidos ni los descarta, solo difiere su procesamiento.
+    expect(await contarPendientesOutbox(motor.ejecutor)).toBe(3);
+  });
+
+  it("sin pushAutomaticoHabilitado (u omitido/true) procesa normalmente — comportamiento IDÉNTICO al de antes de H-091", async () => {
+    await encolarEventos(2);
+    const invocados: string[] = [];
+
+    const resultado = await procesarPendientesOutbox({
+      ejecutor: motor.ejecutor,
+      aplicarEfecto: async (evento) => {
+        invocados.push(evento.id);
+      },
+      pushAutomaticoHabilitado: true,
+    });
+
+    expect(resultado.procesados).toHaveLength(2);
+    expect(resultado.pausadoPorModoDegradado).toBeUndefined();
+    expect(invocados).toHaveLength(2);
+    expect(await contarPendientesOutbox(motor.ejecutor)).toBe(0);
+  });
+});

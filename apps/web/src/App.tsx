@@ -35,6 +35,7 @@ import { PropiedadesPage } from "./pages/backoffice/PropiedadesPage";
 import { CuentasCanalPage } from "./pages/backoffice/CuentasCanalPage";
 import { AdministracionPage } from "./pages/backoffice/AdministracionPage";
 import { AgentesPage } from "./pages/agentes/AgentesPage";
+import { SolicitudesArcoPage } from "./pages/legal/SolicitudesArcoPage";
 import { AdminLayout } from "./components/admin/AdminLayout";
 import { RutaProtegida } from "./components/admin/RutaProtegida";
 import { RutaConRol } from "./components/admin/RutaConRol";
@@ -151,6 +152,18 @@ export default function App() {
                     element={
                       <RutaConRol roles={ROLES_ADMIN}>
                         <SuperadminPage />
+                      </RutaConRol>
+                    }
+                  />
+                  {/* REQ-151: bandeja de solicitudes ARCO/RGPD — mismo nivel
+                      de rol que el resto de configuración legal/de
+                      cumplimiento (ROLES_ADMIN), ver
+                      apps/api/src/routes/solicitudesArco.ts. */}
+                  <Route
+                    path="/legal/solicitudes-arco"
+                    element={
+                      <RutaConRol roles={ROLES_ADMIN}>
+                        <SolicitudesArcoPage />
                       </RutaConRol>
                     }
                   />

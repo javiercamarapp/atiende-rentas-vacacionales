@@ -36,6 +36,16 @@ export interface EntradaLatenciaExternaDeclarada {
 
 export interface RespuestaSaludDetallada {
   status: string;
+  // H-091/REQ-166 (§Operación-3): `true` únicamente mientras el PRIMARIO
+  // (base de escritura) no responde — nunca un reflejo del estado de la
+  // réplica de lectura opcional (`EnrutadorLecturaReplica`), que puede
+  // seguir sana o caída por separado. Consumido por
+  // `apps/web/src/pages/calendario/components/ModoDegradadoBanner.tsx`.
+  modoDegradadoCalendario: boolean;
+  // `sync.push_automatico` visto desde fuera — se apaga automáticamente
+  // cuando `modoDegradadoCalendario` pasa a `true` (nunca se reactiva
+  // solo: requiere que un operador confirme que el primario ya responde).
+  pushAutomaticoHabilitado: boolean;
   latenciaResumen: {
     internaMedidaMs: EntradaLatenciaInternaMedida[];
     externaDeclaradaConfianzaSegundos: EntradaLatenciaExternaDeclarada[];

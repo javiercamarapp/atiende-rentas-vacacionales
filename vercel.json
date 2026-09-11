@@ -17,6 +17,7 @@
     { "path": "/api/internal/cron/webhooks-retry", "schedule": "*/5 * * * *" },
     { "path": "/api/internal/cron/limpieza-checkout", "schedule": "*/15 * * * *" },
     { "path": "/api/internal/cron/outbox-worker", "schedule": "*/10 * * * *" },
-    { "path": "/api/internal/cron/recordatorio-checkin", "schedule": "0 * * * *" }
+    { "path": "/api/internal/cron/recordatorio-checkin", "schedule": "0 * * * *" },
+    { "path": "/api/internal/cron/liberacion-instrucciones-acceso", "schedule": "0 * * * *" }
   ]
 }

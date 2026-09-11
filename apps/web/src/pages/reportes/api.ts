@@ -18,9 +18,17 @@ export interface FilaOcupacion {
   propiedadNombre: string;
   nochesOcupadas: number;
   nochesDisponibles: number;
+  /** H-072: noches del periodo bloqueadas por una tarea de limpieza
+   * (Lote 5) aún no completada — opcional para no romper respuestas de
+   * versiones previas del backend; ausente equivale a 0. */
+  nochesBloqueadasLimpiezaPendiente?: number;
+  /** H-072: nochesDisponibles menos las bloqueadas por limpieza pendiente. */
+  nochesDisponiblesVendibles?: number;
   ocupacionBasisPoints: number;
   adrCentavos: number;
   revparCentavos: number;
+  /** H-072: RevPAR calculado sobre nochesDisponiblesVendibles. */
+  revparAjustadoLimpiezaCentavos?: number;
 }
 
 export interface FilaIngresos {

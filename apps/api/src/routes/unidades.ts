@@ -2,13 +2,18 @@ import { Hono } from "hono";
 import type pg from "pg";
 import { nochesDelRango, ocupacionesActivasEnNoche, razonDominante } from "@atiende-rv/domain";
 import type { Ocupacion } from "@atiende-rv/domain";
+// Import por ruta de módulo, no por el barril `@atiende-rv/db` (mismo
+// criterio que `app.ts`/`db/contexto.ts`: evita arrastrar los motores de
+// pruebas embedded-postgres/PGlite al bundle serverless de Vercel).
+import { EnrutadorLecturaReplica } from "@atiende-rv/db/src/runner/enrutadorLecturaReplica.js";
 import { CuerpoCrearUnidad, ErrorDominio, QueryRangoCalendario } from "../contrato/tipos.js";
-import { conSesion, enTransaccion } from "../db/contexto.js";
+import { conSesion, enTransaccion, poolConsultableParaLectura } from "../db/contexto.js";
 import { requiereAutenticacion } from "../middleware/autenticacion.js";
 import { exigirRol } from "../middleware/roles.js";
 import { ROLES_ADMIN } from "../rolesComunes.js";
 import { sesionDeAuth } from "../middleware/tenant.js";
 import { exigirLimitePlanEnTransaccion } from "./facturacionLimites.js";
+import { redactarPiiEnTexto } from "../workers/observabilidad/otel.js";
 
 interface FilaOcupacion {
   id: string;
@@ -23,7 +28,7 @@ interface FilaOcupacion {
   canal_codigo: string | null;
 }
 
-export function crearRutasUnidades(pool: pg.Pool, jwtSecret: string): Hono {
+export function crearRutasUnidades(pool: pg.Pool, jwtSecret: string, poolReplica: pg.Pool | null = null): Hono {
   const app = new Hono();
   app.use("*", requiereAutenticacion(jwtSecret));
 
@@ -89,6 +94,18 @@ export function crearRutasUnidades(pool: pg.Pool, jwtSecret: string): Hono {
   // con capa/estado/origen resueltos (RV09-R-01, §UX-1). Usa la misma
   // lógica de precedencia que packages/domain/src/capas.ts, nunca una
   // reimplementación paralela en SQL.
+  //
+  // H-091/REQ-166 (§Operación-3): consulta de SOLO LECTURA enrutada a
+  // través de `EnrutadorLecturaReplica` — con `DATABASE_URL_REPLICA`
+  // configurada, esta lectura intenta la réplica primero y cae
+  // automáticamente al primario ante cualquier fallo de esa réplica
+  // (incluida una réplica caída, que es exactamente lo que mantiene el
+  // calendario legible cuando el PRIMARIO no responde: la réplica sigue
+  // sirviendo lecturas mientras el primario está fuera). Sin
+  // `DATABASE_URL_REPLICA` (comportamiento por defecto, ver
+  // `config/env.ts`), `poolReplica` es `null` y el enrutador va directo al
+  // primario — ningún cambio de comportamiento frente al `conSesion`
+  // directo que esto reemplaza.
   app.get("/:id/calendario", async (c) => {
     const auth = c.get("auth");
     const unidadId = c.req.param("id");
@@ -100,17 +117,32 @@ export function crearRutasUnidades(pool: pg.Pool, jwtSecret: string): Hono {
       throw new ErrorDominio("rango_invalido", "El parámetro 'desde' debe ser anterior a 'hasta'");
     }
 
-    const filas = await conSesion(pool, sesionDeAuth(auth), async (cliente) => {
-      const { rows } = await cliente.query<FilaOcupacion>(
-        `SELECT o.id, o.unidad_id, lower(o.rango)::text AS inicio, upper(o.rango)::text AS fin,
-                o.capa, o.razon, o.estado, o.bloqueante, o.canal_origen_id, c.codigo AS canal_codigo
-         FROM ocupacion_unidad o
-         LEFT JOIN canal c ON c.id = o.canal_origen_id
-         WHERE o.unidad_id = $1 AND o.rango && daterange($2, $3, '[)')`,
-        [unidadId, query.desde, query.hasta],
-      );
-      return rows;
+    const sesion = sesionDeAuth(auth);
+    const enrutador = new EnrutadorLecturaReplica({
+      primario: poolConsultableParaLectura(pool, sesion),
+      replica: poolReplica ? poolConsultableParaLectura(poolReplica, sesion) : null,
+      // Nunca lanza (contrato de EnrutadorLecturaReplica) — solo deja
+      // constancia, saneada (S-10), de que esta lectura tuvo que caer al
+      // primario tras un fallo real de la réplica.
+      onFallback: (error) => {
+        console.error(
+          JSON.stringify({
+            evento: "calendario_fallback_replica_a_primario",
+            unidadId,
+            mensaje: redactarPiiEnTexto(error instanceof Error ? error.message : String(error)),
+          }),
+        );
+      },
     });
+
+    const { rows: filas } = await enrutador.consultaSoloLectura<FilaOcupacion>(
+      `SELECT o.id, o.unidad_id, lower(o.rango)::text AS inicio, upper(o.rango)::text AS fin,
+              o.capa, o.razon, o.estado, o.bloqueante, o.canal_origen_id, c.codigo AS canal_codigo
+       FROM ocupacion_unidad o
+       LEFT JOIN canal c ON c.id = o.canal_origen_id
+       WHERE o.unidad_id = $1 AND o.rango && daterange($2, $3, '[)')`,
+      [unidadId, query.desde, query.hasta],
+    );
 
     const ocupaciones: Ocupacion[] = filas.map((f) => ({
       id: f.id,

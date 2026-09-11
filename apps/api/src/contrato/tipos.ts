@@ -1156,5 +1156,80 @@ export const RespuestaWebhookTenantCreado = RespuestaWebhookTenant.extend({
 });
 export type RespuestaWebhookTenantCreado = z.infer<typeof RespuestaWebhookTenantCreado>;
 
+// ---------------------------------------------------------------------------
+// Bandeja de solicitudes ARCO/RGPD (REQ-151, packages/db migración
+// 0133_solicitud_arco.ts) — herramienta de FLUJO, no de decisión
+// sustantiva: registra el ticket, calcula el plazo por jurisdicción y da
+// seguimiento a estado/responsable; nunca decide si la solicitud procede.
+// ---------------------------------------------------------------------------
+
+export const TIPOS_DERECHO_ARCO = ["acceso", "rectificacion", "cancelacion", "oposicion"] as const;
+export const TipoDerechoArco = z.enum(TIPOS_DERECHO_ARCO);
+export type TipoDerechoArco = z.infer<typeof TipoDerechoArco>;
+
+export const JURISDICCIONES_ARCO = ["mx_lfpdppp", "ue_rgpd"] as const;
+export const JurisdiccionArco = z.enum(JURISDICCIONES_ARCO);
+export type JurisdiccionArco = z.infer<typeof JurisdiccionArco>;
+
+export const ESTADOS_SOLICITUD_ARCO = ["recibida", "en_proceso", "resuelta", "rechazada"] as const;
+export const EstadoSolicitudArco = z.enum(ESTADOS_SOLICITUD_ARCO);
+export type EstadoSolicitudArco = z.infer<typeof EstadoSolicitudArco>;
+
+export const CuerpoCrearSolicitudArco = z.object({
+  tipoDerecho: TipoDerechoArco,
+  jurisdiccion: JurisdiccionArco,
+  solicitanteNombre: z.string().trim().min(1).max(200),
+  solicitanteEmail: z.string().trim().email(),
+  descripcion: z.string().trim().max(4000).optional(),
+  responsableId: z.string().uuid().optional(),
+});
+export type CuerpoCrearSolicitudArco = z.infer<typeof CuerpoCrearSolicitudArco>;
+
+// Todos los campos opcionales (PATCH parcial) pero al menos uno debe venir
+// — `responsableId: null` reasigna a "sin responsable" (distinto de
+// "no tocar", que es simplemente omitir el campo).
+export const CuerpoActualizarSolicitudArco = z
+  .object({
+    estado: EstadoSolicitudArco.optional(),
+    responsableId: z.string().uuid().nullable().optional(),
+    resolucionNotas: z.string().trim().min(1).max(4000).optional(),
+  })
+  .refine((c) => c.estado !== undefined || c.responsableId !== undefined || c.resolucionNotas !== undefined, {
+    message: "Debe incluir al menos un campo a actualizar (estado, responsableId o resolucionNotas)",
+  });
+export type CuerpoActualizarSolicitudArco = z.infer<typeof CuerpoActualizarSolicitudArco>;
+
+export const SolicitudArcoContrato = z.object({
+  id: z.string().uuid(),
+  tipoDerecho: TipoDerechoArco,
+  jurisdiccion: JurisdiccionArco,
+  solicitanteNombre: z.string(),
+  solicitanteEmail: z.string(),
+  descripcion: z.string().nullable(),
+  estado: EstadoSolicitudArco,
+  responsableId: z.string().uuid().nullable(),
+  recibidaEn: z.string(),
+  plazoLimite: z.string(),
+  vencida: z.boolean(),
+  resueltaEn: z.string().nullable(),
+  resolucionNotas: z.string().nullable(),
+});
+export type SolicitudArcoContrato = z.infer<typeof SolicitudArcoContrato>;
+
+export const RespuestaSolicitudesArcoPaginada = z.object({
+  pagina: z.number().int().min(1),
+  tamano: z.number().int().min(1),
+  total: z.number().int().min(0),
+  entradas: z.array(SolicitudArcoContrato),
+});
+export type RespuestaSolicitudesArcoPaginada = z.infer<typeof RespuestaSolicitudesArcoPaginada>;
+
+export const QuerySolicitudesArco = z.object({
+  pagina: z.coerce.number().int().min(1).default(1),
+  tamano: z.coerce.number().int().min(1).max(100).default(20),
+  estado: EstadoSolicitudArco.optional(),
+});
+export type QuerySolicitudesArco = z.infer<typeof QuerySolicitudesArco>;
+
 export { CODIGOS_ERROR, ErrorDominio } from "./errores.js";
 export type { CodigoError, CuerpoErrorHttp } from "./errores.js";

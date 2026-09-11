@@ -5,17 +5,35 @@ Catálogo trazable REQ-nnn. Cada fila: enunciado verificable, prioridad
 primaria, `[R]` secundaria reverificable, `SUPUESTO` de diseño, o
 `PENDIENTE-EXTERNO` cuando depende de un tercero), criterio de aceptación
 (sección de `docs/ACEPTACION.md`), módulo de producto, y estado (`por
-construir` / `bloqueado por externo` / `bloqueado por laguna legal`).
+construir` / `construido` / `implementado` [sinónimo heredado, ver nota] /
+`bloqueado por externo` / `bloqueado por laguna legal`).
 Agrupado por dominio. La sección 0 recoge los requisitos negativos
 (lo que el sistema NUNCA hace) porque aplican transversalmente a todo lo
 demás.
 
 Convención de estado:
 - **por construir** — no depende de un tercero ni de una laguna legal abierta.
+- **construido** — el criterio de aceptación citado se verificó con comando +
+  resultado real adjuntos en la propia fila (evidencia inline en la columna
+  Evidencia); no reemplaza revisión legal/técnica humana ni gate de release.
+  Introducido con el cierre de REQ-151 (2026-09-10), primer ID de este
+  catálogo en pasar de "por construir" a este estado.
+- **implementado** — sinónimo exacto de "construido" (mismo criterio de
+  evidencia inline); usado por REQ-023 en el cierre de H-048, en paralelo al
+  cierre de REQ-151 que fijó "construido" como término canónico. Se
+  conserva el valor ya escrito en esa fila en vez de reescribir contenido
+  aprobado de otra rama de cierre; filas nuevas deben usar "construido".
 - **bloqueado por externo** — depende de aprobación/certificación de un canal
   (Airbnb, Booking.com, Vrbo) fuera del control del proyecto.
 - **bloqueado por laguna legal** — depende de verificación normativa aún no
   confirmada (ver `docs/LAGUNAS.md`, `docs/BLOQUEOS.md`).
+- **implementado** — construido y verificado contra el criterio de
+  `ACEPTACION.md` citado en la fila, con evidencia real (comando ejecutado +
+  resultado) anotada en la columna Evidencia — no una simulación ni un mock
+  que solo pasa por pasar. Introducido 2026-09-10 (cierre de REQ-095); las
+  filas con `por construir` que ya tengan código construido pero sin esta
+  verificación explícita permanecen `por construir` hasta que se les aplique
+  el mismo cierre.
 
 ---
 
@@ -53,7 +71,7 @@ Convención de estado:
 | REQ-020 | El acceso "romper cristal" de Superadmin Atiende a datos de un tenant queda siempre auditado (quién, cuándo, qué, por qué). | MUST | RV12 §1, RV12-R-08 | SUPUESTO | ACEPTACION §Auditoría-1 | Back office | por construir |
 | REQ-021 | El rol Propietario tiene acceso de solo lectura acotado a sus propias propiedades: reservas, ocupación, ingresos, comisión, gastos, neto, descarga de statement. | MUST | RV12-R-09 | SUPUESTO | ACEPTACION §Roles-4 | Finanzas/Owners | por construir |
 | REQ-022 | El rol Contador tiene acceso a datos financieros consolidados sin permisos operativos, con exportación para uso contable/fiscal externo. | SHOULD | RV12-R-10 | SUPUESTO | ACEPTACION §Roles-4 | Finanzas/Owners | por construir |
-| REQ-023 | El modelo de datos permite que un mismo propietario esté vinculado a más de una empresa gestora (relación N:M, no jerarquía estricta tenant→propietario). | COULD | RV12-R-08 (extensión), RV17 §14 | SUPUESTO | ACEPTACION §Roles-4 | Multitenancy | por construir |
+| REQ-023 | El modelo de datos permite que un mismo propietario esté vinculado a más de una empresa gestora (relación N:M, no jerarquía estricta tenant→propietario). | COULD | RV12-R-08 (extensión), RV17 §14 | SUPUESTO — implementado en `packages/db/src/migrations/0133_owner_empresa_gestora.ts` (tabla puente `owner_empresa_gestora`, migración de los datos 1:N existentes preservada, RLS de `owner`/`owner_empresa_gestora` redefinida sobre `owner_pertenece_a_tenant`) + `apps/api/src/routes/finanzas.ts` (statement financiero ya no infiere el tenant desde la empresa gestora de alta). Verificado con `npm run test:integration -w @atiende-rv/db -- rls.test.ts`: 27/27 tests en verde, incluida la suite nueva "REQ-023/H-048 §Roles-4: multitenancy N:M owner↔empresa_gestora" (owner en 2 empresas_gestoras, cada una ve solo su propia propiedad/unidad, ninguna ve la de la otra, la tabla puente en sí no fuga, INSERT cruzado rechazado con `42501`); sin ese fix la misma suite falla en `adminC ve el MISMO owner compartido... (expected +0 to be 1)`, confirmando que la prueba ejercita el criterio real. | ACEPTACION §Roles-4 | Multitenancy | implementado |
 
 ---
 
@@ -174,7 +192,7 @@ Convención de estado:
 | REQ-092 | El sistema registra el timestamp exacto de confirmación de cada reserva, del cual dependen periodos de gracia y políticas de cancelación. | MUST | RV02-R-02 | [DATO] Airbnb art. 475 | ACEPTACION §Datos-1 | Reservas | por construir |
 | REQ-093 | Ningún flujo del producto simula o sustituye la resolución humana de disputas/incidencias (Resolution Center); a lo sumo ayuda a recopilar evidencia para que un humano decida, respetando ventanas de reporte documentadas (72h). | MUST | RV02-R-04 | [DATO] Airbnb art. 767, 2868 | ACEPTACION §RV19/21-6 | Reservas/Incidencias | por construir |
 | REQ-094 | Los mensajes puramente informativos/bajo riesgo pueden programarse por triggers de calendario sin revisión previa; cualquier mensaje con negociación, disculpa, oferta o respuesta a queja pasa por aprobación humana. | MUST | RV02-R-05 | [R] Hospitable (patrón de industria, no política de plataforma) | ACEPTACION §RV19/21-6 | Mensajería | por construir |
-| REQ-095 | El motor de calendario genera el evento de liberación de instrucciones de acceso anclado a T-48h antes del check-in, sin depender de marca de cerradura específica. | SHOULD | RV02-R-06 | [DATO] Airbnb art. 1644 | ACEPTACION §UX-1 | Mensajería/Check-in | por construir |
+| REQ-095 | El motor de calendario genera el evento de liberación de instrucciones de acceso anclado a T-48h antes del check-in, sin depender de marca de cerradura específica. | SHOULD | RV02-R-06 | [DATO] Airbnb art. 1644 — corrección 2026-09-10: la columna Aceptación citaba erróneamente `§UX-1` (calendario visual/razón de bloqueo, sin relación con este REQ — mismo error de copia que ya afecta a REQ-091, sin corregir aquí por estar fuera de alcance de este cierre); creada `§Checkin-1` dedicada. IMPLEMENTADO: `ocupacion_unidad.rango` es `daterange` (solo fecha, sin hora de check-in, D-002) — T-48h se aproxima como "48h antes del día de check-in a una hora de corte configurable (`HORA_CORTE_DEFECTO`=12), evaluada en la zona horaria REAL de la propiedad (`propiedad.zona_horaria`, D-013)", nunca como precisión horaria inventada. Evidencia: `npm run test --workspace=@atiende-rv/api` (12 tests nuevos en verde, incluida `test/notificaciones/liberacionInstruccionesAcceso.test.ts`) y `npm run test:integration --workspace=@atiende-rv/api -- test/integration/liberacionInstruccionesAccesoSql.test.ts` (7 tests contra Postgres real vía `embedded-postgres`, verificando la frontera de T-48h y la conversión de zona horaria, en verde) | ACEPTACION §Checkin-1 | Mensajería/Check-in | implementado |
 | REQ-096 | El motor de reseñas (si se construye) se ancla a la fecha real de checkout y a la ventana de 14 días de Airbnb, con publicación conjunta; no se replica igual para Vrbo/Booking sin verificación adicional. | COULD | RV02-R-08 | [DATO] Airbnb art. 13; [laguna] Vrbo/Booking | ACEPTACION §Reputación-1 | Reputación | bloqueado por externo |
 | REQ-097 | El producto no representa en UI/comercial cifras específicas de comisión, plazos de payout o condiciones de pago de Booking.com como verificadas. | MUST | RV02-R-09 | [DATO] bloqueo 403 sistemático en partner.booking.com | ACEPTACION §Comercial-1 | Finanzas/Comercial | bloqueado por externo |
 | REQ-098 | Los eventos de checkout disparan automáticamente el cierre de "estancia activa" y la creación de una tarea de limpieza/turnover; el detalle exacto del disparador no está confirmado verbatim por ningún proveedor y debe validarse con el proveedor de limpieza elegido antes de construir la integración (nuance restaurado — corrección BC12). Esta automatización se limita a tareas operativas internas; no implica ni habilita cancelación de reserva ni contacto al huésped. | MUST | RV02-R-10, RV11-R-01 | [R] Breezeway (patrón de automatización por reglas y atributos de reserva, RV11) — no una cita verbatim del disparador exacto | ACEPTACION §Limpieza-1 | Limpieza | por construir |
@@ -281,7 +299,7 @@ Convención de estado:
 | ID | Enunciado | Prioridad | Origen | Evidencia | Aceptación | Módulo | Estado |
 |---|---|---|---|---|---|---|---|
 | REQ-150 | El producto provee aviso de privacidad configurable con las fracciones de la LFPDPPP (MX) y registro de actividades de tratamiento conforme al RGPD (ES/UE), sin generar contenido legal final sin revisión humana. | MUST | RV19-R-10 | [DATO] LFPDPPP Art.15 (D3); RGPD Art.5-6 (E1) | ACEPTACION §Legal-1 | Legal/Privacidad | bloqueado por laguna legal (revisión humana pendiente) |
-| REQ-151 | El producto incluye bandeja de gestión de solicitudes ARCO/derechos del interesado con plazos legales por jurisdicción, como herramienta de flujo, no de decisión sustantiva. | MUST | RV19-R-11 | [DATO] LFPDPPP Arts. 21-34 (D2); RGPD Arts. 15-22 (E1) | ACEPTACION §Legal-1 | Legal/Privacidad | por construir |
+| REQ-151 | El producto incluye bandeja de gestión de solicitudes ARCO/derechos del interesado con plazos legales por jurisdicción, como herramienta de flujo, no de decisión sustantiva. | MUST | RV19-R-11 | [DATO] LFPDPPP Arts. 21-34 (D2); RGPD Arts. 15-22 (E1) | ACEPTACION §Legal-3 (corrección: la cita anterior, §Legal-1, es el criterio de feature-flag para funciones "bloqueado por laguna legal" como CFDI/registro de viajeros — sin relación con esta bandeja de flujo, que es independiente de la revisión legal pendiente de REQ-150) | Legal/Privacidad | construido — ver evidencia en ACEPTACION.md §Legal-3 |
 | REQ-152 | El producto permite capturar y exportar los datos exigidos por RD 933/2021 (registro de viajeros España) con retención de 3 años, marcado como sujeto a confirmación legal del modelo operativo vigente. | SHOULD | RV19-R-12 | [DATO con laguna] RD 933/2021 (E2); Orden INT no confirmada (E3) | ACEPTACION §Legal-1 | Legal/Compliance | bloqueado por laguna legal |
 | REQ-153 | El producto no muestra ni exige "número de registro" en anuncios de España asumiendo el Registro Único de Arrendamientos hasta confirmar la norma de transposición; se implementa como campo opcional configurable. | MUST | RV19-R-13 | [DATO parcial] Reglamento UE 2024/1028 Art.4.2/7 (E5); RD español no confirmado (E4) | ACEPTACION §Legal-1 | Legal/Compliance | bloqueado por laguna legal |
 | REQ-154 | Ninguna automatización cancela reservas, modifica datos de huéspedes, ni los contacta sin autorización explícita y registrada del anfitrión/administrador. | MUST | RV19-R-15, REQ-000/001 | SUPUESTO reforzado por Airbnb ToS §16 (C4) | ACEPTACION §RV19/21-6 | Legal/Automatización | por construir |
@@ -303,7 +321,7 @@ Convención de estado:
 | REQ-163 | Toda funcionalidad que module dinero, cancelaciones o contacto a huéspedes se controla por feature flag con default `false`, verificable en configuración. | MUST | RV20-R-10 | [R] patrón BP-163 (línea de producto Hoteles, referencia interna) | ACEPTACION §Operación-1 | Operación | por construir |
 | REQ-164 | Los simuladores de canal en desarrollo llevan nombre inequívoco de "simulador"; el arranque se rechaza si las credenciales parecen de producción real. | MUST | RV20-R-11, D-019 | SUPUESTO de diseño | ACEPTACION §Operación-4 | Operación/Dev | por construir |
 | REQ-165 | El estado de un token de canal expirado/revocado se refleja en el estado del conector y pausa automáticamente el push hacia ese canal hasta reconexión manual; nunca reintenta indefinidamente contra credenciales revocadas. | MUST | RV20-R-12 | SUPUESTO, dependiente de D-017/RV17 | ACEPTACION §Operación-1 | Operación/Seguridad | por construir |
-| REQ-166 | Existe un modo de degradación de solo-lectura del calendario cuando la base de escritura primaria no responde, con pausa automática de todo push saliente y señalización visible en UI. | MUST | RV20-R-13 | SUPUESTO de diseño | ACEPTACION §Operación-3 | Operación/DR | por construir |
+| REQ-166 | Existe un modo de degradación de solo-lectura del calendario cuando la base de escritura primaria no responde, con pausa automática de todo push saliente y señalización visible en UI. | MUST | RV20-R-13 | SUPUESTO de diseño | ACEPTACION §Operación-5 (corregido en el cierre H-091: §Operación-3 describe backup, no este criterio) | Operación/DR | por construir |
 
 ---
 
@@ -328,7 +346,7 @@ Convención de estado:
 | REQ-174 | El sistema de facturación soporta cuota base por unidad/mes con escalones de volumen. | MUST | RV16-R-01 | [DATO] benchmarks Lodgify/Uplisting/Hospitable | ACEPTACION §Comercial-2 | Facturación | por construir |
 | REQ-175 | El sistema de facturación soporta un add-on de IA conversacional facturable por separado, desacoplado del ciclo de facturación de unidades. | MUST | RV16-R-02, D-018 | [DATO] Uplisting "AI Suite Unlimited" como precedente de mercado | ACEPTACION §Comercial-2 | Facturación | por construir |
 | REQ-176 | La arquitectura registra telemetría de consumo de tokens por conversación (entrada/salida, por modelo) desde el primer lanzamiento. | MUST | RV16-R-03 | SUPUESTO explícito a reemplazar con datos reales | ACEPTACION §Automatización-2 | Observabilidad/IA | por construir |
-| REQ-177 | El modelo de costos permite seleccionar dinámicamente el modelo de IA por tipo de tarea, dado que el costo por conversación varía hasta ~37.5x entre el modelo más económico y el más caro verificado (GPT-4o mini $0.0006 vs. Claude Opus 5 $0.0225), o ~5x si se comparan dos modelos de la misma familia (Claude Haiku 4.5 $0.0045 vs. Claude Opus 5 $0.0225). | SHOULD | RV16-R-06 | [DATO] precios oficiales Anthropic/OpenAI (RV16 §3b) — corrección aritmética BC4: la cifra "~5x" que RV16-R-06/este REQ afirmaban originalmente para el par GPT-4o mini/Claude Opus 5 es incorrecta ($0.0006 a $0.0225 es 37.5x, no 5x); el punto cualitativo (el costo varía mucho entre modelos) se mantiene con la cifra corregida | ACEPTACION §Comercial-2 | Facturación/IA | por construir |
+| REQ-177 | El modelo de costos permite seleccionar dinámicamente el modelo de IA por tipo de tarea, dado que el costo por conversación varía hasta ~37.5x entre el modelo más económico y el más caro verificado (GPT-4o mini $0.0006 vs. Claude Opus 5 $0.0225), o ~5x si se comparan dos modelos de la misma familia (Claude Haiku 4.5 $0.0045 vs. Claude Opus 5 $0.0225). | SHOULD | RV16-R-06 | [DATO] precios oficiales Anthropic/OpenAI (RV16 §3b) — corrección aritmética BC4: la cifra "~5x" que RV16-R-06/este REQ afirmaban originalmente para el par GPT-4o mini/Claude Opus 5 es incorrecta ($0.0006 a $0.0225 es 37.5x, no 5x); el punto cualitativo (el costo varía mucho entre modelos) se mantiene con la cifra corregida | ACEPTACION §Comercial-2 (facturación del add-on de IA, no del router en sí); §Automatización-4 (corrección de cierre: §Comercial-2 solo verifica ciclos de facturación, sin relación con SELECCIONAR el modelo por tarea — se creó el criterio §Automatización-4 dedicado al router) | Facturación/IA | construido — `packages/domain/src/agentes/enrutadorModelo.ts` (`elegirModeloParaRonda`/`complejidadMaximaDeRonda`) enruta cada ronda a `claude-haiku-4-5` (clasificación/sin tool LLM), `claude-sonnet-5` (generación interna: `incidencia_resumir`, `limpieza_proponer_tarea`, `precio_sugerir_ajuste`) o `claude-opus-5` (generación compleja cara al huésped: `mensajeria_proponer_borrador`) según las tools disponibles de la ronda; `apps/api/src/agentes/proveedorClaude.ts` ya no fija un modelo por instancia — lo pide al router en cada `generar()`; `AGENTES_MODELO_LLM` queda como override manual opcional. Evidencia: `npm run test -w @atiende-rv/domain` (`enrutadorModelo.test.ts`, 10/10) + `npm run test -w @atiende-rv/api` (`proveedorClaude.test.ts`, 9/9, incluye captura del cuerpo HTTP real enviado a la Messages API) + `npm run typecheck` y `npm run lint` limpios en los 8 workspaces — rama `closure/req-177-router-llm-por-costo` |
 | REQ-178 | Antes de fijar precio final por tenant, se completa la cotización oficial de infraestructura (AWS RDS+S3) vía calculadora oficial, dado que esta investigación no pudo extraer esas cifras literalmente. | SHOULD | RV16-R-05 | [PENDIENTE] tablas JS no extraídas | ACEPTACION §Comercial-2 | Infraestructura/Costos | por construir |
 | REQ-179 | El parser de eventos ICS trata la ausencia y la presencia explícita de `STATUS:CANCELLED` como equivalentes semánticos de "esta reserva de canal ya no reclama esas noches", sujeto siempre a la regla de no reapertura de REQ-006/D-002 (una noche ocupada por otra causa no se libera). Añadido en esta corrección (BC6) como REQ dedicado — antes RV06-R-04 solo estaba cubierto implícitamente por REQ-005/REQ-028. | MUST | RV06-R-04 | [DATO] RFC 5545 (semántica de `STATUS` opcional en `VEVENT`) | ACEPTACION §Calendario-2 (caso 3) | Sincronización | por construir |
 
@@ -357,6 +375,8 @@ actualización sustancial del catálogo.
 
 | Estado | Nº de requisitos (aprox.) |
 |---|---|
-| por construir | ~130 |
+| por construir | ~126 |
 | bloqueado por externo | ~35 |
 | bloqueado por laguna legal | ~14 |
+| construido | 2 (REQ-151, REQ-177 — cierres 2026-09-10) |
+| implementado | 2 (REQ-023 H-048, REQ-095 — cierres 2026-09-10 — sinónimo de "construido") |

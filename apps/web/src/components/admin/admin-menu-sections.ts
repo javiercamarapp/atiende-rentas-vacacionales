@@ -19,6 +19,7 @@ import {
   Bot,
   ShieldCheck,
   CreditCard,
+  Scale,
 } from "lucide-react";
 
 interface ItemMenu {
@@ -82,6 +83,8 @@ export const MENU_SECTIONS: GrupoMenu[] = [
       { id: "agentes", etiqueta: "Automatización agéntica", icono: Bot, ruta: "/agentes" },
       { id: "backoffice", etiqueta: "Back office", icono: ShieldCheck, ruta: "/administracion" },
       { id: "estadisticas", etiqueta: "Panel superadmin", icono: BarChart3, ruta: "/backoffice/superadmin" },
+      // REQ-151: bandeja de solicitudes ARCO/RGPD.
+      { id: "solicitudes-arco", etiqueta: "Solicitudes ARCO/RGPD", icono: Scale, ruta: "/legal/solicitudes-arco" },
     ],
   },
 ];

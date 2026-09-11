@@ -51,6 +51,10 @@ function descargarBlob(blob: Blob, nombreArchivo: string) {
  * canal/propiedad/mes — todo derivado de `reserva`/`reserva_financiero` vía
  * apps/api/src/routes/reportes.ts, sin duplicar cálculo aquí. Exportación
  * CSV real (no un mockup) y gráficas simples sin librería externa.
+ *
+ * H-072: la tabla de ocupación también muestra las noches bloqueadas por
+ * limpieza pendiente (cruce real con `tarea_operativa` de Lote 5) y el
+ * RevPAR ajustado sobre el inventario realmente vendible.
  */
 export function ReportesPage() {
   const [desde, setDesde] = useState(primerDiaDelMes());
@@ -134,9 +138,11 @@ export function ReportesPage() {
                     <TableHead>Unidad</TableHead>
                     <TableHead>Propiedad</TableHead>
                     <TableHead>Noches ocupadas</TableHead>
+                    <TableHead>Bloqueadas por limpieza</TableHead>
                     <TableHead>Ocupación</TableHead>
                     <TableHead>ADR</TableHead>
                     <TableHead>RevPAR</TableHead>
+                    <TableHead>RevPAR ajustado (limpieza)</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -147,9 +153,11 @@ export function ReportesPage() {
                       <TableCell>
                         {u.nochesOcupadas}/{u.nochesDisponibles}
                       </TableCell>
+                      <TableCell>{u.nochesBloqueadasLimpiezaPendiente ?? 0}</TableCell>
                       <TableCell>{porcentajeDesdeBasisPoints(u.ocupacionBasisPoints)}</TableCell>
                       <TableCell>{decimalDesdeCentavos(u.adrCentavos)}</TableCell>
                       <TableCell>{decimalDesdeCentavos(u.revparCentavos)}</TableCell>
+                      <TableCell>{decimalDesdeCentavos(u.revparAjustadoLimpiezaCentavos ?? u.revparCentavos)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

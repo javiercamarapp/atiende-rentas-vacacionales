@@ -57,6 +57,9 @@ export { ProveedorLLMSimulado } from "./proveedorLLM.js";
 export type { ProveedorLLM, SolicitudLLM, RespuestaLLM, InvocacionToolPropuesta, OpcionesProveedorSimulado } from "./proveedorLLM.js";
 export { ProveedorLLMConFallback } from "./proveedorFallback.js";
 
+export { complejidadMaximaDeRonda, elegirModeloParaRonda, MODELOS_POR_COMPLEJIDAD, NIVELES_COMPLEJIDAD_TAREA } from "./enrutadorModelo.js";
+export type { NivelComplejidadTarea } from "./enrutadorModelo.js";
+
 export { EjecutorTools } from "./ejecutor.js";
 export type { EntradaRondaTool, ManejadorToolDeterminista } from "./ejecutor.js";
 

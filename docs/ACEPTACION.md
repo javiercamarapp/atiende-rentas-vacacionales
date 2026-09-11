@@ -145,6 +145,45 @@ afirmación de accesibilidad sin este reporte adjunto (ninguna plataforma del
 sector investigada en RV09 documenta este aspecto públicamente, por lo que no
 existe un estándar de mercado que replicar por defecto).
 
+### §Checkin-1 — Evento de liberación de instrucciones de acceso (T-48h)
+
+Añadida 2026-09-10 al cerrar REQ-095 — la fila de REQ-095 en
+`REQUISITOS.md` citaba `§UX-1` por error de copia (esa sección es sobre
+razón de bloqueo en el calendario visual, sin relación con este REQ).
+
+Con una reserva confirmada y bloqueante en una unidad cuya propiedad tiene
+`zona_horaria` conocida (ej. `America/Cancun`, UTC-5 sin DST): ejecutar el
+motor de liberación de instrucciones de acceso con un reloj inyectado en
+tres puntos de referencia respecto al check-in estimado (día de check-in a
+la hora de corte configurable, en la zona horaria de la propiedad) —
+más de 48h antes, exactamente 48h antes, y después del check-in estimado.
+Evidencia esperada: el evento se genera (fila nueva en `outbox_evento`,
+`tipo_evento = 'liberar_instrucciones_acceso'`) si y solo si el reloj cae
+dentro de `[checkin_estimado - 48h, checkin_estimado)` — nunca antes,
+nunca después; una segunda corrida dentro de la misma ventana no duplica
+el evento (idempotencia real, verificable contando filas de
+`outbox_evento` para esa reserva); el payload del evento no contiene
+ninguna mención a marca o proveedor de cerradura específico (verificable
+por inspección/grep del payload); y el mismo cálculo aplica correctamente
+para propiedades en otras zonas horarias (ej. `Asia/Tokyo`, UTC+9),
+confirmando que la ventana usa la zona horaria real de la propiedad y no
+UTC/hora de servidor.
+
+Nota sobre el límite de esquema (no una laguna nueva, ya documentada en
+`apps/api/src/workers/notificacionesHuesped/recordatorioCheckin.ts`):
+`ocupacion_unidad.rango` es un `daterange` — el esquema no guarda una hora
+de check-in real. "T-48h" se aproxima explícitamente como se describe
+arriba; si en el futuro se agrega una hora de check-in real por
+reserva/propiedad, la implementación debe reemplazar la hora de corte
+configurable por ese dato en vez de seguir aproximando.
+
+Verificado 2026-09-10 (cierre de REQ-095): `npm run test
+--workspace=@atiende-rv/api` (unitario, orquestación pura con `ejecutor`
+simulado) y `npm run test:integration --workspace=@atiende-rv/api --
+test/integration/liberacionInstruccionesAccesoSql.test.ts` (7 casos
+contra Postgres real vía `embedded-postgres`, cubriendo exactamente los
+puntos de referencia y zonas horarias de arriba) — ambos en verde.
+
 ### §Roles-1 — Permisos de colaborador por propiedad
 
 Con tres usuarios de prueba en los tres niveles (acceso total,
@@ -178,6 +217,66 @@ Con un propietario vinculado a dos empresas gestoras distintas, verificar que
 cada empresa gestora solo ve las propiedades que administra de ese
 propietario, nunca las de la otra. Evidencia esperada: consulta cruzada
 rechazada por RLS (ver §RV19/21-4).
+
+**Verificado (REQ-023/H-048)**: el modelo N:M owner↔empresa_gestora existe
+desde `packages/db/src/migrations/0133_owner_empresa_gestora.ts` — tabla
+puente `owner_empresa_gestora`, migración de los datos 1:N existentes hacia
+esa tabla (`INSERT ... SELECT ... WHERE empresa_gestora_id IS NOT NULL`,
+cero pérdida), trigger que sigue sincronizando la columna de alta
+`owner.empresa_gestora_id` (compatibilidad hacia atrás con todo el código y
+fixtures existentes), y las políticas `owner_select`/`owner_escritura`
+redefinidas sobre el nuevo predicado `owner_pertenece_a_tenant` (EXISTS
+sobre la tabla puente) en vez del `owner_tenant_id` de una sola empresa
+(0014). `owner_empresa_gestora` tiene su propia RLS (no fuga a un tenant
+ajeno con qué OTRAS empresas_gestoras comparte owner un propietario que sí
+tiene en común).
+
+Comando ejecutado y resultado real (repo, rama `closure/h048-multitenancy-n-a-m`):
+
+```
+npm run test:integration -w @atiende-rv/db -- rls.test.ts
+# Test Files  1 passed (dentro de 11 passed)
+# Tests  27 passed (20 preexistentes + 7 nuevas del bloque
+#   "REQ-023/H-048 §Roles-4: multitenancy N:M owner↔empresa_gestora")
+```
+
+El caso central del criterio de aceptación: un owner dado de alta en la
+empresa_gestora del tenant A se vincula (vía la tabla puente) también a la
+empresa_gestora de un tenant C nuevo, cada una con su propia
+propiedad/unidad administrando a ese mismo owner. `adminA` ve el owner y
+"Prop A", nunca "Prop C"; `adminC` ve el MISMO owner (antes de este cambio
+esto era 0 filas — el owner solo pertenecía al tenant de alta) y "Prop C",
+nunca "Prop A"; `adminB` (sin ninguna vinculación) no ve ni el owner ni
+ninguna de las dos propiedades. Sensibilidad de la prueba confirmada
+manualmente: deshabilitando temporalmente la redefinición de RLS de esta
+migración, la misma suite falla exactamente en
+`adminC ve el MISMO owner compartido... expected +0 to be 1`, antes de
+restaurarse a la versión que sí pasa — la prueba detecta de verdad la
+ausencia del fix, no es un mock que pasa por pasar.
+
+También se corrigió, como parte del mismo cambio, un hueco de
+correctitud financiera que el N:M habría abierto en
+`apps/api/src/routes/finanzas.ts` (`POST /statements/generar`): el `JOIN`
+original tomaba el `tenant_id` del `owner_statement` desde la empresa
+gestora de ALTA del owner (columna `owner.empresa_gestora_id`), lo cual
+—una vez el owner puede pertenecer a más de una empresa gestora— fugaría el
+dato financiero al tenant de alta aunque la sesión que generó el statement
+fuera de otra empresa gestora vinculada. Ahora se exige que el owner esté
+vinculado, vía la tabla puente, al tenant de la SESIÓN que hace la
+petición; sin tenant propio en la sesión (superadmin) y con más de una
+empresa gestora vinculada visible, se rechaza explícitamente en vez de
+elegir una en silencio. Verificado sin regresión:
+`npm run test:integration -w @atiende-rv/api -- finanzasPricingReportes.test.ts`
+→ 18/18 en verde (incluye "genera el owner statement del periodo" y
+"propietario del owner ve su propio statement").
+
+Regresión de todo lo demás verificada en la misma sesión: typecheck del
+monorepo completo (`npm run typecheck`, 7/7 workspaces en verde), lint
+(`npm run lint`, 0 errores), tests unitarios de raíz (`npm run test`, 277+112+140+89+304+39+12
+= 973 en verde), integración de raíz (`npm run test:integration`,
+139+84 = 223 en verde) y la suite adversarial de multitenancy
+(`npm run test:adversarial -- --filter=multitenant`, 8/8 en verde,
+caso 18/19 sin cambios).
 
 ### §Conectividad-1 — Interfaz de adaptador con capacidades declaradas
 
@@ -266,6 +365,30 @@ una reserva; para Booking.com/Vrbo, el porcentaje de comisión usado en el
 cálculo es editable por tenant/propiedad, no una constante hardcodeada en el
 código (verificable por inspección de configuración, no de código fuente).
 
+### §Finanzas-3 — Reportes cruzan `tarea_operativa` de limpieza (H-072)
+
+Criterio añadido al cerrar la brecha declarada en `docs/fase2/BACKLOG.md`
+(H-072, Lote 7: "no cruza `tarea_limpieza` de Lote 5") — identifica la
+métrica exacta exigida por RV17 §12 que faltaba conectar con datos reales:
+las noches del periodo en las que una unidad sigue fuera de venta porque su
+tarea de limpieza de turnover (`tarea_operativa.tipo = 'limpieza'`, Lote 5)
+no se ha completado. Con una unidad con una reserva vendida y una tarea de
+limpieza en estado distinto de `completada`/`cancelada` cuyo
+`buffer_ocupacion_id` bloquea noches dentro del rango del reporte, pedir
+`GET /reportes/ocupacion?desde=...&hasta=...`. Evidencia esperada: la fila
+de la unidad incluye `nochesBloqueadasLimpiezaPendiente` (> 0, igual a las
+noches reales bloqueadas por esa tarea) y `revparAjustadoLimpiezaCentavos`
+(ingresos ÷ noches realmente vendibles, mayor que `revparCentavos` porque
+excluye el inventario bloqueado); marcar la tarea como `completada` y
+repetir la petición hace que `nochesBloqueadasLimpiezaPendiente` vuelva a
+0. Verificado en
+`apps/api/test/integration/finanzasPricingReportes.test.ts` (describe
+"Reportes — H-072") contra `embedded-postgres` real — comando:
+`npm run test:integration --workspace=@atiende-rv/api`, resultado: 21/21 en
+verde en ese archivo (incluye los 3 casos de este criterio). Dominio puro
+cubierto en `packages/domain/test/finanzas/metricas.test.ts` — comando:
+`npm run test --workspace=@atiende-rv/domain`, resultado: 308/308 en verde.
+
 ### §Datos-1 — Multi-unidad y mapeo a listing representativo
 
 Crear una propiedad con 3 unidades y verificar que cada una tiene su propio
@@ -314,6 +437,59 @@ Auditoría de código: grep de dependencias/uso de automatización de navegador
 pruebas E2E propias. Evidencia esperada: 0 coincidencias de automatización de
 sesión contra dominios de producción de Airbnb/Booking.com/Vrbo.
 
+### §Legal-3 — Bandeja de solicitudes ARCO/RGPD (REQ-151, cierre 2026-09-10)
+
+REQ-151 exige una herramienta de FLUJO (no de decisión sustantiva): cola de
+tickets de derechos del interesado (acceso, rectificación, cancelación,
+oposición / RGPD) con plazo por jurisdicción, estado y responsable
+asignado. A diferencia de REQ-150/152/153, este ID **no** depende de la
+revisión legal pendiente (`docs/BLOQUEOS.md`) — no genera ningún texto
+legal, solo registra el ticket y calcula el plazo estatutario citado en
+`docs/REQUISITOS.md` (LFPDPPP Arts. 21-34; RGPD Arts. 15-22).
+
+**Implementación** (rama `closure/req-151-bandeja-arco`):
+- `packages/db/src/migrations/0133_solicitud_arco.ts` — tabla
+  `solicitud_arco` con RLS (`FORCE ROW LEVEL SECURITY`, aislada por
+  tenant+rol ROLES_ADMIN, sin política de DELETE), columna `plazo_limite`
+  `GENERATED ALWAYS AS (fn_calcular_plazo_arco(jurisdiccion, recibida_en))
+  STORED` (no editable a mano), y un `CHECK` que impide marcar un ticket
+  `resuelta`/`rechazada` sin `resolucion_notas` + `resuelta_en`. Trigger de
+  auditoría dedicado que excluye PII del interesado del JSON auditado
+  (§Privacidad-1).
+- `apps/api/src/routes/solicitudesArco.ts` — `GET/POST /solicitudes-arco`,
+  `GET/PATCH /solicitudes-arco/:id`, ROLES_ADMIN, resolver/rechazar exige
+  `resolucionNotas` en la misma petición.
+- `apps/web/src/pages/legal/SolicitudesArcoPage.tsx` — bandeja visual
+  (filtro por estado, alta, panel de gestión con asignación de
+  responsable), ruta `/legal/solicitudes-arco` (ROLES_ADMIN), enlazada
+  desde `AdminSidebar` (grupo PLATAFORMA).
+
+**Evidencia** (comando + resultado, corridos dentro del worktree de
+cierre):
+- `npm run typecheck` (repo completo, 7 workspaces) → 0 errores.
+- `npm run lint` (repo completo) → 0 errores (1 warning preexistente sin
+  relación, `SesionProvider.tsx`).
+- `cd packages/db && npx vitest run test/integration --config
+  vitest.integration.config.ts` → 12 test files, 90 tests, todos en verde,
+  incluido `solicitudArcoRls.test.ts` (13 tests: RLS FORCE activo,
+  aislamiento cross-tenant, un operador no ve la bandeja, INSERT sin sesión
+  rechazado, ninguna política de DELETE existe, plazo LFPDPPP=20 días
+  hábiles desde un lunes cae 4 semanas después, plazo RGPD=+1 mes exacto,
+  `plazo_limite` rechaza un UPDATE directo, jurisdicción desconocida
+  rechazada por el CHECK, e invariantes de resolución con/sin notas).
+- `cd apps/api && npm run test:integration` → 15 test files, 148 tests,
+  todos en verde, incluido `solicitudesArco.test.ts` (9 tests: 403 para rol
+  no-admin, plazo LFPDPPP/RGPD calculado en la respuesta, 422 por
+  jurisdicción inválida, aislamiento cross-tenant en listado y en GET
+  directo, 422 al resolver sin `resolucionNotas`, ciclo de vida completo
+  asignar→en_proceso→resuelta, 404 en id inexistente, filtro por estado).
+- `npm test` (repo completo, 7 workspaces) → verde.
+- `cd apps/web && npm run build` → build de producción exitoso.
+
+Sin credenciales reales ni servicio externo involucrado — REQ-151 es
+puramente interno (BD + API + UI propias), por lo que no hay bloqueo
+externo que reportar.
+
 ### §Automatización-1 — Presupuesto duro de IA reservado antes de llamar
 
 Simular un tenant con saldo insuficiente y disparar una solicitud que
@@ -336,6 +512,27 @@ Antes de mover un agente de "Fase 1 (100% aprobación humana)" a "Fase 2
 Evidencia esperada: reporte con 0 fallos automáticos de "tool fuera de
 alcance" y ≥95% de aciertos en criterios de contenido; documento de decisión
 de producto que autoriza el cambio de fase, fechado.
+
+### §Automatización-4 — Router dinámico de modelo LLM por complejidad de tarea (REQ-177)
+
+Invocar `elegirModeloParaRonda`/`complejidadMaximaDeRonda`
+(`packages/domain/src/agentes/enrutadorModelo.ts`) con conjuntos de tools
+disponibles de distinta complejidad, y verificar en `ProveedorLLMClaude`
+que el cuerpo de la petición HTTP real hacia la Messages API varía su
+campo `model` según esas tools — nunca un único modelo fijo de instancia
+leído de una sola variable de entorno global para todo el tráfico.
+Evidencia esperada: una ronda sin tools que requieran LLM (clasificación/
+conversación simple) envía el modelo más barato del catálogo; una ronda
+con la tool de borrador de mensajería al huésped (generación compleja de
+cara al huésped) envía el modelo más caro; una ronda con solo tools de
+generación interna de riesgo medio envía un tercer modelo intermedio,
+distinto de los otros dos; la variable de entorno `AGENTES_MODELO_LLM`,
+cuando está presente, sigue pudiendo forzar un único modelo para toda
+ronda (override operativo), pero su ausencia ya NO implica un modelo por
+defecto fijo — implica enrutamiento dinámico. Comando:
+`npm run test -w @atiende-rv/domain -- enrutadorModelo` y
+`npm run test -w @atiende-rv/api -- proveedorClaude` (o su equivalente
+`vitest run`), ambos en verde.
 
 ### §Operación-1 — Runbook de alerta nunca cancela ni contacta
 
@@ -367,6 +564,51 @@ de disponibilidad.
 Intentar arrancar un simulador de canal con credenciales que coincidan con el
 patrón de credenciales de producción. Evidencia esperada: el arranque se
 rechaza explícitamente con un error que indica el motivo.
+
+### §Operación-5 — Modo degradado de solo-lectura del calendario (REQ-166/H-091)
+
+Añadida en el cierre de H-091 (Lote de cierre REQ-166): REQ-166 citaba
+§Operación-3 desde el catálogo original, pero esa sección describe la
+restauración de backup (REQ-160/161/162) — un criterio distinto, sin
+ninguna sección propia para el enunciado real de REQ-166 ("modo de
+degradación de solo-lectura del calendario cuando la base de escritura
+primaria no responde, con pausa automática de todo push saliente y
+señalización visible en UI"). Esta sección cierra ese vacío con el
+criterio real.
+
+Apagar el proceso de la base de datos PRIMARIA (proceso Postgres real
+detenido, no una excepción simulada) mientras una réplica de lectura
+(`DATABASE_URL_REPLICA`) sigue viva, y verificar:
+
+1. `GET /unidades/:id/calendario` sigue respondiendo 200 con datos
+   correctos (servidos por la réplica vía `EnrutadorLecturaReplica`,
+   `packages/db/src/runner/enrutadorLecturaReplica.ts`) — el calendario
+   permanece legible en modo de solo lectura.
+2. `GET /health/detallado` reporta `status: "degradado"` y
+   `modoDegradadoCalendario: true`, y APAGA automáticamente el flag
+   `sync.push_automatico` (auditado, actor `monitor-salud-primario`) — sin
+   que un operador tenga que intervenir para que la pausa ocurra.
+3. Con `sync.push_automatico` en `false`, el cron real de push saliente
+   (`GET /internal/cron/outbox-worker`) NO procesa ningún evento
+   pendiente del outbox — la pausa es efectiva sobre el push real, no solo
+   un campo decorativo en un registro de flags.
+4. La reactivación de `sync.push_automatico` NUNCA es automática — exige
+   una acción explícita de un operador (mismo criterio que la
+   reconciliación de drift tras un restore de backup, §Operación-3).
+5. La UI del calendario (`apps/web/src/pages/calendario/`) muestra un
+   banner visible ("Modo degradado: calendario en solo lectura") mientras
+   `GET /health/detallado` reporte `modoDegradadoCalendario: true`.
+
+Evidencia esperada: DOS clusters `embedded-postgres` reales e
+independientes (primario + una "réplica" sembrada a mano — sin streaming
+replication real de Postgres, imposible de levantar en este entorno de
+construcción, límite documentado también en `enrutadorLecturaReplica.ts`);
+apagar el PROCESO real del primario, nunca una función que lanza a mano.
+Verificado en
+`apps/api/test/integration/calendarioModoDegradadoPrimario.test.ts` (los 5
+puntos de arriba, contra Postgres real) y
+`apps/api/test/integration/calendarioReplicaLectura.test.ts` (wiring del
+enrutador al endpoint + fallback real ante la réplica caída).
 
 ### §Comercial-1 — Ninguna cifra de mercado/competidor sin verificación directa
 
