@@ -85,3 +85,9 @@ export * from "./mensajeria/index.js";
 // propio `@atiende-rv/domain/agentes` (ver `packages/domain/package.json`
 // "exports"), igual que `./finanzas`/`./pricing` de Lote 7.
 export * from "./agentes/index.js";
+
+// Patrón 7 (rescatado de Likida/atiende.ai, onboarding conversacional con
+// guardas deterministas): reexporta el barril de `./onboarding/index.js`,
+// carpeta exclusiva de este patrón — mismo patrón aditivo que las líneas
+// de arriba.
+export * from "./onboarding/index.js";

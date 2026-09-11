@@ -18,18 +18,26 @@ export interface ConfiguracionApi {
     maximo: number;
     /** S-06: allow-list de IPs de proxy de confianza (balanceador/reverse
      * proxy propio) que sí pueden fijar `X-Forwarded-For`/`X-Real-IP` de
-     * forma confiable. Vacía por defecto — fail-safe. */
+     * forma confiable. Vacía por defecto — fail-safe. Patrón 3: este
+     * límite GLOBAL (montado en TODAS las rutas públicas, app.ts) está
+     * persistido en Postgres (rate_limit_bucket) desde el patrón 3 — antes
+     * era un `Map` en memoria, ineficaz en el despliegue serverless real
+     * (Vercel, multi-instancia/cold starts). Ver
+     * apps/api/src/seguridad/rateLimitPostgres.ts. */
     proxiesDeConfianza: readonly string[];
   };
-  /** S-06: límite adicional de intentos de login por email/usuario,
-   * independiente del límite genérico por IP — evita fuerza bruta contra
-   * una sola cuenta desde múltiples IPs/proxies. */
+  /** S-06 + patrón 3: límite adicional de intentos de login por
+   * email/usuario, independiente del límite genérico por IP — evita
+   * fuerza bruta contra una sola cuenta desde múltiples IPs/proxies.
+   * Persistido en Postgres (rate_limit_bucket, migración 0127) desde el
+   * patrón 3 — mismo mecanismo y misma tabla que rateLimitMfaVerificar,
+   * antes en memoria. Ver apps/api/src/seguridad/rateLimitPostgres.ts. */
   rateLimitLoginPorEmail: { ventanaMs: number; maximo: number };
   /** A3-AUTH-01 (docs/auditoria-3/seguridad-auth.md): límite de
    * POST /auth/mfa/verificar (segundo factor), persistido en Postgres
-   * (rate_limit_bucket, migración 0127) — a diferencia de
-   * rateLimitLoginPorEmail, en memoria, este debe sobrevivir cold starts
-   * serverless. Ver apps/api/src/seguridad/rateLimitPostgres.ts. */
+   * (rate_limit_bucket, migración 0127) — mismo mecanismo que
+   * rateLimitLoginPorEmail y el límite global desde el patrón 3. Ver
+   * apps/api/src/seguridad/rateLimitPostgres.ts. */
   rateLimitMfaVerificar: { ventanaMs: number; maximo: number };
   /** Base pública de esta API (Lote 11B, corrección #3: URL de
    * exportación iCal) — usada SOLO para componer la URL absoluta del feed

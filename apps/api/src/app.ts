@@ -18,7 +18,7 @@ import { KeyringCifradoCanal } from "./seguridad/cifrado.js";
 import { construirAdaptadorCorreo } from "./seguridad/correo.js";
 import { capturarErrorNoManejado, crearRutaPruebaSentry } from "./observabilidad/sentry.js";
 import { construirAdaptadorPagosDesdeEntorno } from "@atiende-rv/domain/facturacion";
-import { crearRateLimit } from "./seguridad/rateLimit.js";
+import { crearRateLimitPostgres } from "./seguridad/rateLimitPostgres.js";
 import { ZodError, type ZodIssue } from "zod";
 import {
   construirExportadoresDesdeEntorno,
@@ -96,7 +96,15 @@ export function crearApp(opciones: OpcionesCrearApp = {}) {
   // API en :8787 en desarrollo) — sin esto el navegador descarta
   // silenciosamente cualquier `Set-Cookie` de una respuesta CORS.
   app.use("*", cors({ origin: config.origenWeb, credentials: true }));
-  app.use("*", crearRateLimit(config.rateLimit));
+  // Patrón 3 (rescatado de Likida/atiende.ai): antes, este límite GLOBAL
+  // por IP+ruta aplicado a TODAS las rutas públicas usaba `crearRateLimit`
+  // (rateLimit.ts) — un `Map` en memoria del proceso. En el despliegue
+  // real (Vercel serverless, múltiples instancias/cold starts) ese límite
+  // no limitaba nada de verdad: cada instancia tenía su propio `Map`
+  // vacío. Ahora usa `crearRateLimitPostgres`, reusando el mismo `pool` ya
+  // construido arriba y la MISMA tabla `rate_limit_bucket` que
+  // `/auth/mfa/verificar` (A3-AUTH-01) — sin aprovisionar Redis.
+  app.use("*", crearRateLimitPostgres(pool, config.rateLimit));
   app.use("*", crearLogger());
 
   // Observabilidad (Lote 10, H-035/H-036): un span SERVER + métricas por
