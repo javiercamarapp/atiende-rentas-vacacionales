@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Button, Card, CardContent, CardHeader, CardTitle } from "@atiende-rv/ui-atiende";
 import { peticion, ErrorApi } from "../../lib/api/cliente";
 import { obtenerEstadoOnboarding, type EstadoOnboarding } from "./api";
+import { AsistenteConversacional } from "./AsistenteConversacional";
 
 // Lote 3.3 — asistente guiado post-registro (autenticado): checklist en
 // vivo (GET /onboarding/estado) que enlaza a las pantallas YA EXISTENTES
@@ -143,6 +144,10 @@ export function OnboardingAsistentePage() {
       </p>
 
       {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
+
+      <div className="mt-6">
+        <AsistenteConversacional />
+      </div>
 
       {estado && (
         <div className="mt-6 space-y-3">

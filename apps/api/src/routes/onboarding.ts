@@ -9,6 +9,7 @@ import { hashContrasena } from "../seguridad/contrasenas.js";
 import { validarPoliticaContrasena } from "../seguridad/passwordPolicy.js";
 import { generarValorAleatorio, hashearValorOidc } from "../seguridad/oidc.js";
 import { correoVerificacion, type InterfazCorreo } from "../seguridad/correo.js";
+import { GeneradorPreguntaOnboardingReglas, type EstadoPasosOnboarding } from "@atiende-rv/domain";
 
 // Lote 3.3 (RV16): onboarding self-serve — registro de empresa gestora
 // (tenant nuevo) + primer usuario admin + suscripción de prueba, TODO en
@@ -24,6 +25,12 @@ import { correoVerificacion, type InterfazCorreo } from "../seguridad/correo.js"
 // para que la UI sepa en qué paso quedó el tenant.
 
 const TTL_TOKEN_VERIFICACION_MS = 24 * 60 * 60 * 1000; // 24 horas — mismo TTL que /auth/registro.
+
+const CuerpoConversarOnboarding = z.object({
+  // Opcional: sin mensaje (primera carga del widget), el generador usa el
+  // orden por defecto — ver GeneradorPreguntaOnboardingReglas.
+  mensaje: z.string().max(2000).optional(),
+});
 
 const CuerpoRegistroEmpresa = z.object({
   empresaNombre: z.string().min(1).max(200),
@@ -42,6 +49,48 @@ export interface DependenciasOnboarding {
   urlPublicaWeb: string;
   /** Solo para pruebas HIBP opcional — mismo criterio que /auth/registro. */
   politicaContrasenaHibp: boolean;
+}
+
+/** Sesión mínima que necesita `resolverEstadoPasos` — el mismo shape que
+ * `conSesion(pool, sesionDeAuth(auth), ...)` ya entrega, tipado estrecho
+ * para no arrastrar el tipo completo de `pg` a esta función. */
+interface ClienteSesionOnboarding {
+  query<T extends Record<string, unknown> = Record<string, unknown>>(texto: string, valores?: unknown[]): Promise<{ rows: T[] }>;
+}
+
+/** Calcula el checklist de onboarding en vivo desde las tablas reales —
+ * compartido por `GET /onboarding/estado` (Patrón 7: reusado sin cambios)
+ * y `POST /onboarding/conversar` (nuevo), para que ambos endpoints nunca
+ * puedan desincronizarse sobre qué cuenta como "paso completo". */
+async function resolverEstadoPasos(
+  cliente: ClienteSesionOnboarding,
+  tenantId: string,
+  usuarioId: string,
+): Promise<EstadoPasosOnboarding> {
+  const { rows } = await cliente.query<{
+    tiene_propiedad: boolean;
+    tiene_unidad: boolean;
+    tiene_canal_conectado: boolean;
+    tiene_colaborador_invitado: boolean;
+    correo_verificado: boolean;
+  }>(
+    `SELECT
+       EXISTS(SELECT 1 FROM propiedad WHERE tenant_id = $1) AS tiene_propiedad,
+       EXISTS(SELECT 1 FROM unidad u JOIN propiedad p ON p.id = u.propiedad_id WHERE p.tenant_id = $1) AS tiene_unidad,
+       EXISTS(SELECT 1 FROM cuenta_canal WHERE tenant_id = $1) AS tiene_canal_conectado,
+       EXISTS(SELECT 1 FROM invitacion_usuario WHERE tenant_id = $1) AS tiene_colaborador_invitado,
+       (SELECT email_verificado_en IS NOT NULL FROM usuario WHERE id = $2) AS correo_verificado`,
+    [tenantId, usuarioId],
+  );
+  const fila = rows[0]!;
+  return {
+    empresaRegistrada: true,
+    correoVerificado: fila.correo_verificado,
+    primeraPropiedad: fila.tiene_propiedad,
+    primeraUnidad: fila.tiene_unidad,
+    canalConectado: fila.tiene_canal_conectado,
+    colaboradorInvitado: fila.tiene_colaborador_invitado,
+  };
 }
 
 export function crearRutasOnboarding(deps: DependenciasOnboarding): Hono {
@@ -127,35 +176,35 @@ export function crearRutasOnboarding(deps: DependenciasOnboarding): Hono {
     if (!auth.tenantId) {
       throw new ErrorDominio("tenant_forbidden", "Superadmin no pertenece a ningún tenant con onboarding propio");
     }
-    const estado = await conSesion(pool, sesionDeAuth(auth), async (cliente) => {
-      const { rows } = await cliente.query<{
-        tiene_propiedad: boolean;
-        tiene_unidad: boolean;
-        tiene_canal_conectado: boolean;
-        tiene_colaborador_invitado: boolean;
-        correo_verificado: boolean;
-      }>(
-        `SELECT
-           EXISTS(SELECT 1 FROM propiedad WHERE tenant_id = $1) AS tiene_propiedad,
-           EXISTS(SELECT 1 FROM unidad u JOIN propiedad p ON p.id = u.propiedad_id WHERE p.tenant_id = $1) AS tiene_unidad,
-           EXISTS(SELECT 1 FROM cuenta_canal WHERE tenant_id = $1) AS tiene_canal_conectado,
-           EXISTS(SELECT 1 FROM invitacion_usuario WHERE tenant_id = $1) AS tiene_colaborador_invitado,
-           (SELECT email_verificado_en IS NOT NULL FROM usuario WHERE id = $2) AS correo_verificado`,
-        [auth.tenantId, auth.usuarioId],
-      );
-      return rows[0]!;
-    });
+    const pasos = await conSesion(pool, sesionDeAuth(auth), (cliente) =>
+      resolverEstadoPasos(cliente, auth.tenantId!, auth.usuarioId),
+    );
+    return c.json({ pasos });
+  });
 
-    return c.json({
-      pasos: {
-        empresaRegistrada: true,
-        correoVerificado: estado.correo_verificado,
-        primeraPropiedad: estado.tiene_propiedad,
-        primeraUnidad: estado.tiene_unidad,
-        canalConectado: estado.tiene_canal_conectado,
-        colaboradorInvitado: estado.tiene_colaborador_invitado,
-      },
-    });
+  // POST /onboarding/conversar — Patrón 7 (rescatado de Likida/atiende.ai):
+  // onboarding conversacional con guardas deterministas. Recibe un
+  // mensaje LIBRE opcional (qué paso le interesa al usuario ahora mismo)
+  // y devuelve la siguiente pregunta de seguimiento dinámica, calculada
+  // por `GeneradorPreguntaOnboardingReglas` (packages/domain/onboarding,
+  // sin LLM, misma disciplina de `datoFaltanteDeclarado` que
+  // `mensajeria/borrador.ts`). El `pasos` que se le pasa al generador
+  // viene de `resolverEstadoPasos` — EXACTAMENTE la misma consulta que
+  // `GET /estado` — nunca del mensaje del usuario: la guarda de
+  // "onboardingCompleto" es así estructuralmente imposible de burlar con
+  // texto libre (RV19-R-16, mismo principio que el resto del repo).
+  rutasAutenticadas.post("/conversar", async (c) => {
+    const auth = c.get("auth");
+    if (!auth.tenantId) {
+      throw new ErrorDominio("tenant_forbidden", "Superadmin no pertenece a ningún tenant con onboarding propio");
+    }
+    const cuerpo = CuerpoConversarOnboarding.parse(await c.req.json().catch(() => ({})));
+    const pasos = await conSesion(pool, sesionDeAuth(auth), (cliente) =>
+      resolverEstadoPasos(cliente, auth.tenantId!, auth.usuarioId),
+    );
+    const generador = new GeneradorPreguntaOnboardingReglas();
+    const resultado = generador.siguientePregunta({ pasos }, cuerpo.mensaje ? { texto: cuerpo.mensaje } : null);
+    return c.json({ ...resultado, pasos });
   });
 
   app.route("/", rutasAutenticadas);
