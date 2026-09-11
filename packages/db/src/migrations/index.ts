@@ -88,6 +88,7 @@ import { migracion0129FacturacionOrdenWebhook } from "./0129_facturacion_orden_w
 import { migracion0130MensajeriaBorradorAgenteLlm } from "./0130_mensajeria_borrador_agente_llm.js";
 import { migracion0131WebhookSalienteReintento } from "./0131_webhook_saliente_reintento.js";
 import { migracion0132RecordatorioCheckinHuesped } from "./0132_recordatorio_checkin_huesped.js";
+import { migracion0133SolicitudArco } from "./0133_solicitud_arco.js";
 
 // Orden fijo, nunca reordenar migraciones ya aplicadas en algún entorno
 // (patrón expand/contract real llega en Lote 10 — H-088). Cada lote
@@ -229,4 +230,8 @@ export const migraciones: Migracion[] = [
   // recordatorio de check-in sobre `ocupacion_unidad`. Ver comentario de
   // cabecera en 0132_recordatorio_checkin_huesped.ts.
   migracion0132RecordatorioCheckinHuesped,
+  // 0133: REQ-151 — bandeja de solicitudes ARCO/RGPD con plazo por
+  // jurisdicción (columna GENERATED, no editable), estado y responsable
+  // asignado. Ver comentario de cabecera en 0133_solicitud_arco.ts.
+  migracion0133SolicitudArco,
 ];
