@@ -5,23 +5,28 @@ Catálogo trazable REQ-nnn. Cada fila: enunciado verificable, prioridad
 primaria, `[R]` secundaria reverificable, `SUPUESTO` de diseño, o
 `PENDIENTE-EXTERNO` cuando depende de un tercero), criterio de aceptación
 (sección de `docs/ACEPTACION.md`), módulo de producto, y estado (`por
-construir` / `implementado` [con comando + resultado verificado citados en
-la columna Evidencia] / `bloqueado por externo` / `bloqueado por laguna
-legal`).
+construir` / `construido` / `implementado` [sinónimo heredado, ver nota] /
+`bloqueado por externo` / `bloqueado por laguna legal`).
 Agrupado por dominio. La sección 0 recoge los requisitos negativos
 (lo que el sistema NUNCA hace) porque aplican transversalmente a todo lo
 demás.
 
 Convención de estado:
 - **por construir** — no depende de un tercero ni de una laguna legal abierta.
+- **construido** — el criterio de aceptación citado se verificó con comando +
+  resultado real adjuntos en la propia fila (evidencia inline en la columna
+  Evidencia); no reemplaza revisión legal/técnica humana ni gate de release.
+  Introducido con el cierre de REQ-151 (2026-09-10), primer ID de este
+  catálogo en pasar de "por construir" a este estado.
+- **implementado** — sinónimo exacto de "construido" (mismo criterio de
+  evidencia inline); usado por REQ-023 en el cierre de H-048, en paralelo al
+  cierre de REQ-151 que fijó "construido" como término canónico. Se
+  conserva el valor ya escrito en esa fila en vez de reescribir contenido
+  aprobado de otra rama de cierre; filas nuevas deben usar "construido".
 - **bloqueado por externo** — depende de aprobación/certificación de un canal
   (Airbnb, Booking.com, Vrbo) fuera del control del proyecto.
 - **bloqueado por laguna legal** — depende de verificación normativa aún no
   confirmada (ver `docs/LAGUNAS.md`, `docs/BLOQUEOS.md`).
-- **construido** — implementado y verificado con evidencia real (comando +
-  resultado) referenciada en la fila; introducido con el cierre de REQ-151
-  (2026-09-10), primer ID de este catálogo en pasar de "por construir" a
-  este estado.
 
 ---
 
@@ -334,7 +339,7 @@ Convención de estado:
 | REQ-174 | El sistema de facturación soporta cuota base por unidad/mes con escalones de volumen. | MUST | RV16-R-01 | [DATO] benchmarks Lodgify/Uplisting/Hospitable | ACEPTACION §Comercial-2 | Facturación | por construir |
 | REQ-175 | El sistema de facturación soporta un add-on de IA conversacional facturable por separado, desacoplado del ciclo de facturación de unidades. | MUST | RV16-R-02, D-018 | [DATO] Uplisting "AI Suite Unlimited" como precedente de mercado | ACEPTACION §Comercial-2 | Facturación | por construir |
 | REQ-176 | La arquitectura registra telemetría de consumo de tokens por conversación (entrada/salida, por modelo) desde el primer lanzamiento. | MUST | RV16-R-03 | SUPUESTO explícito a reemplazar con datos reales | ACEPTACION §Automatización-2 | Observabilidad/IA | por construir |
-| REQ-177 | El modelo de costos permite seleccionar dinámicamente el modelo de IA por tipo de tarea, dado que el costo por conversación varía hasta ~37.5x entre el modelo más económico y el más caro verificado (GPT-4o mini $0.0006 vs. Claude Opus 5 $0.0225), o ~5x si se comparan dos modelos de la misma familia (Claude Haiku 4.5 $0.0045 vs. Claude Opus 5 $0.0225). | SHOULD | RV16-R-06 | [DATO] precios oficiales Anthropic/OpenAI (RV16 §3b) — corrección aritmética BC4: la cifra "~5x" que RV16-R-06/este REQ afirmaban originalmente para el par GPT-4o mini/Claude Opus 5 es incorrecta ($0.0006 a $0.0225 es 37.5x, no 5x); el punto cualitativo (el costo varía mucho entre modelos) se mantiene con la cifra corregida | ACEPTACION §Comercial-2 | Facturación/IA | por construir |
+| REQ-177 | El modelo de costos permite seleccionar dinámicamente el modelo de IA por tipo de tarea, dado que el costo por conversación varía hasta ~37.5x entre el modelo más económico y el más caro verificado (GPT-4o mini $0.0006 vs. Claude Opus 5 $0.0225), o ~5x si se comparan dos modelos de la misma familia (Claude Haiku 4.5 $0.0045 vs. Claude Opus 5 $0.0225). | SHOULD | RV16-R-06 | [DATO] precios oficiales Anthropic/OpenAI (RV16 §3b) — corrección aritmética BC4: la cifra "~5x" que RV16-R-06/este REQ afirmaban originalmente para el par GPT-4o mini/Claude Opus 5 es incorrecta ($0.0006 a $0.0225 es 37.5x, no 5x); el punto cualitativo (el costo varía mucho entre modelos) se mantiene con la cifra corregida | ACEPTACION §Comercial-2 (facturación del add-on de IA, no del router en sí); §Automatización-4 (corrección de cierre: §Comercial-2 solo verifica ciclos de facturación, sin relación con SELECCIONAR el modelo por tarea — se creó el criterio §Automatización-4 dedicado al router) | Facturación/IA | construido — `packages/domain/src/agentes/enrutadorModelo.ts` (`elegirModeloParaRonda`/`complejidadMaximaDeRonda`) enruta cada ronda a `claude-haiku-4-5` (clasificación/sin tool LLM), `claude-sonnet-5` (generación interna: `incidencia_resumir`, `limpieza_proponer_tarea`, `precio_sugerir_ajuste`) o `claude-opus-5` (generación compleja cara al huésped: `mensajeria_proponer_borrador`) según las tools disponibles de la ronda; `apps/api/src/agentes/proveedorClaude.ts` ya no fija un modelo por instancia — lo pide al router en cada `generar()`; `AGENTES_MODELO_LLM` queda como override manual opcional. Evidencia: `npm run test -w @atiende-rv/domain` (`enrutadorModelo.test.ts`, 10/10) + `npm run test -w @atiende-rv/api` (`proveedorClaude.test.ts`, 9/9, incluye captura del cuerpo HTTP real enviado a la Messages API) + `npm run typecheck` y `npm run lint` limpios en los 8 workspaces — rama `closure/req-177-router-llm-por-costo` |
 | REQ-178 | Antes de fijar precio final por tenant, se completa la cotización oficial de infraestructura (AWS RDS+S3) vía calculadora oficial, dado que esta investigación no pudo extraer esas cifras literalmente. | SHOULD | RV16-R-05 | [PENDIENTE] tablas JS no extraídas | ACEPTACION §Comercial-2 | Infraestructura/Costos | por construir |
 | REQ-179 | El parser de eventos ICS trata la ausencia y la presencia explícita de `STATUS:CANCELLED` como equivalentes semánticos de "esta reserva de canal ya no reclama esas noches", sujeto siempre a la regla de no reapertura de REQ-006/D-002 (una noche ocupada por otra causa no se libera). Añadido en esta corrección (BC6) como REQ dedicado — antes RV06-R-04 solo estaba cubierto implícitamente por REQ-005/REQ-028. | MUST | RV06-R-04 | [DATO] RFC 5545 (semántica de `STATUS` opcional en `VEVENT`) | ACEPTACION §Calendario-2 (caso 3) | Sincronización | por construir |
 
@@ -363,7 +368,8 @@ actualización sustancial del catálogo.
 
 | Estado | Nº de requisitos (aprox.) |
 |---|---|
-| por construir | ~129 |
+| por construir | ~127 |
 | bloqueado por externo | ~35 |
 | bloqueado por laguna legal | ~14 |
-| construido | 1 (REQ-151, cierre 2026-09-10) |
+| construido | 2 (REQ-151, REQ-177 — cierres 2026-09-10) |
+| implementado | 1 (REQ-023, cierre H-048, 2026-09-10 — sinónimo de "construido") |

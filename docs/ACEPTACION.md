@@ -450,6 +450,27 @@ Evidencia esperada: reporte con 0 fallos automáticos de "tool fuera de
 alcance" y ≥95% de aciertos en criterios de contenido; documento de decisión
 de producto que autoriza el cambio de fase, fechado.
 
+### §Automatización-4 — Router dinámico de modelo LLM por complejidad de tarea (REQ-177)
+
+Invocar `elegirModeloParaRonda`/`complejidadMaximaDeRonda`
+(`packages/domain/src/agentes/enrutadorModelo.ts`) con conjuntos de tools
+disponibles de distinta complejidad, y verificar en `ProveedorLLMClaude`
+que el cuerpo de la petición HTTP real hacia la Messages API varía su
+campo `model` según esas tools — nunca un único modelo fijo de instancia
+leído de una sola variable de entorno global para todo el tráfico.
+Evidencia esperada: una ronda sin tools que requieran LLM (clasificación/
+conversación simple) envía el modelo más barato del catálogo; una ronda
+con la tool de borrador de mensajería al huésped (generación compleja de
+cara al huésped) envía el modelo más caro; una ronda con solo tools de
+generación interna de riesgo medio envía un tercer modelo intermedio,
+distinto de los otros dos; la variable de entorno `AGENTES_MODELO_LLM`,
+cuando está presente, sigue pudiendo forzar un único modelo para toda
+ronda (override operativo), pero su ausencia ya NO implica un modelo por
+defecto fijo — implica enrutamiento dinámico. Comando:
+`npm run test -w @atiende-rv/domain -- enrutadorModelo` y
+`npm run test -w @atiende-rv/api -- proveedorClaude` (o su equivalente
+`vitest run`), ambos en verde.
+
 ### §Operación-1 — Runbook de alerta nunca cancela ni contacta
 
 Simular las cuatro alertas de RV20 §2 (edad de sync, tasa de error, drift,
