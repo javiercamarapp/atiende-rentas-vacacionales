@@ -132,6 +132,17 @@ Sin esos secrets, el job se OMITE con un `::warning::` explícito en el
 resumen del run — nunca falla en rojo el pipeline de CI solo porque Vercel
 todavía no está conectado.
 
+**Cuidado:** un run de `deploy.yml` en verde NO garantiza que se haya
+desplegado algo — un job `skipped` no pone el workflow en rojo. Y aunque el
+deploy haya funcionado alguna vez, la integración Git→Vercel puede quedar
+desvinculada después (proyecto removido del equipo, token revocado) sin que
+ningún workflow de este repo se entere, porque Actions solo ve el push, no
+el estado del lado de Vercel — esto pasó de verdad (`docs/BLOQUEOS.md`
+B-009: producción caída con `DEPLOYMENT_NOT_FOUND` durante 23 commits sin
+que nadie lo notara). No aplica reparación aquí: el plan de fusión unifica
+los 6 repos "atiende" en un solo Vercel, así que este repo no vuelve a
+tener despliegue individual propio.
+
 ## 5. Migraciones — idempotentes, nunca automáticas en un build de Preview
 
 ```bash
