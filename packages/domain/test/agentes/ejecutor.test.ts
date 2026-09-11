@@ -334,3 +334,121 @@ describe("EjecutorTools — escalamiento blando (RV18 §5, puntos 1-3)", () => {
     }
   });
 });
+
+describe("EjecutorTools — fast-path determinista para intents de alto riesgo (patrón 8, rescatado de Likida/atiende.ai)", () => {
+  function proveedorContador() {
+    let llamadas = 0;
+    class ProveedorContador implements ProveedorLLM {
+      readonly nombre = "contador";
+      readonly etiquetado = true;
+      async generar(): Promise<RespuestaLLM> {
+        llamadas += 1;
+        return {
+          texto: "Un miembro de nuestro equipo lo revisará.",
+          toolInvocada: null,
+          modeloReal: "contador",
+          tokensSalida: 10,
+          costoUsdEstimado: 0.001,
+        };
+      }
+    }
+    return { proveedor: new ProveedorContador(), llamadas: () => llamadas };
+  }
+
+  it("un mensaje con señal de escalamiento (reembolso) se bloquea SIN invocar al proveedor LLM en absoluto", async () => {
+    const { proveedor, llamadas } = proveedorContador();
+    const ejecutor = new EjecutorTools(gestorConPresupuesto(), proveedor);
+    const resultado = await ejecutor.ejecutarRonda({
+      contexto: contexto(),
+      actor: ACTOR_OPERADOR_TOTAL,
+      mensajeHuesped: { origen: "mensaje_huesped", texto: "Esto es inaceptable, quiero un reembolso de mi dinero ahora." },
+      contextoResumen: { propiedadNombre: "Casa Azul" },
+    });
+    expect(resultado.tipo).toBe("bloqueado");
+    if (resultado.tipo === "bloqueado") expect(resultado.motivo).toBe("escalamiento_urgente_sin_generar");
+    expect(llamadas()).toBe(0);
+  });
+
+  it("un mensaje que ejerce un derecho ARCO se bloquea SIN invocar al proveedor LLM en absoluto", async () => {
+    const { proveedor, llamadas } = proveedorContador();
+    const ejecutor = new EjecutorTools(gestorConPresupuesto(), proveedor);
+    const resultado = await ejecutor.ejecutarRonda({
+      contexto: contexto(),
+      actor: ACTOR_OPERADOR_TOTAL,
+      mensajeHuesped: {
+        origen: "mensaje_huesped",
+        texto: "Quiero ejercer mis derechos ARCO y solicito la cancelación de mis datos personales.",
+      },
+      contextoResumen: {},
+    });
+    expect(resultado.tipo).toBe("bloqueado");
+    if (resultado.tipo === "bloqueado") expect(resultado.motivo).toBe("solicitud_arco_detectada");
+    expect(llamadas()).toBe(0);
+  });
+
+  it("el fast-path NO gasta presupuesto de cuota — una ronda de reembolso no descuenta llamadas/tokens del tenant", async () => {
+    const gestor = gestorConPresupuesto("tenant-1", 100_000, 1);
+    const { proveedor } = proveedorContador();
+    const ejecutor = new EjecutorTools(gestor, proveedor);
+    await ejecutor.ejecutarRonda({
+      contexto: contexto(),
+      actor: ACTOR_OPERADOR_TOTAL,
+      mensajeHuesped: { origen: "mensaje_huesped", texto: "Tengo una emergencia, fuga de gas en la unidad." },
+      contextoResumen: {},
+    });
+    // El techo de llamadas del tenant es 1 — si el fast-path hubiera
+    // gastado presupuesto, esta segunda ronda (una consulta normal) lo
+    // encontraría agotado. Como el fast-path nunca reserva, sigue intacto.
+    const resultado2 = await ejecutor.ejecutarRonda({
+      contexto: contexto(),
+      actor: ACTOR_OPERADOR_TOTAL,
+      mensajeHuesped: { origen: "mensaje_huesped", texto: "¿Cuál es la clave del wifi?" },
+      contextoResumen: { propiedadNombre: "Casa Azul" },
+    });
+    expect(resultado2.tipo).not.toBe("presupuesto_agotado");
+  });
+
+  it("un mensaje SIN ninguna señal de riesgo pasa de largo el fast-path y SÍ invoca al proveedor normalmente", async () => {
+    const { proveedor, llamadas } = proveedorContador();
+    const ejecutor = new EjecutorTools(gestorConPresupuesto(), proveedor);
+    const resultado = await ejecutor.ejecutarRonda({
+      contexto: contexto(),
+      actor: ACTOR_OPERADOR_TOTAL,
+      mensajeHuesped: { origen: "mensaje_huesped", texto: "¿A qué hora puedo hacer el check-in?" },
+      contextoResumen: { propiedadNombre: "Casa Azul" },
+    });
+    expect(resultado.tipo).toBe("ok");
+    expect(llamadas()).toBe(1);
+  });
+
+  it("sin mensajeHuesped (ronda sin texto de huésped), el fast-path no lanza ni interfiere", async () => {
+    const { proveedor } = proveedorContador();
+    const ejecutor = new EjecutorTools(gestorConPresupuesto(), proveedor);
+    const resultado = await ejecutor.ejecutarRonda({
+      contexto: contexto(),
+      actor: ACTOR_OPERADOR_TOTAL,
+      mensajeHuesped: null,
+      contextoResumen: {},
+    });
+    expect(resultado.tipo).toBe("ok");
+  });
+
+  it("una mención de 'cancela mi reserva' (acción irreversible, sin ARCO ni escalamiento) NO dispara el fast-path — sigue defendida por el flujo normal (fuera de catálogo)", async () => {
+    const proveedor = new ProveedorFijo({
+      texto: null,
+      toolInvocada: { nombre: "cancelar_reserva", argumentos: {} },
+      modeloReal: "fijo-de-prueba",
+      tokensSalida: 10,
+      costoUsdEstimado: 0.001,
+    });
+    const ejecutor = new EjecutorTools(gestorConPresupuesto(), proveedor);
+    const resultado = await ejecutor.ejecutarRonda({
+      contexto: contexto(),
+      actor: ACTOR_OPERADOR_TOTAL,
+      mensajeHuesped: { origen: "mensaje_huesped", texto: "Cancela mi reserva por favor." },
+      contextoResumen: {},
+    });
+    expect(resultado.tipo).toBe("bloqueado");
+    if (resultado.tipo === "bloqueado") expect(resultado.motivo).toBe("fuera_de_catalogo");
+  });
+});

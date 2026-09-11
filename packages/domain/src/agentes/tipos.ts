@@ -189,6 +189,24 @@ export type MotivoEscalamientoDuro =
    * — guardia anti-alucinación en capas, independiente de
    * `confirmacion_no_verificada` (esa detecta una acción declarada como
    * ya aplicada; esta detecta un HECHO citado sin fuente verificada). */
-  | "cita_no_verificada";
+  | "cita_no_verificada"
+  /** Patrón 8 (rescatado de Likida/atiende.ai): el texto del huésped
+   * matcheó una señal de escalamiento léxica (`debeEscalarPorTexto` —
+   * queja/emergencia/reembolso/vip, `mensajeria/escalamiento.ts`) — fast-
+   * path determinista que corre ANTES de invocar al proveedor LLM
+   * (`ejecutor.ts`, previo a este patrón esta clasificación corría
+   * DESPUÉS de generar la respuesta completa, como escalamiento blando
+   * `escalada_emocional`; ahora el LLM nunca llega a invocarse para estos
+   * casos, así que el motivo debe ser "duro": ninguna propuesta se
+   * genera). */
+  | "escalamiento_urgente_sin_generar"
+  /** Patrón 8 (rescatado de Likida/atiende.ai, ver
+   * `detectarIntencionArco` en escalamiento.ts): el texto del huésped
+   * parece ejercer un derecho ARCO (acceso/rectificación/cancelación/
+   * oposición sobre datos personales, LFPDPPP) — fast-path determinista,
+   * el proveedor LLM nunca se invoca para este mensaje; es un trámite
+   * legal con plazos de ley, no un caso para un borrador generado
+   * automáticamente. */
+  | "solicitud_arco_detectada";
 
 export type MotivoEscalamiento = MotivoEscalamientoBlando | MotivoEscalamientoDuro;
