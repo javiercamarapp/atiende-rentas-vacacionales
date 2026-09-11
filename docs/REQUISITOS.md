@@ -27,6 +27,13 @@ Convención de estado:
   (Airbnb, Booking.com, Vrbo) fuera del control del proyecto.
 - **bloqueado por laguna legal** — depende de verificación normativa aún no
   confirmada (ver `docs/LAGUNAS.md`, `docs/BLOQUEOS.md`).
+- **implementado** — construido y verificado contra el criterio de
+  `ACEPTACION.md` citado en la fila, con evidencia real (comando ejecutado +
+  resultado) anotada en la columna Evidencia — no una simulación ni un mock
+  que solo pasa por pasar. Introducido 2026-09-10 (cierre de REQ-095); las
+  filas con `por construir` que ya tengan código construido pero sin esta
+  verificación explícita permanecen `por construir` hasta que se les aplique
+  el mismo cierre.
 
 ---
 
@@ -185,7 +192,7 @@ Convención de estado:
 | REQ-092 | El sistema registra el timestamp exacto de confirmación de cada reserva, del cual dependen periodos de gracia y políticas de cancelación. | MUST | RV02-R-02 | [DATO] Airbnb art. 475 | ACEPTACION §Datos-1 | Reservas | por construir |
 | REQ-093 | Ningún flujo del producto simula o sustituye la resolución humana de disputas/incidencias (Resolution Center); a lo sumo ayuda a recopilar evidencia para que un humano decida, respetando ventanas de reporte documentadas (72h). | MUST | RV02-R-04 | [DATO] Airbnb art. 767, 2868 | ACEPTACION §RV19/21-6 | Reservas/Incidencias | por construir |
 | REQ-094 | Los mensajes puramente informativos/bajo riesgo pueden programarse por triggers de calendario sin revisión previa; cualquier mensaje con negociación, disculpa, oferta o respuesta a queja pasa por aprobación humana. | MUST | RV02-R-05 | [R] Hospitable (patrón de industria, no política de plataforma) | ACEPTACION §RV19/21-6 | Mensajería | por construir |
-| REQ-095 | El motor de calendario genera el evento de liberación de instrucciones de acceso anclado a T-48h antes del check-in, sin depender de marca de cerradura específica. | SHOULD | RV02-R-06 | [DATO] Airbnb art. 1644 | ACEPTACION §UX-1 | Mensajería/Check-in | por construir |
+| REQ-095 | El motor de calendario genera el evento de liberación de instrucciones de acceso anclado a T-48h antes del check-in, sin depender de marca de cerradura específica. | SHOULD | RV02-R-06 | [DATO] Airbnb art. 1644 — corrección 2026-09-10: la columna Aceptación citaba erróneamente `§UX-1` (calendario visual/razón de bloqueo, sin relación con este REQ — mismo error de copia que ya afecta a REQ-091, sin corregir aquí por estar fuera de alcance de este cierre); creada `§Checkin-1` dedicada. IMPLEMENTADO: `ocupacion_unidad.rango` es `daterange` (solo fecha, sin hora de check-in, D-002) — T-48h se aproxima como "48h antes del día de check-in a una hora de corte configurable (`HORA_CORTE_DEFECTO`=12), evaluada en la zona horaria REAL de la propiedad (`propiedad.zona_horaria`, D-013)", nunca como precisión horaria inventada. Evidencia: `npm run test --workspace=@atiende-rv/api` (12 tests nuevos en verde, incluida `test/notificaciones/liberacionInstruccionesAcceso.test.ts`) y `npm run test:integration --workspace=@atiende-rv/api -- test/integration/liberacionInstruccionesAccesoSql.test.ts` (7 tests contra Postgres real vía `embedded-postgres`, verificando la frontera de T-48h y la conversión de zona horaria, en verde) | ACEPTACION §Checkin-1 | Mensajería/Check-in | implementado |
 | REQ-096 | El motor de reseñas (si se construye) se ancla a la fecha real de checkout y a la ventana de 14 días de Airbnb, con publicación conjunta; no se replica igual para Vrbo/Booking sin verificación adicional. | COULD | RV02-R-08 | [DATO] Airbnb art. 13; [laguna] Vrbo/Booking | ACEPTACION §Reputación-1 | Reputación | bloqueado por externo |
 | REQ-097 | El producto no representa en UI/comercial cifras específicas de comisión, plazos de payout o condiciones de pago de Booking.com como verificadas. | MUST | RV02-R-09 | [DATO] bloqueo 403 sistemático en partner.booking.com | ACEPTACION §Comercial-1 | Finanzas/Comercial | bloqueado por externo |
 | REQ-098 | Los eventos de checkout disparan automáticamente el cierre de "estancia activa" y la creación de una tarea de limpieza/turnover; el detalle exacto del disparador no está confirmado verbatim por ningún proveedor y debe validarse con el proveedor de limpieza elegido antes de construir la integración (nuance restaurado — corrección BC12). Esta automatización se limita a tareas operativas internas; no implica ni habilita cancelación de reserva ni contacto al huésped. | MUST | RV02-R-10, RV11-R-01 | [R] Breezeway (patrón de automatización por reglas y atributos de reserva, RV11) — no una cita verbatim del disparador exacto | ACEPTACION §Limpieza-1 | Limpieza | por construir |
@@ -368,8 +375,8 @@ actualización sustancial del catálogo.
 
 | Estado | Nº de requisitos (aprox.) |
 |---|---|
-| por construir | ~127 |
+| por construir | ~126 |
 | bloqueado por externo | ~35 |
 | bloqueado por laguna legal | ~14 |
 | construido | 2 (REQ-151, REQ-177 — cierres 2026-09-10) |
-| implementado | 1 (REQ-023, cierre H-048, 2026-09-10 — sinónimo de "construido") |
+| implementado | 2 (REQ-023 H-048, REQ-095 — cierres 2026-09-10 — sinónimo de "construido") |

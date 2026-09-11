@@ -145,6 +145,45 @@ afirmación de accesibilidad sin este reporte adjunto (ninguna plataforma del
 sector investigada en RV09 documenta este aspecto públicamente, por lo que no
 existe un estándar de mercado que replicar por defecto).
 
+### §Checkin-1 — Evento de liberación de instrucciones de acceso (T-48h)
+
+Añadida 2026-09-10 al cerrar REQ-095 — la fila de REQ-095 en
+`REQUISITOS.md` citaba `§UX-1` por error de copia (esa sección es sobre
+razón de bloqueo en el calendario visual, sin relación con este REQ).
+
+Con una reserva confirmada y bloqueante en una unidad cuya propiedad tiene
+`zona_horaria` conocida (ej. `America/Cancun`, UTC-5 sin DST): ejecutar el
+motor de liberación de instrucciones de acceso con un reloj inyectado en
+tres puntos de referencia respecto al check-in estimado (día de check-in a
+la hora de corte configurable, en la zona horaria de la propiedad) —
+más de 48h antes, exactamente 48h antes, y después del check-in estimado.
+Evidencia esperada: el evento se genera (fila nueva en `outbox_evento`,
+`tipo_evento = 'liberar_instrucciones_acceso'`) si y solo si el reloj cae
+dentro de `[checkin_estimado - 48h, checkin_estimado)` — nunca antes,
+nunca después; una segunda corrida dentro de la misma ventana no duplica
+el evento (idempotencia real, verificable contando filas de
+`outbox_evento` para esa reserva); el payload del evento no contiene
+ninguna mención a marca o proveedor de cerradura específico (verificable
+por inspección/grep del payload); y el mismo cálculo aplica correctamente
+para propiedades en otras zonas horarias (ej. `Asia/Tokyo`, UTC+9),
+confirmando que la ventana usa la zona horaria real de la propiedad y no
+UTC/hora de servidor.
+
+Nota sobre el límite de esquema (no una laguna nueva, ya documentada en
+`apps/api/src/workers/notificacionesHuesped/recordatorioCheckin.ts`):
+`ocupacion_unidad.rango` es un `daterange` — el esquema no guarda una hora
+de check-in real. "T-48h" se aproxima explícitamente como se describe
+arriba; si en el futuro se agrega una hora de check-in real por
+reserva/propiedad, la implementación debe reemplazar la hora de corte
+configurable por ese dato en vez de seguir aproximando.
+
+Verificado 2026-09-10 (cierre de REQ-095): `npm run test
+--workspace=@atiende-rv/api` (unitario, orquestación pura con `ejecutor`
+simulado) y `npm run test:integration --workspace=@atiende-rv/api --
+test/integration/liberacionInstruccionesAccesoSql.test.ts` (7 casos
+contra Postgres real vía `embedded-postgres`, cubriendo exactamente los
+puntos de referencia y zonas horarias de arriba) — ambos en verde.
+
 ### §Roles-1 — Permisos de colaborador por propiedad
 
 Con tres usuarios de prueba en los tres niveles (acceso total,

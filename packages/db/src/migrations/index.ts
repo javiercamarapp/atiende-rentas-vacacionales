@@ -93,6 +93,10 @@ import { migracion0133SolicitudArco } from "./0133_solicitud_arco.js";
 // (0133_solicitud_arco.ts) al converger en la rama de integración de
 // cierre; esta migración se renumeró de 0133 a 0134 en ese merge.
 import { migracion0134OwnerEmpresaGestora } from "./0134_owner_empresa_gestora.js";
+// 0135: REQ-095 — 0133 también estaba tomado (por REQ-151) al converger
+// en la rama de integración de cierre; esta migración se renumeró de
+// 0133 a 0135 (0134 ya usado por H-048) en ese mismo merge.
+import { migracion0135LiberacionInstruccionesAcceso } from "./0135_liberacion_instrucciones_acceso.js";
 
 // Orden fijo, nunca reordenar migraciones ya aplicadas en algún entorno
 // (patrón expand/contract real llega en Lote 10 — H-088). Cada lote
@@ -244,4 +248,11 @@ export const migraciones: Migracion[] = [
   // en 0134_owner_empresa_gestora.ts. Renumerada de 0133 a 0134 al
   // integrar en la rama de cierre (0133 ya estaba tomado por REQ-151).
   migracion0134OwnerEmpresaGestora,
+  // 0135: REQ-095 — marca de generación única del evento de liberación de
+  // instrucciones de acceso (T-48h aproximado, zona horaria real de la
+  // propiedad). Ver comentario de cabecera en
+  // 0135_liberacion_instrucciones_acceso.ts. Renumerada de 0133 a 0135 al
+  // integrar en la rama de cierre (0133 y 0134 ya estaban tomados por
+  // REQ-151 y H-048).
+  migracion0135LiberacionInstruccionesAcceso,
 ];

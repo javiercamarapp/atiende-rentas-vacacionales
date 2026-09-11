@@ -13,6 +13,7 @@ import { crearRutasCronWebhooksReintento } from "../../rutas/internas/cronWebhoo
 import { crearRutasCronLimpiezaCheckout } from "../../rutas/internas/cronLimpiezaCheckout.js";
 import { crearRutasCronOutboxWorker } from "../../rutas/internas/cronOutboxWorker.js";
 import { crearRutasCronRecordatorioCheckin } from "../../rutas/internas/cronRecordatorioCheckin.js";
+import { crearRutasCronLiberacionInstruccionesAcceso } from "../../rutas/internas/cronLiberacionInstruccionesAcceso.js";
 import { contarWebhookReintentoPorEstado } from "../notificaciones/webhookReintento.js";
 
 /**
@@ -206,6 +207,14 @@ export function rutasObservabilidad(deps: DependenciasRutasObservabilidad): Hono
   // completo. Mismo punto de montaje y mismo criterio de protección
   // (CRON_SECRET) que los dos crons de arriba.
   app.route("/internal/cron", crearRutasCronRecordatorioCheckin({ pool: deps.pool }));
+
+  // GET /internal/cron/liberacion-instrucciones-acceso (REQ-095): genera
+  // el evento de liberación de instrucciones de acceso (T-48h aproximado)
+  // en `outbox_evento` para reservas próximas — ver apps/api/src/rutas/
+  // internas/cronLiberacionInstruccionesAcceso.ts para el diseño completo.
+  // Mismo punto de montaje y mismo criterio de protección (CRON_SECRET)
+  // que los crons de arriba.
+  app.route("/internal/cron", crearRutasCronLiberacionInstruccionesAcceso({ pool: deps.pool }));
 
   return app;
 }
