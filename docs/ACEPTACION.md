@@ -179,6 +179,66 @@ cada empresa gestora solo ve las propiedades que administra de ese
 propietario, nunca las de la otra. Evidencia esperada: consulta cruzada
 rechazada por RLS (ver §RV19/21-4).
 
+**Verificado (REQ-023/H-048)**: el modelo N:M owner↔empresa_gestora existe
+desde `packages/db/src/migrations/0133_owner_empresa_gestora.ts` — tabla
+puente `owner_empresa_gestora`, migración de los datos 1:N existentes hacia
+esa tabla (`INSERT ... SELECT ... WHERE empresa_gestora_id IS NOT NULL`,
+cero pérdida), trigger que sigue sincronizando la columna de alta
+`owner.empresa_gestora_id` (compatibilidad hacia atrás con todo el código y
+fixtures existentes), y las políticas `owner_select`/`owner_escritura`
+redefinidas sobre el nuevo predicado `owner_pertenece_a_tenant` (EXISTS
+sobre la tabla puente) en vez del `owner_tenant_id` de una sola empresa
+(0014). `owner_empresa_gestora` tiene su propia RLS (no fuga a un tenant
+ajeno con qué OTRAS empresas_gestoras comparte owner un propietario que sí
+tiene en común).
+
+Comando ejecutado y resultado real (repo, rama `closure/h048-multitenancy-n-a-m`):
+
+```
+npm run test:integration -w @atiende-rv/db -- rls.test.ts
+# Test Files  1 passed (dentro de 11 passed)
+# Tests  27 passed (20 preexistentes + 7 nuevas del bloque
+#   "REQ-023/H-048 §Roles-4: multitenancy N:M owner↔empresa_gestora")
+```
+
+El caso central del criterio de aceptación: un owner dado de alta en la
+empresa_gestora del tenant A se vincula (vía la tabla puente) también a la
+empresa_gestora de un tenant C nuevo, cada una con su propia
+propiedad/unidad administrando a ese mismo owner. `adminA` ve el owner y
+"Prop A", nunca "Prop C"; `adminC` ve el MISMO owner (antes de este cambio
+esto era 0 filas — el owner solo pertenecía al tenant de alta) y "Prop C",
+nunca "Prop A"; `adminB` (sin ninguna vinculación) no ve ni el owner ni
+ninguna de las dos propiedades. Sensibilidad de la prueba confirmada
+manualmente: deshabilitando temporalmente la redefinición de RLS de esta
+migración, la misma suite falla exactamente en
+`adminC ve el MISMO owner compartido... expected +0 to be 1`, antes de
+restaurarse a la versión que sí pasa — la prueba detecta de verdad la
+ausencia del fix, no es un mock que pasa por pasar.
+
+También se corrigió, como parte del mismo cambio, un hueco de
+correctitud financiera que el N:M habría abierto en
+`apps/api/src/routes/finanzas.ts` (`POST /statements/generar`): el `JOIN`
+original tomaba el `tenant_id` del `owner_statement` desde la empresa
+gestora de ALTA del owner (columna `owner.empresa_gestora_id`), lo cual
+—una vez el owner puede pertenecer a más de una empresa gestora— fugaría el
+dato financiero al tenant de alta aunque la sesión que generó el statement
+fuera de otra empresa gestora vinculada. Ahora se exige que el owner esté
+vinculado, vía la tabla puente, al tenant de la SESIÓN que hace la
+petición; sin tenant propio en la sesión (superadmin) y con más de una
+empresa gestora vinculada visible, se rechaza explícitamente en vez de
+elegir una en silencio. Verificado sin regresión:
+`npm run test:integration -w @atiende-rv/api -- finanzasPricingReportes.test.ts`
+→ 18/18 en verde (incluye "genera el owner statement del periodo" y
+"propietario del owner ve su propio statement").
+
+Regresión de todo lo demás verificada en la misma sesión: typecheck del
+monorepo completo (`npm run typecheck`, 7/7 workspaces en verde), lint
+(`npm run lint`, 0 errores), tests unitarios de raíz (`npm run test`, 277+112+140+89+304+39+12
+= 973 en verde), integración de raíz (`npm run test:integration`,
+139+84 = 223 en verde) y la suite adversarial de multitenancy
+(`npm run test:adversarial -- --filter=multitenant`, 8/8 en verde,
+caso 18/19 sin cambios).
+
 ### §Conectividad-1 — Interfaz de adaptador con capacidades declaradas
 
 Para cada adaptador de canal implementado, ejecutar una prueba que invoque
