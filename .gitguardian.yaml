@@ -1,0 +1,25 @@
+version: 2
+
+secret:
+  # Falso positivo conocido y documentado (familia de repos "atiende"):
+  # `CANAL_CIFRADO_CLAVES` es la clave AES de cifrado de datos en reposo.
+  # En producción se exige real (apps/api/src/config/env.ts). En los tests
+  # de integración de `apps/api/test/integration/*.test.ts` se fija a un
+  # valor DETERMINISTA y trivial — envoltura de versión "v1:" (el mismo
+  # prefijo que genera `generarClaveCifradoBase64()` en
+  # apps/api/src/config/env.ts) sobre el base64 de la secuencia de bytes
+  # 0123456789abcdef repetida dos veces — únicamente para poder levantar
+  # `embedded-postgres` real en CI. Nunca ha sido, ni es, una credencial de
+  # ningún proveedor ni un secreto real: GitGuardian la marca "Generic High
+  # Entropy Secret" solo porque el base64 tiene apariencia de alta entropía.
+  #
+  # Incidentes GitGuardian afectados (PR #1, mismo valor, 3 archivos):
+  #   37174555 — apps/api/test/integration/calendarioModoDegradadoPrimario.test.ts
+  #   37174556 — apps/api/test/integration/solicitudesArco.test.ts
+  #   37174557 — apps/api/test/integration/calendarioReplicaLectura.test.ts
+  # El mismo valor ya vive sin incidentes en 16+ archivos de test ya
+  # mergeados a main; este ignore es válido para todo el repo por
+  # contenido exacto, no por ruta ni carpeta completa.
+  ignored_matches:
+    - name: "CANAL_CIFRADO_CLAVES de prueba (fixture determinista, no es un secreto real)"
+      match: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
