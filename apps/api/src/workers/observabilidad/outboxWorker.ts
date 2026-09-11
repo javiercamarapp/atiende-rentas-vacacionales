@@ -54,11 +54,27 @@ export interface OpcionesProcesarPendientesOutbox {
   trazador?: Trazador;
   metricas?: RegistroMetricas;
   ahoraMs?: () => number;
+  /** H-091/REQ-166 (§Operación-3): compuerta de "push automático" —
+   * `false` hace que esta llamada NO procese ningún evento pendiente (ni
+   * siquiera los lista) y devuelva de inmediato con `pausadoPorModoDegradado:
+   * true`. `undefined`/`true` (por defecto) preserva EXACTAMENTE el
+   * comportamiento anterior a este lote — ningún llamador existente que
+   * no pase este campo ve ningún cambio. El caso real: `sync.push_automatico`
+   * se apaga automáticamente cuando `GET /health/detallado` detecta que
+   * el primario no responde (`workers/observabilidad/rutas.ts`) — este
+   * flag es lo que hace esa pausa efectiva de verdad sobre el push
+   * saliente, no solo una bandera decorativa en el registro de flags. */
+  pushAutomaticoHabilitado?: boolean;
 }
 
 export interface ResultadoProcesarLote {
   procesados: string[];
   omitidosYaConsumidos: number;
+  /** `true` solo cuando esta llamada se abortó ANTES de tocar
+   * `outbox_evento` porque `pushAutomaticoHabilitado === false` — ausente
+   * (nunca `false`) en cualquier corrida normal, para no ensuciar el
+   * contrato de los llamadores existentes que no conocen este campo. */
+  pausadoPorModoDegradado?: true;
 }
 
 async function listarPendientes(ejecutor: EjecutorSql, limite: number): Promise<FilaOutboxPendiente[]> {
@@ -85,6 +101,13 @@ export async function procesarPendientesOutbox(
   const { ejecutor, aplicarEfecto, trazador, metricas } = opciones;
   const limite = opciones.limite ?? 50;
   const ahoraMs = opciones.ahoraMs ?? (() => Date.now());
+
+  // H-091/REQ-166: `false` explícito — nunca lista, nunca abre una
+  // transacción, nunca toca `outbox_evento`. `undefined` (llamador que no
+  // conoce este campo) se trata como `true`, igual que antes de este lote.
+  if (opciones.pushAutomaticoHabilitado === false) {
+    return { procesados: [], omitidosYaConsumidos: 0, pausadoPorModoDegradado: true };
+  }
 
   const pendientes = await listarPendientes(ejecutor, limite);
   const procesados: string[] = [];

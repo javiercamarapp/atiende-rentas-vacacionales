@@ -303,7 +303,7 @@ Convención de estado:
 | REQ-163 | Toda funcionalidad que module dinero, cancelaciones o contacto a huéspedes se controla por feature flag con default `false`, verificable en configuración. | MUST | RV20-R-10 | [R] patrón BP-163 (línea de producto Hoteles, referencia interna) | ACEPTACION §Operación-1 | Operación | por construir |
 | REQ-164 | Los simuladores de canal en desarrollo llevan nombre inequívoco de "simulador"; el arranque se rechaza si las credenciales parecen de producción real. | MUST | RV20-R-11, D-019 | SUPUESTO de diseño | ACEPTACION §Operación-4 | Operación/Dev | por construir |
 | REQ-165 | El estado de un token de canal expirado/revocado se refleja en el estado del conector y pausa automáticamente el push hacia ese canal hasta reconexión manual; nunca reintenta indefinidamente contra credenciales revocadas. | MUST | RV20-R-12 | SUPUESTO, dependiente de D-017/RV17 | ACEPTACION §Operación-1 | Operación/Seguridad | por construir |
-| REQ-166 | Existe un modo de degradación de solo-lectura del calendario cuando la base de escritura primaria no responde, con pausa automática de todo push saliente y señalización visible en UI. | MUST | RV20-R-13 | SUPUESTO de diseño | ACEPTACION §Operación-3 | Operación/DR | por construir |
+| REQ-166 | Existe un modo de degradación de solo-lectura del calendario cuando la base de escritura primaria no responde, con pausa automática de todo push saliente y señalización visible en UI. | MUST | RV20-R-13 | SUPUESTO de diseño | ACEPTACION §Operación-5 (corregido en el cierre H-091: §Operación-3 describe backup, no este criterio) | Operación/DR | por construir |
 
 ---
 

@@ -11,6 +11,14 @@ export interface ConfiguracionApi {
   etiquetaEntorno: string;
   origenWeb: string;
   databaseUrl: string;
+  /** H-091/REQ-166 (§Operación-3): réplica de lectura OPCIONAL —
+   * `DATABASE_URL_REPLICA` sin definir (cadena vacía o ausente) es el
+   * comportamiento por defecto y deja el enrutador (`EnrutadorLecturaReplica`,
+   * `packages/db/src/runner/enrutadorLecturaReplica.ts`) sin réplica: toda
+   * lectura de calendario va siempre al primario, exactamente igual que
+   * antes de este lote. Mismo criterio de "ausencia nunca es error" que
+   * `databaseUrl`. */
+  databaseUrlReplica: string;
   jwtSecret: string;
   cifradoCanalClaves: string;
   rateLimit: {
@@ -226,6 +234,7 @@ export function cargarConfiguracion(env: NodeJS.ProcessEnv = process.env): Confi
     etiquetaEntorno: env.APP_ENV_LABEL ?? "desarrollo",
     origenWeb: env.WEB_ORIGIN ?? "http://localhost:5173",
     databaseUrl: env.DATABASE_URL ?? "",
+    databaseUrlReplica: env.DATABASE_URL_REPLICA ?? "",
     jwtSecret: resolverJwtSecret(env, entornoEsProductivo),
     cifradoCanalClaves: resolverCifradoCanalClaves(env, entornoEsProductivo),
     rateLimit: {

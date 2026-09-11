@@ -368,6 +368,51 @@ Intentar arrancar un simulador de canal con credenciales que coincidan con el
 patrón de credenciales de producción. Evidencia esperada: el arranque se
 rechaza explícitamente con un error que indica el motivo.
 
+### §Operación-5 — Modo degradado de solo-lectura del calendario (REQ-166/H-091)
+
+Añadida en el cierre de H-091 (Lote de cierre REQ-166): REQ-166 citaba
+§Operación-3 desde el catálogo original, pero esa sección describe la
+restauración de backup (REQ-160/161/162) — un criterio distinto, sin
+ninguna sección propia para el enunciado real de REQ-166 ("modo de
+degradación de solo-lectura del calendario cuando la base de escritura
+primaria no responde, con pausa automática de todo push saliente y
+señalización visible en UI"). Esta sección cierra ese vacío con el
+criterio real.
+
+Apagar el proceso de la base de datos PRIMARIA (proceso Postgres real
+detenido, no una excepción simulada) mientras una réplica de lectura
+(`DATABASE_URL_REPLICA`) sigue viva, y verificar:
+
+1. `GET /unidades/:id/calendario` sigue respondiendo 200 con datos
+   correctos (servidos por la réplica vía `EnrutadorLecturaReplica`,
+   `packages/db/src/runner/enrutadorLecturaReplica.ts`) — el calendario
+   permanece legible en modo de solo lectura.
+2. `GET /health/detallado` reporta `status: "degradado"` y
+   `modoDegradadoCalendario: true`, y APAGA automáticamente el flag
+   `sync.push_automatico` (auditado, actor `monitor-salud-primario`) — sin
+   que un operador tenga que intervenir para que la pausa ocurra.
+3. Con `sync.push_automatico` en `false`, el cron real de push saliente
+   (`GET /internal/cron/outbox-worker`) NO procesa ningún evento
+   pendiente del outbox — la pausa es efectiva sobre el push real, no solo
+   un campo decorativo en un registro de flags.
+4. La reactivación de `sync.push_automatico` NUNCA es automática — exige
+   una acción explícita de un operador (mismo criterio que la
+   reconciliación de drift tras un restore de backup, §Operación-3).
+5. La UI del calendario (`apps/web/src/pages/calendario/`) muestra un
+   banner visible ("Modo degradado: calendario en solo lectura") mientras
+   `GET /health/detallado` reporte `modoDegradadoCalendario: true`.
+
+Evidencia esperada: DOS clusters `embedded-postgres` reales e
+independientes (primario + una "réplica" sembrada a mano — sin streaming
+replication real de Postgres, imposible de levantar en este entorno de
+construcción, límite documentado también en `enrutadorLecturaReplica.ts`);
+apagar el PROCESO real del primario, nunca una función que lanza a mano.
+Verificado en
+`apps/api/test/integration/calendarioModoDegradadoPrimario.test.ts` (los 5
+puntos de arriba, contra Postgres real) y
+`apps/api/test/integration/calendarioReplicaLectura.test.ts` (wiring del
+enrutador al endpoint + fallback real ante la réplica caída).
+
 ### §Comercial-1 — Ninguna cifra de mercado/competidor sin verificación directa
 
 Revisión de cualquier material comercial que cite comisión de Booking.com/

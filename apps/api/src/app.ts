@@ -18,6 +18,7 @@ import { KeyringCifradoCanal } from "./seguridad/cifrado.js";
 import { construirAdaptadorCorreo } from "./seguridad/correo.js";
 import { capturarErrorNoManejado, crearRutaPruebaSentry } from "./observabilidad/sentry.js";
 import { construirAdaptadorPagosDesdeEntorno } from "@atiende-rv/domain/facturacion";
+import type { RegistroFlags } from "@atiende-rv/domain";
 import { crearRateLimit } from "./seguridad/rateLimit.js";
 import { ZodError, type ZodIssue } from "zod";
 import {
@@ -34,6 +35,19 @@ export interface OpcionesCrearApp {
   /** Pool de conexión ya construido — inyectable en pruebas para apuntar
    * a `embedded-postgres` con el rol `app_rv` en vez de `DATABASE_URL`. */
   pool?: pg.Pool;
+  /** H-091/REQ-166 (§Operación-3): pool de la réplica de lectura —
+   * inyectable en pruebas exactamente igual que `pool` (ver
+   * `apps/api/test/integration/calendarioReplicaModoDegradado.test.ts`,
+   * DOS clusters `embedded-postgres` reales). `undefined` deja que se
+   * construya desde `DATABASE_URL_REPLICA` si está configurada; pasar
+   * explícitamente `null` fuerza "sin réplica" incluso si la variable de
+   * entorno existiera (nunca ocurre en el flujo real de `crearApp()` sin
+   * opciones, solo útil para pruebas que quieran ese control exacto). */
+  poolReplica?: pg.Pool | null;
+  /** H-091/REQ-166: inyectable SOLO para pruebas — sin esto,
+   * `rutasObservabilidad` usa el singleton de proceso
+   * `registroFlagsBackoffice` (mismo que ve `GET /backoffice/flags`). */
+  registroFlags?: RegistroFlags;
 }
 
 /** S-15 (docs/auditoria-2/seguridad.md): el mensaje por defecto de Zod
@@ -72,6 +86,20 @@ export function crearApp(opciones: OpcionesCrearApp = {}) {
     (config.databaseUrl
       ? obtenerPoolServerlessCompartido(config.databaseUrl)
       : new pg.Pool({ connectionString: undefined }));
+  // H-091/REQ-166: réplica de lectura OPCIONAL — mismo helper serverless
+  // que `pool` (SSL automático, pool acotado, caché de módulo), pero
+  // `poolReplica` es `null` (no un pool "vacío" que falla al usarse) sin
+  // `DATABASE_URL_REPLICA` configurada: `EnrutadorLecturaReplica` trata
+  // `null` como "sin réplica" explícitamente (ver
+  // packages/db/src/runner/enrutadorLecturaReplica.ts), así que un
+  // despliegue sin la variable no ve NINGÚN cambio de comportamiento
+  // frente a antes de este lote.
+  const poolReplica =
+    opciones.poolReplica !== undefined
+      ? opciones.poolReplica
+      : config.databaseUrlReplica
+        ? obtenerPoolServerlessCompartido(config.databaseUrlReplica)
+        : null;
   const keyring = new KeyringCifradoCanal(config.cifradoCanalClaves);
   // Lote 3.3 (RV16) + A3-FACT-03 (docs/auditoria-3/facturacion-onboarding.md,
   // corregido): Stripe real SOLO si AMBAS variables están presentes; sin
@@ -106,7 +134,10 @@ export function crearApp(opciones: OpcionesCrearApp = {}) {
   const metricas = new RegistroMetricas();
   const trazador = crearTrazador("atiende-rv-api", construirExportadoresDesdeEntorno(leerConfiguracionOtelEntorno()));
   app.use("*", crearMiddlewareObservabilidad(trazador, metricas));
-  app.route("/", rutasObservabilidad({ metricas, pool, jwtSecret: config.jwtSecret }));
+  app.route(
+    "/",
+    rutasObservabilidad({ metricas, pool, jwtSecret: config.jwtSecret, registroFlags: opciones.registroFlags }),
+  );
   // Sentry (bucle B): ruta interna de verificación end-to-end de la
   // integración, fail-closed sin CRON_SECRET — ver
   // apps/api/src/observabilidad/sentry.ts y docs/despliegue/sentry.md.
@@ -147,6 +178,7 @@ export function crearApp(opciones: OpcionesCrearApp = {}) {
 
   registrarRutas(app, {
     pool,
+    poolReplica,
     jwtSecret: config.jwtSecret,
     keyring,
     urlPublicaApi: config.urlPublicaApi,

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type pg from "pg";
+import { CATALOGO_FLAGS_POR_DEFECTO, FLAG_SYNC_PUSH_AUTOMATICO, RegistroFlags } from "@atiende-rv/domain";
 import { crearRutasCronOutboxWorker } from "../../src/rutas/internas/cronOutboxWorker.js";
 import type { ResultadoProcesarLote } from "../../src/workers/observabilidad/outboxWorker.js";
 
@@ -108,5 +109,55 @@ describe("GET /internal/cron/outbox-worker — auth fail-closed", () => {
     expect(res.status).toBe(500);
     const body = (await res.json()) as { error: { codigo: string } };
     expect(body.error.codigo).toBe("cron_outbox_worker_no_disponible");
+  });
+});
+
+describe("GET /internal/cron/outbox-worker — pausa por sync.push_automatico (H-091/REQ-166, §Operación-3)", () => {
+  it("con sync.push_automatico=false, responde 200 pausado SIN invocar `procesar` ni abrir conexión", async () => {
+    process.env.CRON_SECRET = SECRETO_PRUEBA;
+    const registroFlags = new RegistroFlags(CATALOGO_FLAGS_POR_DEFECTO);
+    registroFlags.establecer({
+      flagId: FLAG_SYNC_PUSH_AUTOMATICO,
+      valor: false,
+      actor: "prueba",
+      motivo: "simular primario caído",
+    });
+    let invocado = false;
+    const app = crearRutasCronOutboxWorker({
+      pool: POOL_FALSO,
+      registroFlags,
+      procesar: async () => {
+        invocado = true;
+        return { procesados: ["nunca-debería-verse"], omitidosYaConsumidos: 0 };
+      },
+    });
+
+    const res = await app.request("/outbox-worker", { headers: { authorization: `Bearer ${SECRETO_PRUEBA}` } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as ResultadoProcesarLote;
+    expect(body).toEqual({ procesados: [], omitidosYaConsumidos: 0, pausadoPorModoDegradado: true });
+    expect(invocado).toBe(false);
+  });
+
+  it("con sync.push_automatico=true (default) procesa normalmente — sin cambio de comportamiento", async () => {
+    process.env.CRON_SECRET = SECRETO_PRUEBA;
+    const registroFlags = new RegistroFlags(CATALOGO_FLAGS_POR_DEFECTO);
+    const resultadoEsperado: ResultadoProcesarLote = { procesados: ["a"], omitidosYaConsumidos: 0 };
+    const app = crearRutasCronOutboxWorker({ pool: POOL_FALSO, registroFlags, procesar: async () => resultadoEsperado });
+
+    const res = await app.request("/outbox-worker", { headers: { authorization: `Bearer ${SECRETO_PRUEBA}` } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as ResultadoProcesarLote;
+    expect(body).toEqual(resultadoEsperado);
+  });
+
+  it("sin `registroFlags` inyectado (comportamiento por defecto de este archivo de pruebas) sigue procesando normalmente", async () => {
+    process.env.CRON_SECRET = SECRETO_PRUEBA;
+    const resultadoEsperado: ResultadoProcesarLote = { procesados: ["a", "b"], omitidosYaConsumidos: 1 };
+    const app = crearRutasCronOutboxWorker({ pool: POOL_FALSO, procesar: async () => resultadoEsperado });
+
+    const res = await app.request("/outbox-worker", { headers: { authorization: `Bearer ${SECRETO_PRUEBA}` } });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(resultadoEsperado);
   });
 });
