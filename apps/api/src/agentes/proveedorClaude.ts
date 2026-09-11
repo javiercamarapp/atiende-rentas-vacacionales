@@ -1,4 +1,4 @@
-import type { ProveedorLLM, RespuestaLLM, SolicitudLLM } from "@atiende-rv/domain/agentes";
+import { elegirModeloParaRonda, type ProveedorLLM, type RespuestaLLM, type SolicitudLLM } from "@atiende-rv/domain/agentes";
 
 /**
  * Adaptador REAL hacia la API de Claude (Lote 9, BACKLOG E14, item 3).
@@ -15,10 +15,17 @@ import type { ProveedorLLM, RespuestaLLM, SolicitudLLM } from "@atiende-rv/domai
  * devuelve `null` y el llamador cae al proveedor simulado — nunca lanza
  * por falta de clave.
  *
- * Modelo configurable por variable de entorno `AGENTES_MODELO_LLM`
- * (default `claude-opus-5`, siguiendo la skill `claude-api`: "ALWAYS use
- * claude-opus-5 unless the user explicitly names a different model" — el
- * "usuario" aquí es el operador del despliegue vía variable de entorno).
+ * Modelo elegido DINÁMICAMENTE por ronda según el tipo/complejidad de la
+ * tarea (REQ-177, D-018/RV16 §3b: hasta ~37.5x de diferencia de costo
+ * verificado entre el modelo más barato y el más caro) vía
+ * `elegirModeloParaRonda`/`complejidadMaximaDeRonda`
+ * (`packages/domain/agentes/enrutadorModelo.ts`) — nunca un único modelo
+ * fijo para todo el tráfico. La variable de entorno `AGENTES_MODELO_LLM`
+ * sigue existiendo como "kill switch" operativo: si está presente, FUERZA
+ * ese modelo para toda ronda (override total del router dinámico), sin
+ * tocar código, para un despliegue puntual donde el enrutamiento dinámico
+ * se comportara mal. Ausente (caso normal), el router decide por ronda
+ * siguiendo la skill `claude-api` para la familia de modelos disponible.
  *
  * Deliberadamente usa `fetch` crudo a la Messages API en vez del SDK
  * oficial `@anthropic-ai/sdk`: añadir una dependencia nueva a
@@ -32,7 +39,14 @@ import type { ProveedorLLM, RespuestaLLM, SolicitudLLM } from "@atiende-rv/domai
  */
 export interface OpcionesProveedorClaude {
   readonly apiKey: string;
-  readonly modelo: string;
+  /**
+   * Override manual del modelo (REQ-177): cuando está presente, TODA ronda
+   * usa este modelo sin importar su complejidad — "kill switch" operativo
+   * (`AGENTES_MODELO_LLM`). Cuando es `undefined` (caso normal), cada
+   * llamada a `generar()` decide el modelo dinámicamente vía
+   * `elegirModeloParaRonda` según las tools disponibles de esa ronda.
+   */
+  readonly modeloForzado?: string;
   /** Inyectable en pruebas de este archivo (no de evals) para no requerir
    * red real. */
   readonly fetchImpl?: typeof fetch;
@@ -94,11 +108,19 @@ function construirMensajeUsuario(solicitud: SolicitudLLM): string {
 }
 
 export class ProveedorLLMClaude implements ProveedorLLM {
+  /**
+   * `nombre` ya NO fija un único modelo (REQ-177: el modelo real varía por
+   * ronda) — identifica la ESTRATEGIA de enrutamiento de esta instancia,
+   * nunca un modelo concreto. El modelo que realmente respondió cada ronda
+   * vive exclusivamente en `RespuestaLLM.modeloReal` (`datos.model` de la
+   * API, ver `generar()` abajo), que es lo que consume la trazabilidad
+   * (RV18 §4).
+   */
   readonly nombre: string;
   readonly etiquetado = false;
 
   constructor(private readonly opciones: OpcionesProveedorClaude) {
-    this.nombre = `claude:${opciones.modelo}`;
+    this.nombre = opciones.modeloForzado ? `claude:forzado:${opciones.modeloForzado}` : "claude:enrutado-por-tarea";
   }
 
   async generar(solicitud: SolicitudLLM): Promise<RespuestaLLM> {
@@ -108,6 +130,11 @@ export class ProveedorLLMClaude implements ProveedorLLM {
       description: tool.descripcion,
       input_schema: tool.inputSchema,
     }));
+    // REQ-177: modelo elegido POR RONDA según la complejidad de las tools
+    // realmente disponibles en esta solicitud — nunca un valor fijo de
+    // instancia. `opciones.modeloForzado` (si está presente) tiene
+    // prioridad absoluta sobre el router dinámico.
+    const modeloDeEstaRonda = elegirModeloParaRonda(solicitud.toolsDisponibles, this.opciones.modeloForzado);
 
     const respuestaHttp = await fetchImpl("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -117,7 +144,7 @@ export class ProveedorLLMClaude implements ProveedorLLM {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: this.opciones.modelo,
+        model: modeloDeEstaRonda,
         max_tokens: 1024,
         system: solicitud.instruccionSistema,
         tools,
@@ -151,11 +178,16 @@ export class ProveedorLLMClaude implements ProveedorLLM {
  * (b) `ANTHROPIC_API_KEY` está configurada en el entorno — nunca lanza por
  * falta de clave, simplemente cae a `null` para que el llamador use el
  * proveedor simulado (degradación explícita, nunca un 500).
+ *
+ * `AGENTES_MODELO_LLM` (REQ-177): si está presente en el entorno, FUERZA
+ * ese modelo para toda ronda de este proceso (override manual/kill switch
+ * operativo); si está AUSENTE (caso recomendado), cada ronda enruta
+ * dinámicamente por complejidad de tarea vía `elegirModeloParaRonda` — ya
+ * no hay un modelo por defecto fijo aquí.
  */
 export function crearProveedorClaudeSiHabilitado(env: NodeJS.ProcessEnv, habilitadoParaTenant: boolean): ProveedorLLMClaude | null {
   if (!habilitadoParaTenant) return null;
   const apiKey = env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
-  const modelo = env.AGENTES_MODELO_LLM ?? "claude-opus-5";
-  return new ProveedorLLMClaude({ apiKey, modelo });
+  return new ProveedorLLMClaude({ apiKey, modeloForzado: env.AGENTES_MODELO_LLM });
 }
