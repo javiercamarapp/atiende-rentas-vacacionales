@@ -1,5 +1,7 @@
+import type { MiddlewareHandler } from "hono";
 import type { PoolClient } from "pg";
 import { ErrorDominio } from "../contrato/errores.js";
+import { resolverIp } from "./rateLimit.js";
 
 /**
  * A3-AUTH-01 (docs/auditoria-3/seguridad-auth.md, ALTO): `LimitadorVentana`
@@ -81,6 +83,99 @@ export class LimitadorVentanaPostgres {
       await cliente.query("SELECT rate_limit_limpiar_expirados($1)", [LIMPIEZA_MARGEN_MS]).catch(() => undefined);
     }
   }
+}
+
+export interface OpcionesRateLimitMiddlewarePostgres extends OpcionesRateLimitPostgres {
+  /** IPs de proxy de confianza (balanceador/reverse proxy propio) que sí
+   * pueden fijar `X-Forwarded-For`/`X-Real-IP` de forma confiable. Vacía
+   * por defecto — fail-safe (S-06), misma semántica que
+   * `crearRateLimit` en ./rateLimit.ts. */
+  proxiesDeConfianza?: readonly string[];
+  /** Límite duro de tiempo para la consulta a `rate_limit_bucket` antes de
+   * declarar Postgres inalcanzable y degradar (ver `MENSAJE_TIMEOUT` más
+   * abajo). Por defecto 1500ms — mismo orden de magnitud que el timeout de
+   * `verificarSaludBaseDeDatos` (packages/db/src/runner/
+   * saludBaseDeDatos.ts, 2000ms), corto a propósito porque este chequeo
+   * corre en TODAS las rutas, no solo en el healthcheck. */
+  timeoutMs?: number;
+}
+
+const TIMEOUT_MS_POR_DEFECTO = 1500;
+const MENSAJE_TIMEOUT = "__timeout_rate_limit_postgres__";
+
+function conTimeout<T>(promesa: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const temporizador = setTimeout(() => reject(new Error(MENSAJE_TIMEOUT)), ms);
+    promesa.then(
+      (valor) => {
+        clearTimeout(temporizador);
+        resolve(valor);
+      },
+      (error) => {
+        clearTimeout(temporizador);
+        reject(error);
+      },
+    );
+  });
+}
+
+/**
+ * Patrón 3 (rescatado de Likida/atiende.ai): equivalente distribuido de
+ * `crearRateLimit` (./rateLimit.ts), para el middleware GLOBAL montado en
+ * `app.use("*", ...)` (apps/api/src/app.ts). Antes de esto, el rate limit
+ * aplicado a TODAS las rutas públicas vivía en un `Map` en memoria — en el
+ * despliegue serverless real (Vercel, múltiples instancias/cold starts)
+ * ese límite global no limitaba nada de verdad, porque cada instancia
+ * tenía su propio `Map` vacío. `crearRateLimitPostgres` usa el mismo
+ * `ConexionSql` (típicamente el `pg.Pool` ya construido en `app.ts` — un
+ * `Pool` es estructuralmente un `ConexionSql` válido: cada llamada a
+ * `.query()` toma y libera una conexión del pool por sí sola, sin
+ * necesidad de reservar un `PoolClient` dedicado por request) y por tanto
+ * comparte el contador entre TODAS las instancias vía `rate_limit_bucket`
+ * — la misma tabla que ya usa `/auth/mfa/verificar` (A3-AUTH-01), ahora
+ * reutilizada aquí en vez de aprovisionar un backend nuevo (Redis).
+ *
+ * Reutiliza `resolverIp` de ./rateLimit.ts: MISMA resolución de IP
+ * (socket real, cabeceras solo si el proxy es de confianza — S-06) que el
+ * middleware en memoria, para que migrar de uno a otro no cambie ningún
+ * comportamiento observable salvo la persistencia del contador.
+ *
+ * Fail-open SOLO ante un fallo de INFRAESTRUCTURA (Postgres inalcanzable
+ * o la consulta tarda más que `timeoutMs`) — nunca ante un
+ * `ErrorDominio("rate_limited")` real, que siempre bloquea la request tal
+ * como antes. Sin esta distinción, este middleware GLOBAL (montado en
+ * TODAS las rutas) convertiría cualquier caída transitoria de Postgres en
+ * un 500 para absolutamente todo, incluidas `GET /health` y `GET
+ * /metrics` — que app.ts y workers/observabilidad/rutas.ts documentan y
+ * prueban explícitamente como "nunca lanzan aunque la BD no esté
+ * disponible" (mismo criterio de degradación honesta que
+ * packages/db/src/runner/saludBaseDeDatos.ts). El límite persistido en
+ * Postgres para rutas que YA dependen de la BD (login, mfa/verificar)
+ * sigue siendo efectivamente fail-closed en la práctica: si Postgres está
+ * caído, esas rutas fallan de todos modos al intentar `conConexion`.
+ */
+export function crearRateLimitPostgres(cliente: ConexionSql, opciones: OpcionesRateLimitMiddlewarePostgres): MiddlewareHandler {
+  const limitador = new LimitadorVentanaPostgres(opciones);
+  const proxiesDeConfianza = opciones.proxiesDeConfianza ?? [];
+  const timeoutMs = opciones.timeoutMs ?? TIMEOUT_MS_POR_DEFECTO;
+
+  return async (c, next) => {
+    const clave = `${resolverIp(c, proxiesDeConfianza)}:${c.req.method}:${new URL(c.req.url).pathname}`;
+    try {
+      await conTimeout(limitador.registrarIntento(cliente, clave), timeoutMs);
+    } catch (error) {
+      if (error instanceof ErrorDominio) throw error; // rate_limited real: sí bloquea
+      console.error(
+        JSON.stringify({
+          evento: "rate_limit_postgres_infraestructura_inalcanzable",
+          motivo: error instanceof Error && error.message === MENSAJE_TIMEOUT ? `timeout tras ${timeoutMs}ms` : "error de conexión",
+          mensaje: error instanceof Error ? error.message : String(error),
+        }),
+      );
+      // Fail-open de infraestructura, nunca de negocio — ver docstring.
+    }
+    await next();
+  };
 }
 
 // Reexportado únicamente para que `PoolClient` de `pg` (usado en

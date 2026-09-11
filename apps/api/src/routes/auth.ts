@@ -59,7 +59,6 @@ import {
   verificarTotp,
   type CodigoRecuperacionAlmacenado,
 } from "../seguridad/totp.js";
-import { LimitadorVentana, type OpcionesRateLimit } from "../seguridad/rateLimit.js";
 import { LimitadorVentanaPostgres, type OpcionesRateLimitPostgres } from "../seguridad/rateLimitPostgres.js";
 import type { ColaboradorNivel, RolUsuario } from "../contrato/tipos.js";
 
@@ -152,11 +151,17 @@ export interface DependenciasAuth {
    * apps/api/src/seguridad/cifrado.ts. */
   keyring: KeyringCifradoCanal;
   correo: InterfazCorreo;
-  rateLimitLoginPorEmail: OpcionesRateLimit;
+  /** S-06 + patrón 3 (rescatado de Likida/atiende.ai): límite adicional de
+   * intentos de login por email/usuario, independiente del límite
+   * genérico por IP. Persistido en Postgres (rate_limit_bucket, migración
+   * 0127) desde el patrón 3 — antes usaba `LimitadorVentana` en memoria,
+   * ineficaz entre cold starts serverless igual que el límite global de
+   * app.ts. Ver seguridad/rateLimitPostgres.ts. */
+  rateLimitLoginPorEmail: OpcionesRateLimitPostgres;
   /** A3-AUTH-01: límite del segundo factor (POST /auth/mfa/verificar),
-   * persistido en Postgres (rate_limit_bucket, migración 0127) — a
-   * diferencia de rateLimitLoginPorEmail (en memoria), este SÍ debe
-   * sobrevivir cold starts serverless. Ver seguridad/rateLimitPostgres.ts. */
+   * persistido en Postgres (rate_limit_bucket, migración 0127) — mismo
+   * mecanismo que rateLimitLoginPorEmail desde el patrón 3. Ver
+   * seguridad/rateLimitPostgres.ts. */
   rateLimitMfaVerificar: OpcionesRateLimitPostgres;
   urlPublicaApi: string;
   urlPublicaWeb: string;
@@ -186,12 +191,17 @@ export function crearRutasAuth(deps: DependenciasAuth): Hono {
   const app = new Hono();
   const cookieSegura = cookieEsSegura(entorno);
 
-  // S-06: límite adicional por email/usuario, independiente del rate
-  // limit genérico por IP (apps/api/src/seguridad/rateLimit.ts).
-  const limitadorPorEmail = new LimitadorVentana(rateLimitLoginPorEmail);
+  // S-06 + patrón 3: límite adicional por email/usuario, independiente del
+  // rate limit genérico por IP (apps/api/src/seguridad/rateLimitPostgres.ts,
+  // crearRateLimitPostgres). Persistido en Postgres desde el patrón 3 —
+  // antes, `LimitadorVentana` en memoria (rateLimit.ts) reseteaba este
+  // contador en cada cold start serverless, igual que le pasaba al límite
+  // genérico antes de migrarlo.
+  const limitadorPorEmail = new LimitadorVentanaPostgres(rateLimitLoginPorEmail);
   // A3-AUTH-01: límite del segundo factor persistido en Postgres — SIN
   // esto, el único freno de /mfa/verificar era el rate limit genérico por
-  // IP en memoria (app.ts, crearRateLimit), ineficaz entre cold starts.
+  // IP (app.ts, crearRateLimitPostgres desde el patrón 3; antes,
+  // crearRateLimit en memoria), independiente de este.
   const limitadorMfaVerificar = new LimitadorVentanaPostgres(rateLimitMfaVerificar);
 
   const googleHabilitado = Boolean(google.clientId && google.clientSecret && google.redirectUri);
@@ -487,7 +497,13 @@ export function crearRutasAuth(deps: DependenciasAuth): Hono {
   // ---------------------------------------------------------------------
   app.post("/login", async (c) => {
     const cuerpo = CuerpoLoginExtendido.parse(await c.req.json());
-    limitadorPorEmail.registrarIntento(`login:${cuerpo.email.trim().toLowerCase()}`);
+    // Patrón 3: `pool` (pg.Pool) es estructuralmente un `ConexionSql`
+    // válido — cada llamada a `.query()` toma y libera una conexión del
+    // pool por sí sola, sin necesidad de reservar un `PoolClient` dedicado
+    // solo para este chequeo (que corre ANTES de `conConexion`, a
+    // propósito, para no gastar ciclos de `conConexion`/RLS en un intento
+    // que de todos modos se va a rechazar por rate limit).
+    await limitadorPorEmail.registrarIntento(pool, `login:${cuerpo.email.trim().toLowerCase()}`);
     const ipHash = ipHashDeRequest(c);
 
     const resultado = await conConexion(pool, async (cliente) => {
@@ -570,9 +586,9 @@ export function crearRutasAuth(deps: DependenciasAuth): Hono {
       // al mfaToken firmado; un atacante que ya llegó aquí no puede
       // rotarlo) y por IP (defensa adicional, mismo criterio fail-safe de
       // S-06: nunca confía en una cabecera que el cliente controla — ver
-      // ipHashDeRequest). El límite genérico por IP en memoria
-      // (app.ts, crearRateLimit) sigue aplicando también, pero YA NO es
-      // el único freno de este endpoint.
+      // ipHashDeRequest). El límite genérico por IP (app.ts,
+      // crearRateLimitPostgres desde el patrón 3) sigue aplicando también,
+      // pero YA NO es el único freno de este endpoint.
       await limitadorMfaVerificar.registrarIntento(cliente, `mfa_verificar:usuario:${usuarioId}`);
       await limitadorMfaVerificar.registrarIntento(cliente, `mfa_verificar:ip:${ipHash ?? "socket-desconocido"}`);
 
