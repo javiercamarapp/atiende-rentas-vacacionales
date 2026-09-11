@@ -46,6 +46,13 @@ export {
   TopeRondasExcedidoError,
 } from "./escalamiento.js";
 
+export {
+  TOOLS_SUJETAS_A_VERIFICACION_DE_HECHOS,
+  extraerHechosCitados,
+  verificarHechosCitados,
+} from "./verificacionHechos.js";
+export type { HechoCitado, TipoHechoCitado, ResultadoVerificacionHechos } from "./verificacionHechos.js";
+
 export { ProveedorLLMSimulado } from "./proveedorLLM.js";
 export type { ProveedorLLM, SolicitudLLM, RespuestaLLM, InvocacionToolPropuesta, OpcionesProveedorSimulado } from "./proveedorLLM.js";
 export { ProveedorLLMConFallback } from "./proveedorFallback.js";

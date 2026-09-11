@@ -182,6 +182,13 @@ export type MotivoEscalamientoDuro =
    * un resultado sin tool fuera de alcance puede igual esconder un
    * comportamiento de fallo si el TEXTO promete algo que el sistema no
    * puede cumplir). */
-  | "confirmacion_no_verificada";
+  | "confirmacion_no_verificada"
+  /** Patrón 4 (rescatado de Likida/atiende.ai, ver verificacionHechos.ts):
+   * el texto de `mensajeria_proponer_borrador` citó un monto o una fecha
+   * que no coincide con ningún valor real conocido en `contextoResumen`
+   * — guardia anti-alucinación en capas, independiente de
+   * `confirmacion_no_verificada` (esa detecta una acción declarada como
+   * ya aplicada; esta detecta un HECHO citado sin fuente verificada). */
+  | "cita_no_verificada";
 
 export type MotivoEscalamiento = MotivoEscalamientoBlando | MotivoEscalamientoDuro;

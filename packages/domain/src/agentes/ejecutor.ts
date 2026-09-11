@@ -12,6 +12,7 @@ import { toolsDisponiblesParaActor } from "./matrizRoles.js";
 import { esCampoIdentificadorProhibido } from "./patronesIdentificador.js";
 import type { ProveedorLLM } from "./proveedorLLM.js";
 import { construirRegistroTraza, type RegistroTrazaToolCall } from "./trazabilidad.js";
+import { TOOLS_SUJETAS_A_VERIFICACION_DE_HECHOS, verificarHechosCitados } from "./verificacionHechos.js";
 import type {
   ActorAgente,
   ContenidoNoConfiable,
@@ -39,6 +40,14 @@ import type {
  *    `inputSchema.properties` sin ningún campo que parezca un
  *    identificador — defensa en profundidad aunque el catálogo ya lo
  *    prohíba estructuralmente (D-008).
+ * 5c. Patrón 4 (rescatado de Likida/atiende.ai, ver verificacionHechos.ts):
+ *    para `mensajeria_proponer_borrador` — la única tool de texto libre
+ *    cuyo propósito es restablecer hechos YA CONOCIDOS de la reserva/
+ *    unidad (nunca proponer un valor nuevo, a diferencia de
+ *    `precio_sugerir_ajuste`) — todo monto/fecha citado en el texto debe
+ *    coincidir con un valor real en `entrada.contextoResumen`; si no,
+ *    guardia anti-alucinación en capas, bloqueado antes de la cola de
+ *    aprobación humana.
  * 6. Ejecución del handler (determinista vía `manejadoresDeterministas`
  *    inyectados, o el propio `texto` generado por el proveedor para tools
  *    `requiereLlm`).
@@ -188,6 +197,40 @@ export class EjecutorTools {
           "La respuesta generada confirmaba una acción (descuento/cancelación/reembolso) sin verificación " +
           "humana previa — bloqueada antes de mostrarse (D-007, RV18 §7.2).",
       };
+    }
+
+    // 5c. Patrón 4 (rescatado de Likida/atiende.ai): guardia anti-alucinación
+    // en capas — solo para las tools cuyo texto libre DEBE restablecer
+    // hechos ya conocidos (mensajeria_proponer_borrador, ver
+    // verificacionHechos.ts). precio_sugerir_ajuste/limpieza_proponer_tarea
+    // quedan fuera a propósito: su trabajo legítimo es citar un valor NUEVO
+    // que nunca va a coincidir con contextoResumen.
+    if (
+      respuesta.texto &&
+      respuesta.toolInvocada &&
+      TOOLS_SUJETAS_A_VERIFICACION_DE_HECHOS.has(respuesta.toolInvocada.nombre)
+    ) {
+      const verificacion = verificarHechosCitados(respuesta.texto, entrada.contextoResumen);
+      if (!verificacion.verificado) {
+        this.registrarTraza(
+          entrada,
+          "no_autorizado",
+          respuesta.modeloReal,
+          respuesta.costoUsdEstimado,
+          inicioEn,
+          finEn,
+          respuesta.toolInvocada.nombre,
+        );
+        const citasCrudas = verificacion.hechosNoVerificados.map((h) => h.textoOriginal).join(", ");
+        return {
+          tipo: "bloqueado",
+          motivo: "cita_no_verificada",
+          mensaje:
+            `El borrador cita ${verificacion.hechosNoVerificados.length} dato(s) (${citasCrudas}) que no ` +
+            "coinciden con ningún valor real conocido por el servidor — bloqueado antes de mostrarse " +
+            "para aprobación humana (patrón 4, guardia anti-alucinación en capas).",
+        };
+      }
     }
 
     // 5-6. Sin tool invocada: respuesta conversacional directa.
